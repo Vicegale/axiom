@@ -55,8 +55,8 @@
 .dk-card.hl { border-color: var(--st-hitl); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--st-hitl) 45%, transparent); }
 .dk-card.moving { border-color: var(--focus); box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.35); }
 .dk-grid[data-sorting="true"] { user-select: none; }
-.dk-head { display: flex; align-items: flex-start; gap: 0.5rem; flex-wrap: wrap; }
-.dk-title { flex: 1 1 8rem; min-width: 0; font-size: 0.875rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.dk-head { display: flex; align-items: flex-start; gap: 0.5rem; }
+.dk-title { flex: 1 1 0; min-width: 0; font-size: 0.875rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
 .dk-title a { color: var(--text); text-decoration: none; }
 .dk-title a:hover { text-decoration: underline; }
 .dk-pills { display: inline-flex; gap: 0.25rem; }

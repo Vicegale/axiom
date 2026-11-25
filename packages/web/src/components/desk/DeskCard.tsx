@@ -105,10 +105,6 @@ export function DeskCard({ topic, now, theme, move, onFavorite, onHide, onOpen, 
             {topic.title}
           </Link>
         </h2>
-        <span className="dk-pills">
-          <StatusPill status={topic.status} />
-          {thread ? <StatusPill status={thread.status} /> : null}
-        </span>
         <span className="dk-tools">
           <button
             type="button"
@@ -157,6 +153,10 @@ export function DeskCard({ topic, now, theme, move, onFavorite, onHide, onOpen, 
         </span>
       </header>
 
+      <span className="dk-pills">
+        <StatusPill status={topic.status} />
+        {thread ? <StatusPill status={thread.status} /> : null}
+      </span>
       <p className="dk-meta">
         <span>{tc.total === 0 ? "No tasks yet" : `${tc.done}/${tc.total} done`}</span>
         <span>
