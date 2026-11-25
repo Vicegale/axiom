@@ -2,8 +2,10 @@ import { vi } from "vitest";
 import type {
   AxiomNotification,
   Entry,
+  EpicItem,
   Settings,
   Thread,
+  TicketItem,
   TopicDetailData,
   TopicListItem,
 } from "../api";
@@ -82,6 +84,8 @@ export class FakeServer {
   details = new Map<string, Partial<TopicDetailData>>();
   entries = new Map<string, Entry[]>();
   notifications: AxiomNotification[] = [];
+  epics: EpicItem[] = [];
+  tickets: TicketItem[] = [];
   settings: Settings = { mutedKinds: [], staleAfterDays: 14, layout: "inbox", theme: "dark" };
   calls: Call[] = [];
 
@@ -148,7 +152,8 @@ export class FakeServer {
         t3: { state: "not-configured" },
       });
     }
-    if (method === "GET" && path === "/api/tickets") return this.json([]);
+    if (method === "GET" && path === "/api/tickets") return this.json(this.tickets);
+    if (method === "GET" && path === "/api/epics") return this.json(this.epics);
     if (entriesM && method === "GET") {
       return this.json(this.entries.get(decodeURIComponent(entriesM[1] ?? "")) ?? []);
     }

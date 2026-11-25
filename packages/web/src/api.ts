@@ -131,11 +131,23 @@ export interface Health {
   t3: { state: string };
 }
 
-export interface TicketItem {
+/** An epic or a ticket as /api/epics and /api/tickets return it. */
+export interface WorkItem {
   slug: string;
   title: string;
+  status: string;
+  jiraKey: string | null;
+  jiraStatus: string | null;
+  /** True when Jira owns the status. */
+  locked: boolean;
+  topicCount: number;
+}
+
+export interface TicketItem extends WorkItem {
   epics: { slug: string; title: string }[];
 }
+
+export type EpicItem = WorkItem & { ticketCount: number };
 
 // ---- fetch layer ---------------------------------------------------------------------------
 
@@ -180,6 +192,7 @@ export const api = {
   confirmMonitor: (id: number) => request<MonitorTarget>("POST", `/api/monitors/${id}/confirm`),
   deleteEntry: (id: number) => request<{ ok: true }>("DELETE", `/api/entries/${id}`),
   tickets: () => request<TicketItem[]>("GET", "/api/tickets"),
+  epics: () => request<EpicItem[]>("GET", "/api/epics"),
   notifications: () => request<NotificationsResponse>("GET", "/api/notifications"),
   settings: () => request<Settings>("GET", "/api/settings"),
   putSettings: (patch: Partial<Settings>) => request<Settings>("PUT", "/api/settings", patch),

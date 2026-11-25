@@ -1,9 +1,9 @@
 import { Link } from "wouter";
 import type { Health, TopicListItem } from "../../api";
 import { MAIN_VIEWS, PILES, VIEW_DOT, VIEW_LABEL, type ViewId } from "../../lib/domain";
-import { ago, stamp } from "../../lib/time";
+import { healthRows } from "../../lib/health";
 import { inView } from "../../lib/topics";
-import { hrefs } from "./routes";
+import { hrefs } from "../shared/routes";
 
 export type Active = "all" | ViewId | "notifications" | "settings" | null;
 
@@ -29,36 +29,6 @@ function Nav({ href, label, count, dot, active, attn, extra }: NavProps) {
       {count !== undefined ? <span className="n">{count}</span> : null}
     </Link>
   );
-}
-
-interface HealthRow {
-  name: string;
-  state: "ok" | "warn" | "off";
-  text: string;
-}
-
-export function healthRows(h: Health | undefined, now: Date): HealthRow[] {
-  if (!h) return [];
-  const backup = h.server.lastBackupAt ? stamp(h.server.lastBackupAt, now) : "none yet";
-  return [
-    {
-      name: "Server",
-      state: "ok",
-      text: `v${h.server.version} up since ${stamp(h.server.startedAt, now)} · backup ${backup}`,
-    },
-    h.claudeCode.lastEventAt
-      ? {
-          name: "Claude Code",
-          state: "ok",
-          text: `Last hook event ${ago(h.claudeCode.lastEventAt, now)}`,
-        }
-      : { name: "Claude Code", state: "warn", text: "No hook events yet" },
-    {
-      name: "T3",
-      state: h.t3.state === "ok" ? "ok" : h.t3.state === "not-configured" ? "off" : "warn",
-      text: h.t3.state === "not-configured" ? "Not configured" : h.t3.state,
-    },
-  ];
 }
 
 interface Props {

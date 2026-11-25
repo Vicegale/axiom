@@ -17,3 +17,11 @@ export function useTheme(theme: Settings["theme"] | undefined): void {
     return () => mq?.removeEventListener("change", apply);
   }, [theme]);
 }
+
+/** The theme actually shown: "system" resolves through prefers-color-scheme. */
+export function effectiveTheme(theme: Settings["theme"] | undefined): "dark" | "light" {
+  if (theme === "dark" || theme === "light") return theme;
+  return typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: light)").matches
+    ? "light"
+    : "dark";
+}
