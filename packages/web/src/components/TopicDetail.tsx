@@ -12,7 +12,7 @@ import type {
 import { hrefs } from "../layouts/shared/routes";
 import type { TaskStatus } from "../lib/domain";
 import { LINK_ORDER, PROVIDER_LABEL } from "../lib/domain";
-import { hasScheme, isMarkdownPath } from "../lib/paths";
+import { hasScheme, isHtmlPath, isImagePath, isMarkdownPath } from "../lib/paths";
 import { ago, fullStamp, idleDays, stamp } from "../lib/time";
 import { type Density, History } from "./History";
 import { ParentChip } from "./ParentChip";
@@ -360,10 +360,13 @@ function hrefOf(l: LinkItem): string | null {
   return pr ? `https://github.com/${pr[1]}/pull/${pr[2]}` : null;
 }
 
-/** A spec, or an artifact that is a Markdown file, opens in the document viewer. */
+/** A spec, or an artifact that is a Markdown, HTML or image file, opens in the document viewer. */
 function viewable(l: LinkItem): boolean {
+  if (hasScheme(l.target)) return false;
+  if (l.kind === "spec") return isMarkdownPath(l.target);
   return (
-    (l.kind === "spec" || l.kind === "artifact") && !hasScheme(l.target) && isMarkdownPath(l.target)
+    l.kind === "artifact" &&
+    (isMarkdownPath(l.target) || isHtmlPath(l.target) || isImagePath(l.target))
   );
 }
 

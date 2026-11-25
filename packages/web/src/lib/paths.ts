@@ -38,3 +38,11 @@ export function hasScheme(url: string): boolean {
 export function isMarkdownPath(path: string): boolean {
   return /\.(md|markdown)$/i.test(path);
 }
+
+export function isHtmlPath(path: string): boolean {
+  return /\.html?$/i.test(path);
+}
+
+export function isImagePath(path: string): boolean {
+  return /\.(png|jpe?g|gif|webp|svg)$/i.test(path);
+}

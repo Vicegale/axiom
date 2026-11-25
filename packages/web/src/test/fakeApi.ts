@@ -1,5 +1,6 @@
 import { vi } from "vitest";
 import type {
+  ArtifactData,
   AxiomNotification,
   DocData,
   Entry,
@@ -118,6 +119,8 @@ export class FakeServer {
   calls: Call[] = [];
   /** Documents by `<slug>:<linkId>` or `<slug>:<linkId>:<?path>`; a missing key is a 404. */
   docs = new Map<string, DocData>();
+  /** Artifact metadata by `<slug>:<linkId>`; a missing key is a 404. */
+  artifacts = new Map<string, ArtifactData>();
 
   install(): void {
     vi.stubGlobal(
@@ -167,6 +170,7 @@ export class FakeServer {
     const tasksM = /^\/api\/topics\/([^/]+)\/tasks$/.exec(path);
     const taskStatusM = /^\/api\/topics\/([^/]+)\/tasks\/([^/]+)\/status$/.exec(path);
     const docM = /^\/api\/topics\/([^/]+)\/docs\/(\d+)$/.exec(path);
+    const artM = /^\/api\/topics\/([^/]+)\/artifacts\/(\d+)$/.exec(path);
     const entryM = /^\/api\/entries\/(\d+)$/.exec(path);
 
     if (method === "GET" && path === "/api/topics") {
@@ -191,6 +195,12 @@ export class FakeServer {
       const doc = this.docs.get(key);
       return doc
         ? this.json(doc)
+        : this.json({ error: { code: "not-found", message: "no such file" } }, 404);
+    }
+    if (artM && method === "GET") {
+      const art = this.artifacts.get(`${decodeURIComponent(artM[1] ?? "")}:${artM[2]}`);
+      return art
+        ? this.json(art)
         : this.json({ error: { code: "not-found", message: "no such file" } }, 404);
     }
     if (method === "GET" && path === "/api/notifications") {

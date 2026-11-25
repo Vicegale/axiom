@@ -141,3 +141,13 @@ dialog.bd-sheet[data-wide="true"] { width: 100vw; border-left: 0; }
   .dv-head, .dv-table, .dv-prose pre, .dv-mermaid, .dv-top-toc { border-color: CanvasText; }
   .dv-toc-list a[aria-current="location"] { border-left-color: Highlight; }
 }
+
+/* Artifacts: an HTML page in a sandboxed iframe, or an image fitted to the pane. */
+a.btn.dv-wide { text-decoration: none; display: inline-flex; align-items: center; }
+.av-frame { flex: 1; min-height: 0; width: 100%; border: 0; background: var(--bg); color-scheme: normal; }
+.av-image { display: grid; place-items: center; padding: 1rem; }
+.av-image-btn { display: grid; place-items: center; max-width: 100%; max-height: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
+.av-image-btn img { display: block; max-width: 100%; max-height: calc(100cqh - 6rem); object-fit: contain; }
+.av-image[data-actual="true"] { place-items: start center; }
+.av-image[data-actual="true"] .av-image-btn { cursor: zoom-out; max-width: none; max-height: none; }
+.av-image[data-actual="true"] .av-image-btn img { max-width: none; max-height: none; }
