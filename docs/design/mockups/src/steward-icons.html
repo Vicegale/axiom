@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Axiom · Steward icon candidates (mockup)</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="steward-base.css">
+<style>
+/* Steward icon candidates: each at its real sizes, on dark and light, and in the places it will appear. */
+.page { padding: 20px; display: grid; gap: 14px; max-width: 1200px; }
+.grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+.cand { padding: 14px; display: grid; gap: 12px; align-content: start; }
+.cand h2 { font-size: 14px; font-weight: 600; display: flex; gap: 8px; align-items: baseline; }
+.cand h2 .meta { font-weight: 400; }
+.idea { color: var(--text-2); font-size: 12.5px; min-height: 36px; }
+.sizes { display: flex; align-items: flex-end; gap: 14px; padding: 12px; border-radius: 6px; color: var(--steward); }
+.sizes.dark { background: #0b0c0e; --steward: #e0a84f; }
+.sizes.light { background: #f6f6f4; --steward: #a8701a; }
+.sizes svg { display: block; }
+.ctx { display: grid; gap: 8px; }
+.ctx .st-toggle svg { color: var(--steward); }
+.stripx { display: flex; align-items: center; gap: 8px; font-size: 12.5px; padding: 7px 10px; border-radius: 6px; background: color-mix(in srgb, var(--steward) 6%, var(--panel-2)); border: 1px solid color-mix(in srgb, var(--steward) 28%, var(--line)); }
+.stripx svg { color: var(--steward); flex: none; }
+.tile { width: 40px; height: 40px; border-radius: 9px; display: grid; place-items: center; background: var(--steward); color: #16120a; }
+.row { display: flex; gap: 10px; align-items: center; }
+.pagesw { display: flex; padding: 2px; gap: 2px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); width: max-content; }
+.pagesw > span { padding: 3px 9px; border-radius: 5px; color: var(--text-2); display: inline-flex; gap: 6px; align-items: center; }
+.pagesw > span.on { background: var(--raised); color: var(--text); }
+.pagesw svg { color: var(--steward); }
+.pick { border-color: color-mix(in srgb, var(--steward) 55%, var(--line)); }
+.rec { font: 10px var(--font-mono); text-transform: uppercase; letter-spacing: .08em; color: var(--steward); }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1 style="font-size:16px;font-weight:600">Steward icon candidates</h1>
+  <p class="meta">Each drawn on a 16-unit grid with the same 1.5 stroke as the app's other icons, one colour (currentColor), shown at 14, 16, 20 and 32 px. Axiom's own mark is the plain diamond; Steward's icons stay in that family or step away from it on purpose.</p>
+  <div class="grid" id="grid"></div>
+</div>
+<script>
+const SW = 'fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"';
+const C = [
+  { key: "sweep", name: "Sweep",
+    idea: "Axiom's diamond with a watch sweep from the centre: Steward is Axiom, watching.",
+    body: `<path d="M8 1.5 14.5 8 8 14.5 1.5 8Z"/><path d="M8 4.9A3.1 3.1 0 0 1 11.1 8"/><circle cx="8" cy="8" r="1.15" fill="currentColor" stroke="none"/>` },
+  { key: "lantern", name: "Lantern",
+    idea: "The night watch: someone who keeps a light on while you're away. No overlap with other app icons.",
+    body: `<path d="M6.2 2.5h3.6"/><path d="M8 1.2v1.3"/><path d="M5.6 4.3h4.8l.6 1.2v5.8l-.6 1.2H5.6l-.6-1.2V5.5z"/><path d="M8 6.6c.8.8 1.2 1.5 1.2 2.2a1.2 1.2 0 0 1-2.4 0c0-.7.4-1.4 1.2-2.2z" fill="currentColor" stroke="none"/><path d="M5.6 14.3h4.8"/>` },
+  { key: "facet", name: "Facet", rec: true,
+    idea: "The diamond split: half outlined, half solid. Axiom's mark with a part that is always on.",
+    body: `<path d="M8 1.5 14.5 8 8 14.5 1.5 8Z"/><path d="M8 1.5v13L1.5 8z" fill="currentColor"/>` },
+  { key: "key", name: "Keys",
+    idea: "A steward holds the keys: trusted with the house, never acts as the owner. Readable, but closer to 'security'.",
+    body: `<circle cx="5.4" cy="5.4" r="3.1"/><path d="M7.6 7.6 14 14"/><path d="M11.4 11.4l1.6-1.6"/><path d="M12.9 12.9l1.3-1.3"/>` },
+];
+const svg = (c, s) => `<svg width="${s}" height="${s}" viewBox="0 0 16 16" ${SW} aria-hidden="true">${c.body}</svg>`;
+document.getElementById("grid").innerHTML = C.map((c) => `
+  <section class="panel cand ${c.rec ? "pick" : ""}">
+    <h2>${c.name}${c.rec ? '<span class="rec">recommended</span>' : ""}</h2>
+    <p class="idea">${c.idea}</p>
+    <div class="sizes dark">${[14, 16, 20, 32].map((s) => svg(c, s)).join("")}</div>
+    <div class="sizes light">${[14, 16, 20, 32].map((s) => svg(c, s)).join("")}</div>
+    <div class="ctx">
+      <div class="pagesw"><span>Desk</span><span class="on">${svg(c, 14)}Steward<span class="count">8</span></span></div>
+      <div class="row"><button class="st-toggle on"><span class="sw"></span>${svg(c, 14)}Steward<span class="meta">next 14:30</span></button></div>
+      <div class="stripx">${svg(c, 14)}<span class="lvl">Urgent</span>CI failed on mtg#214 · a fix is ready</div>
+      <div class="row"><span class="tile">${svg(c, 24)}</span><span class="meta">desktop notification and chat avatar</span></div>
+    </div>
+  </section>`).join("");
+</script>
+</body>
+</html>
