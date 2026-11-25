@@ -196,54 +196,81 @@ function SubagentRow({ node, now }: { node: SubagentNode; now: Date }) {
 }
 
 /**
- * A small tree under the run line: the thread at the top, the subagents it started below it (and
- * theirs below them), each with a status dot (running, done, failed, cancelled).
+ * The subagent tree: the thread at the top, the subagents it started below it (and theirs below
+ * them), each with a status dot (running, done, failed, cancelled).
  */
-function SubagentTree({ id, thread, now }: { id: string; thread: DeskThread; now: Date }) {
+function SubagentTree({ thread, now }: { thread: DeskThread; now: Date }) {
   const tree = subagentTree(thread.subagents);
   return (
-    <div className="dk-agents" id={id}>
-      <ul className="dk-tlist" aria-label={`Agents of ${threadLabel(thread)}`}>
-        <li className="dk-tn">
-          <div className="dk-tr">
-            <span className={`dk-tdot s-${thread.status}`} aria-hidden="true" />
-            <span className="dk-tname dk-troot" title={threadLabel(thread)}>
-              {threadLabel(thread)}
-            </span>
-            <span className="dk-tmeta">{runLine(thread, now)}</span>
-          </div>
-          <ul className="dk-kids">
-            {tree.map((n) => (
-              <SubagentRow key={n.agent.id} node={n} now={now} />
-            ))}
-          </ul>
-        </li>
-      </ul>
+    <ul className="dk-tlist" aria-label={`Agents of ${threadLabel(thread)}`}>
+      <li className="dk-tn">
+        <div className="dk-tr">
+          <span className={`dk-tdot s-${thread.status}`} aria-hidden="true" />
+          <span className="dk-tname dk-troot" title={threadLabel(thread)}>
+            {threadLabel(thread)}
+          </span>
+          <span className="dk-tmeta">{runLine(thread, now)}</span>
+        </div>
+        <ul className="dk-kids">
+          {tree.map((n) => (
+            <SubagentRow key={n.agent.id} node={n} now={now} />
+          ))}
+        </ul>
+      </li>
+    </ul>
+  );
+}
+
+/**
+ * The subagents as a disclosure: one box whose header row is the toggle (chevron, count and
+ * outcome, a dot per subagent) and whose body is the tree. Open while any subagent runs, folded
+ * once all have finished; the owner's choice holds while that state does.
+ */
+function Subagents({ thread, now }: { thread: DeskThread; now: Date }) {
+  const bodyId = useId();
+  const [choice, setChoice] = useState<{ whileRunning: boolean; open: boolean } | null>(null);
+  const subs = thread.subagents;
+  const running = runningSubagents(subs) > 0;
+  const shown = choice?.whileRunning === running ? choice.open : running;
+  return (
+    <div className={`dk-agents${shown ? " open" : ""}`}>
+      <button
+        type="button"
+        className="dk-agentsbtn"
+        aria-expanded={shown}
+        aria-controls={shown ? bodyId : undefined}
+        onClick={() => setChoice({ whileRunning: running, open: !shown })}
+      >
+        <span className="dk-agents-chev" aria-hidden="true" />
+        <span className="dk-agents-label">{subagentSummary(subs)}</span>
+        <span className="dk-agents-dots" aria-hidden="true">
+          {subs.slice(0, 12).map((s) => (
+            <span key={s.id} className="dk-tdot" data-s={s.status} />
+          ))}
+        </span>
+      </button>
+      {shown ? (
+        <div className="dk-agents-body" id={bodyId}>
+          <SubagentTree thread={thread} now={now} />
+        </div>
+      ) : null}
     </div>
   );
 }
 
 /**
- * One fixed-height line: the run state, and for a running thread its newest step. Subagents add a
- * button ("running · 2 subagents", "waiting on 1 subagent", "3 subagents · done") for the tree
- * under the line: open while any subagent runs, folded once they have all finished.
+ * One fixed-height line: the run state, and for a running thread its newest step. Its subagents,
+ * if any, follow as their own disclosure box (see Subagents).
  */
 function RunLine({ thread, now }: { thread: DeskThread; now: Date }) {
   const step = runningActivity(thread);
-  const listId = useId();
-  // The owner's choice holds only while the state it was made in does (running or all finished).
-  const [choice, setChoice] = useState<{ whileRunning: boolean; open: boolean } | null>(null);
   const subs = thread.subagents;
-  const running = runningSubagents(subs) > 0;
-  const shown = subs.length > 0 && (choice?.whileRunning === running ? choice.open : running);
-  // An idle thread with running subagents is waiting on them; a running one says "running ·" first.
-  const text = !running
-    ? runLine(thread, now)
-    : thread.status === "wip"
-      ? "running ·"
-      : thread.status === "hitl" || thread.status === "error"
-        ? runLine(thread, now)
-        : "waiting on";
+  // An idle thread with running subagents is waiting on them.
+  const waiting =
+    runningSubagents(subs) > 0 &&
+    thread.status !== "wip" &&
+    thread.status !== "hitl" &&
+    thread.status !== "error";
   return (
     <>
       <p className={`dk-run${step ? " live" : ""}`}>
@@ -256,21 +283,12 @@ function RunLine({ thread, now }: { thread: DeskThread; now: Date }) {
             {thread.activity ? <ActivityAge at={thread.activity.at} /> : null}
           </>
         ) : (
-          <span className="dk-runtext">{text}</span>
+          <span className="dk-runtext">
+            {waiting ? "waiting on subagents" : runLine(thread, now)}
+          </span>
         )}
-        {subs.length > 0 ? (
-          <button
-            type="button"
-            className="dk-agentsbtn"
-            aria-expanded={shown}
-            aria-controls={shown ? listId : undefined}
-            onClick={() => setChoice({ whileRunning: running, open: !shown })}
-          >
-            {subagentSummary(subs)}
-          </button>
-        ) : null}
       </p>
-      {shown ? <SubagentTree id={listId} thread={thread} now={now} /> : null}
+      {subs.length > 0 ? <Subagents thread={thread} now={now} /> : null}
     </>
   );
 }

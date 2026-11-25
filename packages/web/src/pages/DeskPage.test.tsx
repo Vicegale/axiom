@@ -664,7 +664,7 @@ describe("the subagent tree on the card", () => {
   ];
   const button = () =>
     within(card("Alpha")).queryByRole("button", { name: /\d+ subagents?/ }) as HTMLElement | null;
-  const tree = () => card("Alpha").querySelector(".dk-agents");
+  const tree = () => card("Alpha").querySelector(".dk-agents-body");
 
   it("shows nothing when there are none", async () => {
     start();
@@ -679,8 +679,11 @@ describe("the subagent tree on the card", () => {
     start();
     await screen.findByRole("article", { name: "Alpha" });
     const run = card("Alpha").querySelector(".dk-run") as HTMLElement;
-    expect(run.textContent).toBe("running ·2 subagents");
+    expect(run.textContent).toBe("running");
     const btn = button() as HTMLElement;
+    // The toggle is the header row of the box that holds the tree, right under the run line.
+    expect(btn.parentElement?.classList.contains("dk-agents")).toBe(true);
+    expect(run.nextElementSibling).toBe(btn.parentElement);
     expect(btn.getAttribute("aria-expanded")).toBe("true");
     const list = within(card("Alpha")).getByRole("list", { name: /^Agents of / });
     expect(btn.getAttribute("aria-controls")).toBe(tree()?.id);
@@ -698,7 +701,7 @@ describe("the subagent tree on the card", () => {
     expect(card("Alpha").querySelector(".dk-tstep")?.textContent).toBe("Reading reader.ts");
   });
 
-  it("keeps the newest step and puts the button after it", async () => {
+  it("keeps the newest step on the run line, with the subagents box below it", async () => {
     setSubagents(two());
     const th = server.desk[0]?.threads[1];
     if (th) th.activity = { text: "Reading app.ts", at: minutesAgo(0) };
@@ -706,7 +709,7 @@ describe("the subagent tree on the card", () => {
     await screen.findByRole("article", { name: "Alpha" });
     const run = card("Alpha").querySelector(".dk-run") as HTMLElement;
     expect(run.textContent).toContain("running · Reading app.ts");
-    expect(run.lastElementChild).toBe(button());
+    expect(run.nextElementSibling).toBe(button()?.parentElement);
   });
 
   it("can be folded while running, and stays folded", async () => {
@@ -765,7 +768,8 @@ describe("the subagent tree on the card", () => {
     // The newest thread (the one shown) has none; pick the older one, which has one.
     fireEvent.change(within(card("Alpha")).getByRole("combobox"), { target: { value: "1" } });
     const run = card("Alpha").querySelector(".dk-run") as HTMLElement;
-    expect(run.textContent).toBe("waiting on1 subagent");
+    expect(run.textContent).toBe("waiting on subagents");
+    expect(button()?.textContent).toBe("1 subagent");
     expect(card("Alpha").querySelectorAll(".dk-tr")[1]?.textContent).toBe("running: Explore<1 min");
   });
 
