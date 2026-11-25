@@ -260,6 +260,8 @@ export interface DocData {
   title: string;
   markdown: string;
   mtime: number;
+  /** Set for a thread's reply: its images resolve through the thread, not the topic's files. */
+  replyThreadId?: number;
 }
 
 /** Artifact metadata as GET /api/topics/:slug/artifacts/:linkId returns it. */

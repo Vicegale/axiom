@@ -1,5 +1,5 @@
 import { realpathSync, statSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import type { Axiom, Link } from "@axiom/core";
@@ -227,6 +227,36 @@ export interface ArtifactFile extends ArtifactMeta {
 }
 
 const ARTIFACT_EXTS = new Set([...HTML_EXTS, ...Object.keys(IMAGE_TYPES)]);
+
+/**
+ * An image a thread's latest reply shows by absolute path (agents often paste screenshots that way).
+ * Allowed only when that exact path appears in the reply text, is absolute (or ~), is an image type,
+ * and is at most 10 MB. Nothing else on disk is reachable through this.
+ */
+export async function readReplyImage(
+  replyText: string | null,
+  requested: string,
+): Promise<{ bytes: Buffer; type: string }> {
+  if (!replyText) throw new DocsError(404, "not-found", "this thread has no reply");
+  if (!(requested.startsWith("/") || requested.startsWith("~/"))) {
+    throw new DocsError(400, "validation", "only absolute image paths from the reply can be shown");
+  }
+  if (!replyText.includes(requested)) {
+    throw new DocsError(403, "permission", "that path is not in the thread's latest reply");
+  }
+  const abs = expand(requested, null);
+  const type = IMAGE_TYPES[extname(abs).toLowerCase()];
+  if (!type) throw new DocsError(403, "permission", "not an image type the viewer shows");
+  let st: Awaited<ReturnType<typeof stat>>;
+  try {
+    st = await stat(abs);
+  } catch {
+    throw new DocsError(404, "not-found", "image not found");
+  }
+  if (!st.isFile()) throw new DocsError(404, "not-found", "image not found");
+  if (st.size > 10 * 1024 * 1024) throw new DocsError(413, "too-large", "image is over 10 MB");
+  return { bytes: await readFile(abs), type };
+}
 
 /** The file an `artifact` link names, when it is a local HTML page or image the topic may read.
  *  Markdown artifacts are refused here: they open through the docs route. A relative target must

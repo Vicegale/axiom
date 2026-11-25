@@ -486,3 +486,26 @@ it("leaves no temp folders behind", async () => {
   await until(() => state(th.id).summaryNow !== null);
   expect(readdirSync(tmpdir()).filter((n) => n.startsWith("axiom-summary-")).length).toBe(before);
 });
+
+describe("reply images", () => {
+  it("serves an image only when its absolute path is in the thread's latest reply", async () => {
+    const { readReplyImage } = await import("./docs.js");
+    const { mkdtempSync, writeFileSync } = await import("node:fs");
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const dir = mkdtempSync(join(tmpdir(), "axiom-replyimg-"));
+    const png = join(dir, "shot.png");
+    writeFileSync(png, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const other = join(dir, "other.png");
+    writeFileSync(other, Buffer.from([0x89]));
+    const reply = `Here it is: ![s](${png})`;
+    const ok = await readReplyImage(reply, png);
+    expect(ok.type).toBe("image/png");
+    await expect(readReplyImage(reply, other)).rejects.toMatchObject({ status: 403 });
+    await expect(readReplyImage(reply, "shot.png")).rejects.toMatchObject({ status: 400 });
+    const txt = join(dir, "notes.txt");
+    writeFileSync(txt, "x");
+    await expect(readReplyImage(`see ${txt}`, txt)).rejects.toMatchObject({ status: 403 });
+    await expect(readReplyImage(null, png)).rejects.toMatchObject({ status: 404 });
+  });
+});

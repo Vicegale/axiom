@@ -20,7 +20,14 @@ import { type Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { backupDir, newestBackupMs } from "./backup.js";
-import { artifactMeta, DocsError, readDoc, readImage, resolveArtifact } from "./docs.js";
+import {
+  artifactMeta,
+  DocsError,
+  readDoc,
+  readImage,
+  readReplyImage,
+  resolveArtifact,
+} from "./docs.js";
 import type { ChangeBus } from "./events.js";
 import type { T3Provider } from "./providers/t3/provider.js";
 import { registerSendRoutes } from "./sending.js";
@@ -416,6 +423,24 @@ export function createApp(ctx: AppContext): Hono {
     const th = ax.getThread(intParam(c.req.param("id"), "thread id"));
     if (th.lastReply === null) throw new AxiomError("not-found", "this thread has no reply yet");
     return c.json({ text: th.lastReply, at: th.lastReplyAt });
+  });
+
+  app.get("/api/threads/:id/image", async (c) => {
+    try {
+      const path = c.req.query("path");
+      if (!path) throw bad("path is required");
+      const th = ax.getThread(intParam(c.req.param("id"), "thread id"));
+      const file = await readReplyImage(th.lastReply, path);
+      const headers: Record<string, string> = {
+        "content-type": file.type,
+        "x-content-type-options": "nosniff",
+        "cache-control": "no-cache",
+      };
+      if (file.type === "image/svg+xml") headers["content-security-policy"] = "sandbox";
+      return new Response(new Uint8Array(file.bytes), { headers });
+    } catch (e) {
+      return docsFailure(c, e);
+    }
   });
 
   app.post("/api/topics/:slug/favorite", async (c) => {

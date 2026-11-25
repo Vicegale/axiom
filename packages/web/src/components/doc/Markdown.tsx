@@ -164,10 +164,15 @@ function makeComponents(doc: DocData, slug: string, theme: "dark" | "light"): Co
         try {
           rel = decodeURI(rel);
         } catch {}
-        const abs = rel.startsWith("/")
-          ? resolvePath(doc.root, rel.slice(1))
-          : resolvePath(dirname(doc.path), rel);
-        url = `/api/topics/${encodeURIComponent(slug)}/files?path=${encodeURIComponent(abs)}`;
+        if (doc.replyThreadId !== undefined) {
+          // A reply is not a file: only absolute paths it names can be shown.
+          url = `/api/threads/${doc.replyThreadId}/image?path=${encodeURIComponent(rel)}`;
+        } else {
+          const abs = rel.startsWith("/")
+            ? resolvePath(doc.root, rel.slice(1))
+            : resolvePath(dirname(doc.path), rel);
+          url = `/api/topics/${encodeURIComponent(slug)}/files?path=${encodeURIComponent(abs)}`;
+        }
       }
       return <img {...props} src={url} alt={alt ?? ""} loading="lazy" />;
     },
