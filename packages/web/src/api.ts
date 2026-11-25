@@ -104,6 +104,8 @@ export interface DeskThread {
   /** The newest step the agent took ("$ npm test", "Reading app.ts"), kept after it stops. */
   activity: { text: string; at: string } | null;
   hasReply: boolean;
+  /** Questions and permission requests waiting on the owner; the card fetches them when above 0. */
+  pendingRequests: number;
   /** A newer reply is being summarised (the shown summary, if any, is the previous one). */
   summaryPending?: boolean;
 }
@@ -126,6 +128,36 @@ export interface DeskTopic {
   attention: Attention | null;
   threads: DeskThread[];
 }
+
+/** One question of a T3 `user_input` request. */
+export interface RequestQuestion {
+  /** The key of its answer. */
+  id: string;
+  header: string;
+  question: string;
+  options: { label: string; description: string }[];
+  multiSelect: boolean;
+}
+
+/** Something an agent waits on the owner for: a question, or a permission request. */
+export interface PendingRequest {
+  id: string;
+  provider: Provider;
+  kind: "question" | "approval";
+  text: string;
+  questions: RequestQuestion[];
+  /** Claude Code approvals: the tool and one line of its input. */
+  tool: string | null;
+  summary: string | null;
+  requestKind: string | null;
+  createdAt: string | null;
+  /** The owner can allow or deny it here (Claude Code); T3 approvals are answered in T3. */
+  decidable: boolean;
+  /** `t3code://` link to the thread, for approvals T3 must answer. */
+  openUrl: string | null;
+}
+
+export type RequestAnswers = Record<string, string | string[]>;
 
 export interface ThreadReply {
   text: string;
@@ -399,6 +431,17 @@ export const api = {
     }),
   setDeskOrder: (slugs: string[]) =>
     request<{ slugs: string[] }>("PUT", "/api/desk/order", { slugs }),
+  threadRequests: (id: number) =>
+    request<{ requests: PendingRequest[] }>("GET", `/api/threads/${id}/requests`),
+  answerRequest: (threadId: number, requestId: string, answers: RequestAnswers) =>
+    request<{ ok: true }>("POST", `/api/threads/${threadId}/requests/${enc(requestId)}/answer`, {
+      answers,
+    }),
+  decideApproval: (id: string, decision: "allow" | "deny", message?: string) =>
+    request<unknown>("POST", `/api/approvals/${enc(id)}`, {
+      decision,
+      ...(message ? { message } : {}),
+    }),
   health: () => request<Health>("GET", "/api/health"),
   composeOptions: () => request<ComposeOptions>("GET", "/api/compose/options"),
   sendToThread: (id: number, body: SendBody) =>

@@ -54,16 +54,16 @@ export function resumeCommand(ax: Axiom, th: Pick<Thread, "id" | "providerThread
   return cwd ? `cd ${q(cwd)} && ${resume}` : resume;
 }
 
-class ProviderError extends Error {}
+export class ProviderError extends Error {}
 
-interface Captured {
+export interface Captured {
   code: number | null;
   stdout: string;
   stderr: string;
 }
 
 /** Runs a binary with `input` on stdin and waits for it. */
-function runCapture(
+export function runCapture(
   cli: string,
   args: string[],
   input: string,
@@ -100,7 +100,7 @@ function runCapture(
   });
 }
 
-function failure(what: string, r: Captured): ProviderError {
+export function failure(what: string, r: Captured): ProviderError {
   const why = (r.stderr.trim() || r.stdout.trim()).slice(0, 500);
   return new ProviderError(`${what} exited with ${r.code}${why ? `: ${why}` : ""}`);
 }

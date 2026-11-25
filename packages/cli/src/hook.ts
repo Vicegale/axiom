@@ -8,6 +8,7 @@ export const HOOK_EVENTS = [
   "prompt",
   "pre-tool",
   "notification",
+  "permission",
   "stop",
   "session-end",
 ] as const;
@@ -38,7 +39,7 @@ export function hookLogPath(env: NodeJS.ProcessEnv): string {
   return join(stateHome, "axiom", "hook.log");
 }
 
-function logFailure(env: NodeJS.ProcessEnv, event: string, error: unknown): void {
+export function logFailure(env: NodeJS.ProcessEnv, event: string, error: unknown): void {
   try {
     const path = hookLogPath(env);
     mkdirSync(dirname(path), { recursive: true });
@@ -80,6 +81,8 @@ export function runHook(
 ): number {
   // Axiom's own `claude -p` runs (the summaries) must never touch the database.
   if (env.AXIOM_INTERNAL === "1") return 0;
+  // The permission hook waits for the owner: it is async and lives in permission.ts.
+  if (event === "permission") return 0;
   try {
     if (!(HOOK_EVENTS as readonly string[]).includes(event))
       throw new Error(`unknown hook event "${event}"`);

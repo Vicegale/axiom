@@ -16,6 +16,7 @@ afterEach(() => {
 });
 
 const TABLES = [
+  "approval",
   "entry",
   "epic",
   "link",
@@ -41,7 +42,7 @@ describe("opening", () => {
     expect(pragma("journal_mode")).toBe("wal");
     expect(pragma("foreign_keys")).toBe(1);
     expect(pragma("busy_timeout")).toBe(5000);
-    expect(pragma("user_version")).toBe(5);
+    expect(pragma("user_version")).toBe(6);
     const names = (
       ax.db
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
@@ -62,7 +63,7 @@ describe("opening", () => {
     a.close();
     const b = openDatabase(path);
     expect(b.getTopic("keep").title).toBe("keep");
-    expect(Object.values(b.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(5);
+    expect(Object.values(b.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(6);
     b.close();
   });
 
@@ -94,7 +95,7 @@ describe("opening", () => {
     );
     raw.close();
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(5);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(6);
     const links = ax.getTopic("t").links;
     expect(links).toHaveLength(1);
     expect(links[0]).toMatchObject({ label: "A", description: null });
@@ -123,7 +124,7 @@ describe("opening", () => {
     );
     raw.close();
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(5);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(6);
     const t = ax.getTopic("t");
     expect(t).toMatchObject({ title: "T", favorite: false, deskHidden: false, deskOrder: null });
     expect(t.threads[0]).toMatchObject({
@@ -172,9 +173,9 @@ describe("opening", () => {
         );
       });
     const results = await Promise.all(Array.from({ length: 6 }, run));
-    expect(results).toEqual(Array(6).fill("5 wal"));
+    expect(results).toEqual(Array(6).fill("6 wal"));
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(5);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(6);
     ax.close();
   }, 60_000);
 });

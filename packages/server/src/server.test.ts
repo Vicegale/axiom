@@ -403,6 +403,7 @@ describe("settings", () => {
       layout: "inbox",
       theme: "system",
       summaries: { enabled: true },
+      approvalTimeoutSec: 600,
     });
     const put = await api("/api/settings", {
       method: "PUT",
@@ -415,6 +416,7 @@ describe("settings", () => {
       layout: "inbox",
       theme: "dark",
       summaries: { enabled: true },
+      approvalTimeoutSec: 600,
     });
     expect(cli.getSetting("theme")).toBe("dark");
   });
@@ -426,6 +428,8 @@ describe("settings", () => {
       { staleAfterDays: 0 },
       { staleAfterDays: 1.5 },
       { mutedKinds: ["nope"] },
+      { approvalTimeoutSec: 5 },
+      { approvalTimeoutSec: 601 },
       { unknown: 1 },
     ]) {
       expect((await api("/api/settings", { method: "PUT", body })).status).toBe(400);

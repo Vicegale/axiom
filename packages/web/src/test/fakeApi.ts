@@ -7,6 +7,7 @@ import type {
   DocData,
   Entry,
   EpicItem,
+  PendingRequest,
   Settings,
   TaskItem,
   Thread,
@@ -98,6 +99,7 @@ export function deskThread(over: Partial<DeskThread> & { id: number }): DeskThre
     summaryError: null,
     activity: null,
     hasReply: false,
+    pendingRequests: 0,
     ...over,
   };
 }
@@ -158,6 +160,10 @@ export class FakeServer {
   desk: DeskTopic[] = [];
   /** Full replies by thread id; a missing one is a 404. */
   replies = new Map<number, { text: string; at: string | null }>();
+  /** Pending requests by thread id (GET /api/threads/:id/requests). */
+  requests = new Map<number, PendingRequest[]>();
+  /** How many answer / decision calls answer 502 before one succeeds. */
+  answerFails = 0;
   /** Documents by `<slug>:<linkId>` or `<slug>:<linkId>:<?path>`; a missing key is a 404. */
   docs = new Map<string, DocData>();
   /** Artifact metadata by `<slug>:<linkId>`; a missing key is a 404. */
@@ -295,6 +301,19 @@ export class FakeServer {
       return this.json({ id: 900 }, 201);
     }
     if (method === "GET" && path === "/api/desk") return this.json({ topics: this.desk });
+    const reqM = /^\/api\/threads\/(\d+)\/requests$/.exec(path);
+    if (reqM && method === "GET") {
+      return this.json({ requests: this.requests.get(Number(reqM[1])) ?? [] });
+    }
+    const ansM = /^\/api\/threads\/(\d+)\/requests\/([^/]+)\/answer$/.exec(path);
+    const decM = /^\/api\/approvals\/([^/]+)$/.exec(path);
+    if ((ansM || decM) && method === "POST") {
+      if (this.answerFails > 0) {
+        this.answerFails--;
+        return this.json({ error: { code: "provider", message: "T3: that request is gone" } }, 502);
+      }
+      return this.json({ ok: true });
+    }
     const replyM = /^\/api\/threads\/(\d+)\/reply$/.exec(path);
     if (replyM && method === "GET") {
       const r = this.replies.get(Number(replyM[1]));

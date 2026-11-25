@@ -3,6 +3,7 @@ import {
   readT3Meta,
   T3Db,
   type T3Project,
+  type T3Request,
   type T3ThreadState,
   type T3ThreadSummary,
 } from "./reader.js";
@@ -79,6 +80,16 @@ export class T3Provider {
   private current: T3Health;
   /** When the last sync began (epoch ms): a refresh request newer than this triggers another. */
   private lastSyncAt = 0;
+  /** Pending requests per Axiom thread id, as of the last sync (the Desk shows the count). */
+  private pendingByThread = new Map<number, number>();
+  private pendingChanged = false;
+
+  /** True once after the pending-request counts changed in a sync (no status event needed). */
+  takePendingChanged(): boolean {
+    const v = this.pendingChanged;
+    this.pendingChanged = false;
+    return v;
+  }
 
   /**
    * The T3 desktop app's deep link for a thread, `t3code://threads/<environment>/<thread>` (T3's
@@ -89,6 +100,26 @@ export class T3Provider {
     if (!env) return null;
     const seg = (s: string) => encodeURIComponent(s).replace(/%3A/gi, ":");
     return `t3code://threads/${seg(env)}/${seg(threadId)}`;
+  }
+
+  /** Pending approvals and questions of an attached T3 thread, as of the last sync. */
+  pendingCount(threadId: number): number {
+    return this.pendingByThread.get(threadId) ?? 0;
+  }
+
+  /** The T3 server's port from `server-runtime.json`, or null when T3 is not running. */
+  port(): number | null {
+    return readT3Meta(this.dir).port;
+  }
+
+  /** The thread's pending requests, read now. Throws when T3 cannot be read. */
+  pendingRequests(providerThreadId: string): T3Request[] {
+    const db = T3Db.open(this.dir);
+    try {
+      return db.pendingRequests(providerThreadId);
+    } finally {
+      db.close();
+    }
   }
 
   constructor(options: T3ProviderOptions) {
@@ -190,6 +221,17 @@ export class T3Provider {
         }
       }
       let applied = 0;
+      const pending = new Map<number, number>();
+      for (const { th, state } of planned) {
+        const n = state && !state.removed ? state.pendingRequests.length : 0;
+        if (n > 0) pending.set(th.id, n);
+      }
+      const same =
+        pending.size === this.pendingByThread.size &&
+        [...pending].every(([id, n]) => this.pendingByThread.get(id) === n);
+      this.pendingByThread = pending;
+      // The cards show these counts: the caller tells the UI when they moved (`takePendingChanged`).
+      if (!same) this.pendingChanged = true;
       // T3 names its threads; use that name when the Axiom thread has none.
       for (const { th, state } of planned) {
         if (!th.title && state?.title) this.ax.fillThreadTitle(th.id, state.title);

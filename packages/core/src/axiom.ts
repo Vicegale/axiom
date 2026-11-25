@@ -6,6 +6,7 @@ import type { z } from "zod";
 import { oneLine } from "./activity.js";
 import {
   type Actor,
+  DEFAULT_APPROVAL_TIMEOUT_SEC,
   DEFAULT_STALE_AFTER_DAYS,
   DEFAULT_T3_PIN,
   type EntryKind,
@@ -47,6 +48,7 @@ import {
   workItemStatusSchema,
 } from "./schemas.js";
 import type {
+  Approval,
   Entry,
   Epic,
   Link,
@@ -1007,6 +1009,116 @@ export class Axiom {
     });
   }
 
+  // ---- permission approvals (02, D5) ---------------------------------------
+
+  /**
+   * A Claude Code `PermissionRequest` hook asks the owner. Records a pending approval, marks the
+   * thread waiting on the owner (notification `agent asked`) and returns the approval. The
+   * summary is one short line (`describeToolUse`); the full tool input is never stored.
+   */
+  requestApproval(
+    threadId: number,
+    input: { toolName: string; inputSummary: string; hookPid?: number },
+  ): Approval {
+    const toolName = oneLine(input.toolName, 100) || "tool";
+    const summary = oneLine(input.inputSummary, MAX_ACTIVITY_CHARS) || toolName;
+    return this.tx(() => {
+      const id = this.run(
+        `INSERT INTO approval (thread_id, tool_name, input_summary, created_at, hook_pid)
+         VALUES (?, ?, ?, ?, ?)`,
+        threadId,
+        toolName,
+        summary,
+        this.iso(),
+        input.hookPid ?? null,
+      );
+      this.threadWaitingOnOwner(threadId, `Permission to use ${toolName}: ${summary}`);
+      return this.approvalRow(id);
+    });
+  }
+
+  private approvalRow(id: number): Approval {
+    const row = this.get<Row>("SELECT * FROM approval WHERE id = ?", id);
+    if (!row) throw new AxiomError("not-found", `approval not found: ${id}`);
+    return camel<Approval>(row);
+  }
+
+  getApproval(id: number): Approval {
+    return this.approvalRow(id);
+  }
+
+  /** The thread's approvals nobody has decided yet, oldest first. */
+  pendingApprovals(threadId: number): Approval[] {
+    return this.all<Row>(
+      "SELECT * FROM approval WHERE thread_id = ? AND decided_at IS NULL ORDER BY id",
+      threadId,
+    ).map((r) => camel<Approval>(r));
+  }
+
+  /** Pending approvals per thread id (for the Desk's counts). */
+  pendingApprovalCounts(): Map<number, number> {
+    const rows = this.all<{ thread_id: number; n: number }>(
+      "SELECT thread_id, COUNT(*) AS n FROM approval WHERE decided_at IS NULL GROUP BY thread_id",
+    );
+    return new Map(rows.map((r) => [r.thread_id, r.n]));
+  }
+
+  /**
+   * The owner's decision. Writes the history entry (`authorization` for allow, `owner input` for
+   * deny); the waiting hook picks the decision up and moves the thread back to working. Throws `conflict` when the approval was already decided or expired.
+   */
+  decideApproval(
+    id: number,
+    decision: "allow" | "deny",
+    message: string | undefined,
+    actor: Actor,
+  ): Approval {
+    ownerOnly(actor, "decide an approval");
+    return this.tx(() => {
+      const a = this.approvalRow(id);
+      if (a.decidedAt !== null) {
+        throw new AxiomError("conflict", "this approval was already decided or has expired");
+      }
+      const note = message?.trim() ? oneLine(message, 500) : null;
+      this.run(
+        "UPDATE approval SET decided_at = ?, decision = ?, message = ? WHERE id = ?",
+        this.iso(),
+        decision,
+        note,
+        id,
+      );
+      const th = this.threadRow(a.threadId);
+      const what = `${a.toolName}: ${a.inputSummary}`;
+      if (decision === "allow") {
+        this.addEntry(
+          th.topicId,
+          {
+            kind: "authorization",
+            body: `Allowed ${what}`,
+            data: { scope: what, standing: false },
+          },
+          actor,
+        );
+      } else {
+        this.addEntry(
+          th.topicId,
+          { kind: "owner input", body: `Denied ${what}${note ? `: ${note}` : ""}` },
+          actor,
+        );
+      }
+      return this.approvalRow(id);
+    });
+  }
+
+  /** The hook gave up (timeout, cancelled, error, process gone). A decided approval is kept. */
+  expireApproval(id: number): void {
+    this.run(
+      "UPDATE approval SET decided_at = ?, decision = 'expired' WHERE id = ? AND decided_at IS NULL",
+      this.iso(),
+      id,
+    );
+  }
+
   /** A new turn started: the thread is working, and what it declared before no longer holds. */
   threadWorking(threadId: number): Thread {
     return this.tx(() => {
@@ -1665,6 +1777,7 @@ export class Axiom {
     if (key === "mutedKinds") return [];
     if (key === "staleAfterDays") return DEFAULT_STALE_AFTER_DAYS;
     if (key === "summaries") return { enabled: true };
+    if (key === "approvalTimeoutSec") return DEFAULT_APPROVAL_TIMEOUT_SEC;
     if (key === "t3Pin") return { ...DEFAULT_T3_PIN };
     return undefined;
   }
