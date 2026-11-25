@@ -274,6 +274,7 @@ describe("ReplyBox", () => {
   it("starts a new T3 thread without model or effort", async () => {
     setup(T3);
     pick(/^Thread:/, "New thread");
+    await screen.findByText(/Could not list T3 projects/);
     expect(chip(/^Model:/).getAttribute("aria-disabled")).toBe("true");
     expect(chip(/^Model:/).title).toMatch(/new T3 thread uses the project's default/);
     type("Hello");
@@ -282,11 +283,11 @@ describe("ReplyBox", () => {
     expect(posts()[0]?.body).toEqual({ text: "Hello", provider: "t3" });
   });
 
-  it("works with no thread: it starts one, and the target chip says why it is fixed", () => {
+  it("works with no thread: it starts one, and the target chip says why it is fixed", async () => {
     setup(null, []);
     type("x");
     expect(send().getAttribute("aria-label")).toBe("Start a new thread");
-    expect(send().disabled).toBe(false);
+    await waitFor(() => expect(send().disabled).toBe(false));
     expect(chip(/^Thread: new thread/).getAttribute("aria-disabled")).toBe("true");
     expect(chip(/^Thread:/).title).toBe("This topic has no thread yet.");
     expect(localStorage.getItem("axiom.reply-draft:demo:new")).toBe("x");
@@ -414,4 +415,112 @@ describe("ReplyBox", () => {
     setup(T3, [T3, CC], false);
     expect(bar().textContent).toContain("persist");
   });
+
+  describe("a new T3 thread's project", () => {
+    const P = (id: string, root: string, hasDefaultModel = true) => ({
+      id,
+      title: `Title ${id}`,
+      workspaceRoot: root,
+      hasDefaultModel,
+      pinned: false,
+    });
+    let projects: ReturnType<typeof P>[];
+    beforeEach(() => {
+      projects = [P("p1", "/work/one"), P("p2", "/work/two", false)];
+      const base = respond;
+      respond = (method, path) =>
+        path === "/api/t3/projects" ? json(projects) : base(method, path);
+    });
+    const setupNew = (repository: string | null, thread: DeskThread | null = null) => {
+      render(<ReplyBoxHarness thread={thread} repository={repository} />);
+    };
+
+    it("shows a Project chip only for a new T3 thread", async () => {
+      setupNew("/work/one", T3);
+      expect(screen.queryByRole("button", { name: /^Project:/ })).toBeNull();
+      pick(/^Thread:/, "New thread");
+      await screen.findByRole("button", { name: /^Project:/ });
+      pick(/^Provider:/, "Claude Code");
+      expect(screen.queryByRole("button", { name: /^Project:/ })).toBeNull();
+    });
+
+    it("defaults to the project containing the repository link and sends its id", async () => {
+      setupNew("/work/one/sub/dir");
+      const c = await screen.findByRole("button", { name: /^Project:/ });
+      expect(c.textContent).toContain("Title p1");
+      type("Hello");
+      fireEvent.click(send());
+      await waitFor(() => expect(posts()).toHaveLength(1));
+      expect(posts()[0]?.body).toEqual({ text: "Hello", provider: "t3", project: "p1" });
+    });
+
+    it("has no project and a disabled Send when the repository matches none", async () => {
+      setupNew("/home/me/project/axiom");
+      await screen.findByRole("button", { name: /^Project:/ });
+      type("Hello");
+      expect(send().disabled).toBe(true);
+      expect(send().title).toBe("Choose a T3 project");
+      pick(/^Project:/, "Title p1");
+      expect(send().disabled).toBe(false);
+    });
+
+    it("requires a model when the project has no default, sent on claudeAgent", async () => {
+      setupNew("/work/two");
+      await screen.findByRole("button", { name: /^Project:/ });
+      type("Hello");
+      expect(send().disabled).toBe(true);
+      expect(send().title).toBe("Choose a model; this project has no default");
+      expect(chip(/^Effort:/).getAttribute("aria-disabled")).toBe("true");
+      pick(/^Model:/, "claude-opus-5-5");
+      expect(send().disabled).toBe(false);
+      pick(/^Effort:/, "high");
+      fireEvent.click(send());
+      await waitFor(() => expect(posts()).toHaveLength(1));
+      expect(posts()[0]?.body).toEqual({
+        text: "Hello",
+        provider: "t3",
+        project: "p2",
+        model: "claude-opus-5-5",
+        providerInstance: "claudeAgent",
+        effort: "high",
+      });
+    });
+
+    it("shows why projects are missing and falls back to the old behaviour", async () => {
+      respond = (method, path) =>
+        path === "/api/t3/projects"
+          ? json({ error: { code: "unavailable", message: "T3 cannot be read: gone" } }, 503)
+          : method === "POST"
+            ? json({ ok: true })
+            : json(OPTIONS);
+      setupNew("/work/one");
+      await screen.findByText(/T3 cannot be read: gone/);
+      expect(screen.queryByRole("button", { name: /^Project:/ })).toBeNull();
+      type("Hello");
+      fireEvent.click(send());
+      await waitFor(() => expect(posts()).toHaveLength(1));
+      expect(posts()[0]?.body).toEqual({ text: "Hello", provider: "t3" });
+    });
+  });
 });
+
+function ReplyBoxHarness({
+  thread,
+  repository,
+}: {
+  thread: DeskThread | null;
+  repository: string | null;
+}) {
+  const [open, setOpen] = useState(true);
+  return (
+    <ReplyBox
+      topicSlug="demo"
+      thread={thread}
+      threads={thread ? [thread] : []}
+      repository={repository}
+      open={open}
+      onOpenChange={setOpen}
+      onSent={() => {}}
+    />
+  );
+}

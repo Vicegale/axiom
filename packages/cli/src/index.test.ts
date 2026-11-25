@@ -373,6 +373,27 @@ describe("links and monitors", () => {
       "t",
     ]);
     expect(cleared.description).toBeNull();
+    const moved = s.json<any>([
+      "link",
+      "update",
+      String(added.id),
+      "--target",
+      "docs/b.md",
+      "--topic",
+      "t",
+    ]);
+    expect(moved).toMatchObject({ target: "docs/b.md", label: "A" });
+    s.ok(["link", "add", "repository", "/tmp", "--topic", "t"]);
+    const repo = s
+      .json<any>(["topic", "show", "t", "--json"])
+      .links.find((l: any) => l.kind === "repository");
+    expect(
+      s.exec(["link", "update", String(repo.id), "--target", "/no/such/folder", "--topic", "t"])
+        .code,
+    ).not.toBe(0);
+    expect(
+      s.json<any>(["link", "update", String(repo.id), "--target", "/tmp/", "--topic", "t"]).target,
+    ).toBe("/tmp");
     expect(s.ok(["topic", "show", "t"])).not.toContain("About a");
     expect(s.exec(["link", "update", String(added.id), "--topic", "t"]).code).toBe(2);
     expect(s.exec(["link", "update", "999", "--label", "x", "--topic", "t"]).code).not.toBe(0);

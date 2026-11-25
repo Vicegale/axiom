@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Axiom } from "./axiom.js";
 import { AxiomError } from "./errors.js";
@@ -486,6 +489,27 @@ describe("link descriptions", () => {
     });
     expect(ax.updateLink("t", l.id, { description: "" }, owner).description).toBeNull();
     expect(ax.getTopic("t").links.map((x) => x.description)).toEqual([null, "later"]);
+  });
+
+  it("corrects a link's target; folders must exist for repository and worktree links", () => {
+    ax.createTopic({ slug: "t", title: "t" }, owner);
+    const art = ax.addLink("t", { kind: "artifact", target: "a.md" }, owner);
+    expect(ax.updateLink("t", art.id, { target: " b.md " }, owner).target).toBe("b.md");
+    expect(() => ax.updateLink("t", art.id, { target: "  " }, owner)).toThrow(AxiomError);
+    const repo = ax.addLink("t", { kind: "repository", target: "/home/x/project/axiom" }, owner);
+    expect(() => ax.updateLink("t", repo.id, { target: "/nope/axiom" }, owner)).toThrow(
+      /folder not found/,
+    );
+    expect(() => ax.updateLink("t", repo.id, { target: "relative" }, owner)).toThrow(
+      /folder not found/,
+    );
+    const real = mkdtempSync(join(tmpdir(), "axiom-link-"));
+    try {
+      const u = ax.updateLink("t", repo.id, { target: `${real}/`, label: "R" }, owner);
+      expect(u).toMatchObject({ target: real, label: "R" });
+    } finally {
+      rmSync(real, { recursive: true, force: true });
+    }
   });
 
   it("validates lengths and the link's topic", () => {

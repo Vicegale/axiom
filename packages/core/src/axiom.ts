@@ -1,3 +1,6 @@
+import { statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import type { DatabaseSync, SQLInputValue, StatementSync } from "node:sqlite";
 import type { z } from "zod";
 import { oneLine } from "./activity.js";
@@ -638,11 +641,14 @@ export class Axiom {
     });
   }
 
-  /** Changes a link's label and/or description; an empty string clears the field. */
+  /**
+   * Changes a link's target, label and/or description; an empty string clears a label or
+   * description. A repository or worktree target must be an existing folder (`~` is expanded).
+   */
   updateLink(
     topic: TopicRef,
     linkId: number,
-    changes: { label?: string; description?: string },
+    changes: { target?: string; label?: string; description?: string },
     _actor: Actor,
   ): Link {
     const label =
@@ -651,17 +657,39 @@ export class Axiom {
       changes.description === undefined
         ? undefined
         : linkText(changes.description, "description", LINK_DESCRIPTION_MAX);
+    if (changes.target !== undefined && !changes.target.trim()) {
+      throw new AxiomError("validation", "link target is required");
+    }
     return this.tx(() => {
       const t = this.topicRow(topic);
       const row = this.get<Row>("SELECT * FROM link WHERE id = ? AND topic_id = ?", linkId, t.id);
       if (!row) throw new AxiomError("not-found", `link not found: ${linkId}`);
+      let target: string | undefined;
+      if (changes.target !== undefined) {
+        target = changes.target.trim();
+        if (row.kind === "repository" || row.kind === "worktree") {
+          if (target === "~") target = homedir();
+          else if (target.startsWith("~/")) target = join(homedir(), target.slice(2));
+          if (target.length > 1) target = target.replace(/\/+$/, "");
+          let ok = false;
+          try {
+            ok = target.startsWith("/") && statSync(target).isDirectory();
+          } catch {
+            ok = false;
+          }
+          if (!ok) throw new AxiomError("validation", `folder not found: ${target}`);
+        }
+      }
       this.run(
-        "UPDATE link SET label = ?, description = ? WHERE id = ?",
+        "UPDATE link SET target = ?, label = ?, description = ? WHERE id = ?",
+        target === undefined ? (row.target as string) : target,
         label === undefined ? (row.label as string | null) : label,
         description === undefined ? (row.description as string | null) : description,
         linkId,
       );
-      if (label !== undefined || description !== undefined) this.touchTopic(t.id);
+      if (target !== undefined || label !== undefined || description !== undefined) {
+        this.touchTopic(t.id);
+      }
       return camel<Link>(this.get<Row>("SELECT * FROM link WHERE id = ?", linkId));
     });
   }

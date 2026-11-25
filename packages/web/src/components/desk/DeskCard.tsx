@@ -301,6 +301,7 @@ export function DeskCard({ topic, now, theme, move, onFavorite, onHide, onOpen, 
         topicSlug={topic.slug}
         thread={thread}
         threads={threads}
+        repository={topic.repository}
         open={replying}
         onOpenChange={setReplying}
         onSent={onSent}

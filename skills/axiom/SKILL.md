@@ -25,7 +25,7 @@ axiom thread attach <slug>                  # tie this session to the topic
 - One topic per piece of work (what a work-log topic used to be). Slugs are lowercase kebab-case.
 - A thread belongs to exactly one topic. Mention other topics with `--ref topic:<slug>` on an entry.
 - After `thread attach`, commands default to your topic; you can drop the slug.
-- Add where the work happens, so other agents can find it: `axiom link add repository ~/projects/x`, `axiom link add branch feat/y`, `axiom link add worktree …`, `axiom link add pr owner/repo#123`, `axiom link add spec docs/specs/z.md`, `axiom link add artifact <path-or-url>`. Give every artifact a `--description "<one line on what it is>"` (and `--label` for a short title); the owner sees it in the topic's Artifacts menu. `axiom link update <id> --description …` changes it later.
+- Add where the work happens, so other agents can find it: `axiom link add repository ~/projects/x`, `axiom link add branch feat/y`, `axiom link add worktree …`, `axiom link add pr owner/repo#123`, `axiom link add spec docs/specs/z.md`, `axiom link add artifact <path-or-url>`. Give every artifact a `--description "<one line on what it is>"` (and `--label` for a short title); the owner sees it in the topic's Artifacts menu. `axiom link update <id> --description …` changes it later; `--target <path>` corrects a mistyped target (a repository or worktree must be an existing folder).
 
 ## 2. While working: history entries
 

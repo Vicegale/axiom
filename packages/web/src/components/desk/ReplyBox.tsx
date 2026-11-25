@@ -1,5 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ApiError, api, type ComposeOptions, type DeskThread, type Effort } from "../../api";
+import {
+  ApiError,
+  api,
+  type ComposeOptions,
+  type DeskThread,
+  type Effort,
+  type T3Project,
+} from "../../api";
 import { readStored, removeStored, writeStored } from "../../lib/storage";
 import "../../styles/replybox.css";
 import { ChipMenu, type ChipOption } from "./ChipMenu";
@@ -9,6 +16,8 @@ export interface ReplyBoxProps {
   /** The thread the card has selected; null when the topic has none. */
   thread: DeskThread | null;
   threads: DeskThread[];
+  /** The topic's repository link target; the default T3 project of a new thread. */
+  repository?: string | null;
   /** The message was sent (or the new thread started); the Desk refreshes on its change event. */
   onSent: () => void;
   /** Expanded (the box) or collapsed (the one-line bar). The card owns it so `r` can open it. */
@@ -40,6 +49,22 @@ const reducedMotion = () =>
 const COLLAPSE_MS = 140;
 
 const NEW = "new";
+/** Claude models on T3 go through the `claudeAgent` provider instance (as in the New topic dialog). */
+const T3_INSTANCE = "claudeAgent";
+
+const trimSlash = (p: string) => (p.length > 1 ? p.replace(/\/+$/, "") : p);
+
+/** The T3 project whose folder is, or contains, the repository (the deepest one wins). */
+function projectFor(projects: T3Project[], repository: string | null | undefined) {
+  if (!repository) return undefined;
+  const repo = trimSlash(repository);
+  return projects
+    .filter((p) => {
+      const root = trimSlash(p.workspaceRoot);
+      return repo === root || repo.startsWith(`${root}/`);
+    })
+    .sort((a, b) => b.workspaceRoot.length - a.workspaceRoot.length)[0];
+}
 const PROVIDERS: ChipOption[] = [
   { value: "t3", label: "T3" },
   { value: "claude-code", label: "Claude Code" },
@@ -73,6 +98,7 @@ export function ReplyBox({
   topicSlug,
   thread,
   threads,
+  repository,
   onSent,
   open,
   onOpenChange,
@@ -84,6 +110,11 @@ export function ReplyBox({
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState<Effort | "">("");
   const [newProvider, setNewProvider] = useState<NewProvider>(thread?.provider ?? "t3");
+  // T3 projects, fetched the first time the box is about to start a new T3 thread.
+  const [projects, setProjects] = useState<T3Project[] | null>(null);
+  const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const projectsAsked = useRef(false);
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [copied, setCopied] = useState(false);
@@ -108,6 +139,16 @@ export function ReplyBox({
       live = false;
     };
   }, []);
+
+  const newT3 = !target && newProvider === "t3";
+  useEffect(() => {
+    if (!open || !newT3 || projectsAsked.current) return;
+    projectsAsked.current = true;
+    api
+      .t3Projects()
+      .then(setProjects)
+      .catch((e) => setProjectsError(e instanceof Error ? e.message : String(e)));
+  }, [open, newT3]);
 
   // Expanding focuses the text; collapsing animates out, then hands focus to the bar.
   useEffect(() => {
@@ -179,17 +220,39 @@ export function ReplyBox({
   };
 
   // Model and effort apply to a Claude Code reply and to a new Claude Code thread. T3 cannot
-  // change them on an existing thread, and a new T3 thread uses the project's default.
+  // change them on an existing thread; a new T3 thread has them once a project is chosen.
   const claudeOptions = options?.providers["claude-code"];
+  const t3Options = options?.providers.t3;
+  const projectMode = newT3 && projects !== null;
+  const project = projectMode
+    ? projectId === null
+      ? projectFor(projects, repository)
+      : projects.find((p) => p.id === projectId)
+    : undefined;
+  const modelRequired = projectMode && project !== undefined && !project.hasDefaultModel;
+  const t3Picker = projectMode && project !== undefined;
   const pickerOn = target ? target.provider === "claude-code" : newProvider === "claude-code";
-  const pickerHint = pickerOn
+  const modelOn = pickerOn || t3Picker;
+  const modelChoices = newT3 ? t3Options : claudeOptions;
+  const modelHint = modelOn
     ? undefined
     : target
       ? "T3 cannot change the model or effort of an existing thread."
-      : "A new T3 thread uses the project's default model and effort.";
+      : projectMode
+        ? "Choose a T3 project first."
+        : "A new T3 thread uses the project's default model and effort.";
+  const effortHint = modelHint ?? (t3Picker && !model ? "Choose a model first." : undefined);
 
   const trimmed = text.trim();
-  const canSend = trimmed !== "" && !sending;
+  const blocked =
+    projectMode && !project
+      ? "Choose a T3 project"
+      : modelRequired && !model
+        ? "Choose a model; this project has no default"
+        : newT3 && projects === null && projectsError === null
+          ? "Loading T3 projects…"
+          : undefined;
+  const canSend = trimmed !== "" && !sending && !blocked;
 
   const fail = (e: unknown) => {
     if (e instanceof ApiError) setFailure({ message: e.message, resumeCommand: e.resumeCommand });
@@ -209,6 +272,14 @@ export function ReplyBox({
       ? { ...(model ? { model } : {}), ...(effort ? { effort } : {}) }
       : {};
 
+  /** A new T3 thread: the chosen project, and a model on the `claudeAgent` instance. */
+  const t3Body = () => ({
+    ...(project ? { project: project.id } : {}),
+    ...(t3Picker && model
+      ? { model, providerInstance: T3_INSTANCE, ...(effort ? { effort } : {}) }
+      : {}),
+  });
+
   const send = async () => {
     if (!canSend) return;
     setSending(true);
@@ -220,7 +291,7 @@ export function ReplyBox({
         await api.newThread(topicSlug, {
           text: trimmed,
           provider: newProvider,
-          ...pickedOptions(newProvider),
+          ...(newProvider === "t3" ? t3Body() : pickedOptions(newProvider)),
         });
       }
       done();
@@ -317,6 +388,12 @@ export function ReplyBox({
             }
           }}
         />
+        {newT3 && projectsError !== null && (
+          <p className="rc-note" role="status">
+            Could not list T3 projects ({projectsError}). The thread starts in the topic's
+            repository folder.
+          </p>
+        )}
         {failure && (
           <div className="rc-error" role="alert">
             <p>{failure.message}</p>
@@ -356,17 +433,33 @@ export function ReplyBox({
                 onChange={(v) => setNewProvider(v as NewProvider)}
               />
             )}
+            {projectMode && (
+              <ChipMenu
+                name="Project"
+                display={project?.title ?? "Project"}
+                valueText={project?.title ?? "none"}
+                muted={!project}
+                value={project?.id ?? ""}
+                options={projects.map((p) => ({
+                  value: p.id,
+                  label: p.title,
+                  hint: p.workspaceRoot,
+                }))}
+                disabledReason={projects.length === 0 ? "T3 has no projects." : undefined}
+                onChange={(v) => setProjectId(v)}
+              />
+            )}
             <ChipMenu
               name="Model"
-              display={model || "Model"}
+              display={model || (modelRequired ? "Model required" : "Model")}
               valueText={model || "default"}
               muted={!model}
               value={model}
               options={[
-                { value: "", label: "Default" },
-                ...(claudeOptions?.models.map((m) => ({ value: m, label: m })) ?? []),
+                ...(modelRequired ? [] : [{ value: "", label: "Default" }]),
+                ...(modelChoices?.models.map((m) => ({ value: m, label: m })) ?? []),
               ]}
-              disabledReason={pickerHint}
+              disabledReason={modelHint}
               onChange={setModel}
             />
             <ChipMenu
@@ -377,9 +470,9 @@ export function ReplyBox({
               value={effort}
               options={[
                 { value: "", label: "Default" },
-                ...(claudeOptions?.efforts.map((x) => ({ value: x, label: x })) ?? []),
+                ...(modelChoices?.efforts.map((x) => ({ value: x, label: x })) ?? []),
               ]}
-              disabledReason={pickerHint}
+              disabledReason={effortHint}
               onChange={(v) => setEffort(v as Effort | "")}
             />
           </div>
@@ -402,7 +495,9 @@ export function ReplyBox({
               disabled={!canSend}
               aria-busy={sending || undefined}
               aria-label={sending ? "Sending…" : sendName}
-              title={sending ? "Sending…" : `${sendName} (${mac ? "⌘↵" : "Ctrl+Enter"})`}
+              title={
+                sending ? "Sending…" : (blocked ?? `${sendName} (${mac ? "⌘↵" : "Ctrl+Enter"})`)
+              }
             >
               {sending ? <span className="rc-spin" aria-hidden="true" /> : <Glyph d={ARROW_UP} />}
             </button>

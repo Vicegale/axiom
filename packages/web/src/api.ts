@@ -119,6 +119,8 @@ export interface DeskTopic {
   deskOrder: number | null;
   taskCounts: TaskCounts;
   linkCount: number;
+  /** The topic's repository link target, if it has one. */
+  repository?: string | null;
   lastWorkedAt: string;
   highlighted: boolean;
   attention: Attention | null;
