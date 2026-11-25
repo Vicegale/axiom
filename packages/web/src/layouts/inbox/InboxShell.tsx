@@ -4,6 +4,7 @@ import { NotificationsList, SkipLink, Splitter } from "../../components";
 import { VIEW_LABEL } from "../../lib/domain";
 import { isNarrow, useCollapsed, usePaneSize } from "../../lib/panes";
 import { effectiveTheme } from "../../lib/theme";
+import { useWide } from "../../lib/wide";
 import { SettingsPage } from "../../pages/SettingsPage";
 import { hrefs } from "../shared/routes";
 import { isTyping, useShell } from "../shared/useShell";
@@ -28,6 +29,7 @@ export function InboxShell() {
     goTopic,
   } = useShell();
   const [query, setQuery] = useState("");
+  const [wideDoc, setWide] = useWide();
   const [location] = useLocation();
   const [railClosed, toggleRail, setRailClosed] = useCollapsed("inbox-rail");
   const rail = usePaneSize("inbox-rail", { default: 232, min: 168, max: 380 });
@@ -58,7 +60,8 @@ export function InboxShell() {
       }
       if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
       if (route.kind === "settings" || route.kind === "notifications") return;
-      if (isTyping(e)) return;
+      // In a document the arrow keys scroll it.
+      if (route.kind === "doc" || isTyping(e)) return;
       if (!ordered.length) return;
       e.preventDefault();
       const i = ordered.findIndex((t) => t.slug === selected);
@@ -79,6 +82,7 @@ export function InboxShell() {
         ? "settings"
         : list;
   const onNotifs = route.kind === "notifications";
+  const wide = route.kind === "doc" && wideDoc;
   const onSettings = route.kind === "settings";
   const items = onNotifs ? notifications.length : visibleTopics(topics, list, query).length;
 
@@ -87,6 +91,7 @@ export function InboxShell() {
       className={`app${data.error ? " has-banner" : ""}`}
       data-rail={railClosed ? "closed" : "open"}
       data-topic={selected ? "open" : undefined}
+      data-wide={wide ? "true" : undefined}
     >
       <SkipLink />
       <header className="bar">
@@ -94,12 +99,17 @@ export function InboxShell() {
           <button
             type="button"
             className="icon-btn"
-            aria-label={railClosed ? "Show sidebar" : "Hide sidebar"}
-            aria-expanded={!railClosed}
+            aria-label={railClosed || wide ? "Show sidebar" : "Hide sidebar"}
+            aria-expanded={!railClosed && !wide}
             aria-controls="rail"
             aria-keyshortcuts="["
             title="Show or hide the sidebar ["
-            onClick={toggleRail}
+            onClick={() => {
+              if (wide) {
+                setWide(false);
+                setRailClosed(false);
+              } else toggleRail();
+            }}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
               <path
@@ -134,7 +144,7 @@ export function InboxShell() {
         health={data.health}
         active={active}
         now={now}
-        collapsed={railClosed}
+        collapsed={railClosed || wide}
         splitter={
           <Splitter pane={rail} axis="col" edge="end" label="Resize sidebar" className="sp-rail" />
         }
@@ -211,6 +221,7 @@ export function InboxShell() {
             slug={selected}
             now={now}
             backHref={list === "all" ? hrefs.all : hrefs.view(list)}
+            doc={route.kind === "doc" ? route : undefined}
           />
         </>
       )}

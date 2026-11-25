@@ -9,6 +9,7 @@ interface Props {
   /** "alertdialog" for confirmations. */
   role?: "dialog" | "alertdialog";
   className?: string;
+  "data-wide"?: string;
   children: React.ReactNode;
 }
 
@@ -17,7 +18,7 @@ interface Props {
  * on Escape. Mounting it opens it; unmounting closes it and returns focus to whatever had focus
  * before (the control that opened it).
  */
-export function Modal({ onClose, label, labelledBy, role, className, children }: Props) {
+export function Modal({ onClose, label, labelledBy, role, className, children, ...data }: Props) {
   const ref = useRef<HTMLDialogElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -39,6 +40,7 @@ export function Modal({ onClose, label, labelledBy, role, className, children }:
       ref={ref}
       role={role}
       className={className}
+      data-wide={data["data-wide"]}
       aria-label={label}
       aria-labelledby={labelledBy}
       onCancel={(e) => {

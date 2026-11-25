@@ -2,12 +2,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Redirect, useLocation } from "wouter";
 import { api } from "../../api";
 import { NotificationsList, SkipLink, Splitter } from "../../components";
+import { LazyDocViewer } from "../../components/doc/LazyDocViewer";
 import { useResource } from "../../data/useResource";
 import { VIEW_IDS, VIEW_LABEL, type ViewId } from "../../lib/domain";
 import { healthRows } from "../../lib/health";
 import { isNarrow, useCollapsed, usePaneSize } from "../../lib/panes";
 import { inView, matchesQuery, type SortKey, sortTopics, viewsOf } from "../../lib/topics";
 import { buildTree } from "../../lib/tree";
+import { useWide } from "../../lib/wide";
 import { SettingsPage } from "../../pages/SettingsPage";
 import { hrefs } from "../shared/routes";
 import { ThemeToggle } from "../shared/ThemeToggle";
@@ -47,6 +49,7 @@ export function ConsoleShell() {
     goList,
   } = useShell();
   const [query, setQuery] = useState("");
+  const [wideDoc] = useWide();
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "last", dir: -1 });
   // The drawer is the /notifications route, like the panel's topic is /topic/<slug>: Back and
   // Forward close and reopen it. The panel keeps showing the topic you had open behind it.
@@ -143,6 +146,7 @@ export function ConsoleShell() {
         return;
       }
       if (route.kind === "settings") return;
+      if (route.kind === "doc") return; // in a document the keys belong to reading
       if (e.key === "j" || e.key === "k") {
         e.preventDefault();
         move(e.key === "j" ? 1 : -1);
@@ -161,6 +165,7 @@ export function ConsoleShell() {
   if (route.kind === "unknown") return <Redirect to={hrefs.all} replace />;
 
   const onSettings = route.kind === "settings";
+  const wide = route.kind === "doc" && wideDoc;
   const count = (v: ViewId) => topics.filter((t) => inView(t, v)).length;
   const counts = {
     attention: count("attention"),
@@ -172,10 +177,16 @@ export function ConsoleShell() {
   return (
     <div
       className={`cs-app${drawer ? " drawer-open" : ""}`}
-      data-side={sideClosed ? "closed" : "open"}
+      data-side={sideClosed || wide ? "closed" : "open"}
+      data-wide={wide ? "true" : undefined}
     >
       <SkipLink />
-      <aside className="cs-side" id="cs-side" aria-label="Hierarchy and views" hidden={sideClosed}>
+      <aside
+        className="cs-side"
+        id="cs-side"
+        aria-label="Hierarchy and views"
+        hidden={sideClosed || wide}
+      >
         <div className="cs-brand">
           Axiom <small>console</small>
         </div>
@@ -313,7 +324,19 @@ export function ConsoleShell() {
               label="Resize topic panel"
               className="cs-split"
             />
-            <Panel slug={selected} listItem={topics.find((t) => t.slug === selected)} now={now} />
+            {route.kind === "doc" ? (
+              <section className="cs-panel cs-doc" aria-label="Document">
+                <LazyDocViewer
+                  slug={route.slug}
+                  linkId={route.linkId}
+                  path={route.path}
+                  level={2}
+                  topicTitle={topics.find((t) => t.slug === route.slug)?.title}
+                />
+              </section>
+            ) : (
+              <Panel slug={selected} listItem={topics.find((t) => t.slug === selected)} now={now} />
+            )}
           </>
         )}
       </main>

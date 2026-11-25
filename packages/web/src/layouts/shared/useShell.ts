@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useAxiom } from "../../data/DataProvider";
 import { useActions } from "../../data/useActions";
+import { useDocTitle } from "../../lib/docTitle";
 import { VIEW_LABEL, type ViewId } from "../../lib/domain";
 import { useBrowserNotifications } from "../../lib/notify";
 import { useTheme } from "../../lib/theme";
@@ -31,7 +32,7 @@ export function useShell() {
   }, [listRoute]);
   /** A topic route keeps the list you came from. */
   const list = listRoute ?? lastList;
-  const selected = route.kind === "topic" ? route.slug : undefined;
+  const selected = route.kind === "topic" || route.kind === "doc" ? route.slug : undefined;
   useEffect(() => {
     if (selected) setLastTopic(selected);
   }, [selected]);
@@ -43,16 +44,19 @@ export function useShell() {
   }, [topics]);
 
   const needYou = useMemo(() => topics.filter((t) => inView(t, "attention")).length, [topics]);
+  const docTitle = useDocTitle();
   const heading =
-    route.kind === "topic"
-      ? (titleOf(route.slug) ?? route.slug)
-      : route.kind === "notifications"
-        ? "Notifications"
-        : route.kind === "settings"
-          ? "Settings"
-          : route.kind === "view"
-            ? VIEW_LABEL[route.view]
-            : VIEW_LABEL.all;
+    route.kind === "doc"
+      ? `${docTitle ?? "Document"} · ${titleOf(route.slug) ?? route.slug}`
+      : route.kind === "topic"
+        ? (titleOf(route.slug) ?? route.slug)
+        : route.kind === "notifications"
+          ? "Notifications"
+          : route.kind === "settings"
+            ? "Settings"
+            : route.kind === "view"
+              ? VIEW_LABEL[route.view]
+              : VIEW_LABEL.all;
   useDocumentTitle(heading, needYou);
 
   /** Marks the topic opened (clears its highlight and notifications) without navigating. */
