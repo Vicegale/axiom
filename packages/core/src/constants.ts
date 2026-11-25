@@ -14,6 +14,9 @@ export type TopicStatus = (typeof TOPIC_STATUSES)[number];
 export const WORK_ITEM_STATUSES = ["to do", "wip", "done"] as const;
 export type WorkItemStatus = (typeof WORK_ITEM_STATUSES)[number];
 
+export const TASK_STATUSES = ["to do", "wip", "blocked", "done"] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+
 export const VIEWS = ["attention", "ongoing", "monitoring", "piles", "closed"] as const;
 export type View = (typeof VIEWS)[number];
 

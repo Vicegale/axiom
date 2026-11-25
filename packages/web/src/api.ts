@@ -1,4 +1,11 @@
-import type { EntryAuthor, EntryKind, NotificationKind, Provider, TopicStatus } from "./lib/domain";
+import type {
+  EntryAuthor,
+  EntryKind,
+  NotificationKind,
+  Provider,
+  TaskStatus,
+  TopicStatus,
+} from "./lib/domain";
 
 // ---- shapes returned by the server (packages/server/src/app.ts) ----------------------------
 
@@ -26,6 +33,26 @@ export interface ListThread {
   open: boolean;
 }
 
+export interface TaskCounts {
+  total: number;
+  done: number;
+}
+
+/** A task as GET /api/topics/:slug/tasks returns it. */
+export interface TaskItem {
+  id: number;
+  key: string;
+  title: string;
+  doneWhen: string | null;
+  status: TaskStatus;
+  position: number;
+  specLinkId: number | null;
+  dependsOn: string[];
+  dependents: string[];
+  /** Some dependency is not done. */
+  waiting: boolean;
+}
+
 export interface TopicListItem {
   id: number;
   slug: string;
@@ -34,6 +61,7 @@ export interface TopicListItem {
   statusNote: string | null;
   goal: string | null;
   muted: boolean;
+  taskCounts: TaskCounts;
   views: string[];
   highlighted: boolean;
   stalePrompt: boolean;
@@ -200,6 +228,9 @@ const enc = encodeURIComponent;
 export const api = {
   topics: () => request<TopicListItem[]>("GET", "/api/topics?all=1"),
   topic: (slug: string) => request<TopicDetailData>("GET", `/api/topics/${enc(slug)}`),
+  tasks: (slug: string) => request<TaskItem[]>("GET", `/api/topics/${enc(slug)}/tasks`),
+  setTaskStatus: (slug: string, key: string, status: TaskStatus) =>
+    request<TaskItem>("POST", `/api/topics/${enc(slug)}/tasks/${enc(key)}/status`, { status }),
   entries: (slug: string) => request<Entry[]>("GET", `/api/topics/${enc(slug)}/entries?limit=500`),
   open: (slug: string) => request<{ ok: true }>("POST", `/api/topics/${enc(slug)}/open`),
   mute: (slug: string, muted: boolean) =>

@@ -591,3 +591,48 @@ describe("install", () => {
     expect(unit).toMatch(/ExecStart=\S+ \S+cli\.js/);
   });
 });
+
+describe("tasks", () => {
+  it("lists a topic's tasks with dependencies and the waiting flag, in order", async () => {
+    topic("t");
+    cli.createTask("t", { key: "S0", title: "Setup" }, owner);
+    cli.createTask("t", { key: "S1", title: "Core", dependsOn: ["S0"], doneWhen: "tests" }, owner);
+    const { status, body } = await api("/api/topics/t/tasks");
+    expect(status).toBe(200);
+    expect(body.map((x: Any) => x.key)).toEqual(["S0", "S1"]);
+    expect(body[1]).toMatchObject({
+      status: "to do",
+      doneWhen: "tests",
+      dependsOn: ["S0"],
+      waiting: true,
+    });
+    expect(body[0]).toMatchObject({ dependents: ["S1"], waiting: false });
+    expect((await api("/api/topics/nope/tasks")).status).toBe(404);
+  });
+
+  it("puts task counts on topic list items and on the topic", async () => {
+    topic("t");
+    topic("empty");
+    cli.createTask("t", { key: "A", title: "a" }, owner);
+    cli.createTask("t", { key: "B", title: "b" }, owner);
+    cli.setTaskStatus("t", "A", "done", owner);
+    const list = (await api("/api/topics")).body as Any[];
+    expect(list.find((x) => x.slug === "t").taskCounts).toEqual({ total: 2, done: 1 });
+    expect(list.find((x) => x.slug === "empty").taskCounts).toEqual({ total: 0, done: 0 });
+    expect((await api("/api/topics/t")).body.taskCounts).toEqual({ total: 2, done: 1 });
+  });
+
+  it("lets the owner set a task's status, and rejects bad input", async () => {
+    topic("t");
+    cli.createTask("t", { key: "A", title: "a" }, owner);
+    const ok = await post("/api/topics/t/tasks/A/status", { status: "wip" });
+    expect(ok.status).toBe(200);
+    expect(ok.body).toMatchObject({ key: "A", status: "wip" });
+    expect(cli.getTask("t", "A").status).toBe("wip");
+    expect((await post("/api/topics/t/tasks/A/status", { status: "idle" })).status).toBe(400);
+    expect((await post("/api/topics/t/tasks/A/status", {})).status).toBe(400);
+    expect((await post("/api/topics/t/tasks/Z/status", { status: "done" })).status).toBe(404);
+    const kinds = cli.listEntries("t").filter((e) => e.kind === "status change");
+    expect(kinds[0]?.data).toMatchObject({ task: "A", to: "wip", by: "owner" });
+  });
+});

@@ -4,6 +4,7 @@ import type {
   Entry,
   EpicItem,
   Settings,
+  TaskItem,
   Thread,
   TicketItem,
   TopicDetailData,
@@ -27,6 +28,7 @@ export function topic(over: Partial<TopicListItem> & { slug: string }): TopicLis
     statusNote: null,
     goal: null,
     muted: false,
+    taskCounts: { total: 0, done: 0 },
     views: ["piles"],
     highlighted: false,
     stalePrompt: false,
@@ -37,6 +39,30 @@ export function topic(over: Partial<TopicListItem> & { slug: string }): TopicLis
     lastWorkedAt: T0,
     ...over,
   };
+}
+
+export function task(over: Partial<TaskItem> & { key: string }): TaskItem {
+  return {
+    id: nextId++,
+    title: `Task ${over.key}`,
+    doneWhen: null,
+    status: "to do",
+    position: 0,
+    specLinkId: null,
+    dependsOn: [],
+    dependents: [],
+    waiting: false,
+    ...over,
+  };
+}
+
+/** Fills dependents and waiting from dependsOn and statuses, like the server does. */
+export function linkTasks(tasks: TaskItem[]): TaskItem[] {
+  for (const t of tasks) {
+    t.dependents = tasks.filter((o) => o.dependsOn.includes(t.key)).map((o) => o.key);
+    t.waiting = t.dependsOn.some((k) => tasks.find((o) => o.key === k)?.status !== "done");
+  }
+  return tasks;
 }
 
 export function thread(over: Partial<Thread> & { id: number }): Thread {
@@ -83,6 +109,7 @@ export class FakeServer {
   topics: TopicListItem[] = [];
   details = new Map<string, Partial<TopicDetailData>>();
   entries = new Map<string, Entry[]>();
+  tasks = new Map<string, TaskItem[]>();
   notifications: AxiomNotification[] = [];
   epics: EpicItem[] = [];
   tickets: TicketItem[] = [];
@@ -134,9 +161,26 @@ export class FakeServer {
     const topicM = /^\/api\/topics\/([^/]+)$/.exec(path);
     const actionM = /^\/api\/topics\/([^/]+)\/(open|mute|stale|stale-prompt\/dismiss)$/.exec(path);
     const confirmM = /^\/api\/monitors\/(\d+)\/confirm$/.exec(path);
+    const tasksM = /^\/api\/topics\/([^/]+)\/tasks$/.exec(path);
+    const taskStatusM = /^\/api\/topics\/([^/]+)\/tasks\/([^/]+)\/status$/.exec(path);
     const entryM = /^\/api\/entries\/(\d+)$/.exec(path);
 
-    if (method === "GET" && path === "/api/topics") return this.json(this.topics);
+    if (method === "GET" && path === "/api/topics") {
+      return this.json(
+        this.topics.map((t) => {
+          const own = this.tasks.get(t.slug);
+          return own
+            ? {
+                ...t,
+                taskCounts: {
+                  total: own.length,
+                  done: own.filter((x) => x.status === "done").length,
+                },
+              }
+            : t;
+        }),
+      );
+    }
     if (method === "GET" && path === "/api/notifications") {
       return this.json({ notifications: this.notifications, hiddenCount: 0 });
     }
@@ -161,6 +205,17 @@ export class FakeServer {
     }
     if (method === "GET" && path === "/api/tickets") return this.json(this.tickets);
     if (method === "GET" && path === "/api/epics") return this.json(this.epics);
+    if (tasksM && method === "GET") {
+      return this.json(this.tasks.get(decodeURIComponent(tasksM[1] ?? "")) ?? []);
+    }
+    if (taskStatusM && method === "POST") {
+      const list = this.tasks.get(decodeURIComponent(taskStatusM[1] ?? "")) ?? [];
+      const found = list.find((t) => t.key === decodeURIComponent(taskStatusM[2] ?? ""));
+      if (!found) return this.json({ error: { code: "not-found", message: "nope" } }, 404);
+      found.status = body.status;
+      linkTasks(list);
+      return this.json(found);
+    }
     if (entriesM && method === "GET") {
       return this.json(this.entries.get(decodeURIComponent(entriesM[1] ?? "")) ?? []);
     }

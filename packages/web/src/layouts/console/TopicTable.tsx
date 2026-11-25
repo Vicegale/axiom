@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import type { TopicListItem } from "../../api";
-import { ParentChip } from "../../components";
+import { ParentChip, TaskBadge } from "../../components";
 import { PROVIDER_LABEL, VIEW_LABEL, type ViewId } from "../../lib/domain";
 import { ago } from "../../lib/time";
 import type { SortKey } from "../../lib/topics";
@@ -115,6 +115,7 @@ export function TopicTable({ groups, selected, sort, dir, now, onSort, onGo, onO
                 </td>
                 <td className="c-title" title={t.title}>
                   {t.title}
+                  <TaskBadge counts={t.taskCounts} />
                 </td>
                 <td className="c-note" title={t.statusNote ?? undefined}>
                   {t.statusNote ?? ""}

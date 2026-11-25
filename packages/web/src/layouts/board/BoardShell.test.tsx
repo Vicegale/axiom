@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryLocation } from "wouter/memory-location";
 import { App } from "../../App";
-import { FakeServer, topic } from "../../test/fakeApi";
+import { FakeServer, linkTasks, task, topic } from "../../test/fakeApi";
 import { lt, seedTracker } from "../../test/seed";
 
 let server: FakeServer;
@@ -98,7 +98,7 @@ describe("Board shell", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
-  it("has Overview / History / Threads / Links tabs showing the shared detail parts", async () => {
+  it("has Overview / History / Threads / Tasks / Graph / Links tabs showing the shared detail parts", async () => {
     server.details.set("ask", {
       links: [{ id: 1, kind: "repository", target: "/home/x/axiom", label: null }],
     });
@@ -109,6 +109,8 @@ describe("Board shell", () => {
       "Overview",
       "History",
       "Threads",
+      "Tasks",
+      "Graph",
       "Links",
     ]);
     const shown = () => sheet.querySelector(".tt")?.getAttribute("data-show");
@@ -125,6 +127,10 @@ describe("Board shell", () => {
     expect(within(sheet).getByText("A plain note")).toBeTruthy();
     fireEvent.click(within(sheet).getByRole("tab", { name: /Threads/ }));
     expect(shown()).toBe("threads");
+    fireEvent.click(within(sheet).getByRole("tab", { name: "Tasks" }));
+    expect(shown()).toBe("tasks");
+    fireEvent.click(within(sheet).getByRole("tab", { name: "Graph" }));
+    expect(shown()).toBe("graph");
     fireEvent.click(within(sheet).getByRole("tab", { name: "Links" }));
     expect(shown()).toBe("links");
     expect(within(sheet).getByText("/home/x/axiom")).toBeTruthy();
@@ -202,5 +208,42 @@ describe("Board shell", () => {
     open("/");
     await screen.findByText("Odd");
     expect(titlesIn("idle")).toContain("Odd");
+  });
+});
+
+describe("Board shell tasks", () => {
+  function withTasks() {
+    server.tasks.set(
+      "ask",
+      linkTasks([
+        task({ key: "S0", title: "Setup", status: "done" }),
+        task({ key: "S1", title: "Core", status: "wip", dependsOn: ["S0"] }),
+        task({ key: "S2", title: "Web", dependsOn: ["S1"] }),
+      ]),
+    );
+  }
+
+  it("shows a progress badge on cards of topics with tasks", async () => {
+    withTasks();
+    open("/");
+    await screen.findByText("Needs me");
+    await waitFor(() => {
+      const card = document.querySelector<HTMLElement>('.bd-card[data-slug="ask"]');
+      expect(card?.querySelector('[data-testid="task-badge"]')?.textContent).toContain("1/3");
+    });
+    expect(
+      document.querySelector('.bd-card[data-slug="watch"] [data-testid="task-badge"]'),
+    ).toBeNull();
+  });
+
+  it("shows the Tasks tab, and picking a graph node jumps to it with the row highlighted", async () => {
+    withTasks();
+    open("/topic/ask");
+    const sheet = within(await screen.findByRole("dialog"));
+    fireEvent.click(sheet.getByRole("tab", { name: "Graph" }));
+    await waitFor(() => expect(document.querySelectorAll(".g-node")).toHaveLength(3));
+    fireEvent.click(document.querySelector('.g-node[data-task-key="S2"]') as Element);
+    expect(sheet.getByRole("tab", { name: "Tasks" }).getAttribute("aria-selected")).toBe("true");
+    expect(document.querySelector("#task-S2")?.classList.contains("is-picked")).toBe(true);
   });
 });

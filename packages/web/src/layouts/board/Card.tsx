@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import type { TopicListItem } from "../../api";
-import { ParentChip, StatusPill } from "../../components";
+import { ParentChip, StatusPill, TaskBadge } from "../../components";
 import { PROVIDER_LABEL, VIEW_STATUSES, type ViewId } from "../../lib/domain";
 import { ago, idleDays } from "../../lib/time";
 import { spineStatus } from "../../lib/topics";
@@ -33,6 +33,7 @@ export function Card({ topic: t, lane, now, onOpen, onMarkStale, onDismissStale 
       <div className="bd-card-top">
         <StatusPill status={t.status} />
         {t.muted ? <span className="bd-muted">muted</span> : null}
+        <TaskBadge counts={t.taskCounts} />
         {t.highlighted ? (
           <span className="bd-unread" title="Unread">
             <span className="sr-only">Unread</span>

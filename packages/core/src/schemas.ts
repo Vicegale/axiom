@@ -6,6 +6,7 @@ import {
   NOTIFICATION_KINDS,
   PROVIDERS,
   REF_TYPES,
+  TASK_STATUSES,
   TOPIC_STATUSES,
   WORK_ITEM_STATUSES,
 } from "./constants.js";
@@ -13,6 +14,7 @@ import { AxiomError } from "./errors.js";
 
 export const topicStatusSchema = z.enum(TOPIC_STATUSES);
 export const workItemStatusSchema = z.enum(WORK_ITEM_STATUSES);
+export const taskStatusSchema = z.enum(TASK_STATUSES);
 export const providerSchema = z.enum(PROVIDERS);
 export const linkKindSchema = z.enum(LINK_KINDS);
 export const monitorStateSchema = z.enum(MONITOR_STATES);
@@ -22,6 +24,12 @@ export const notificationKindSchema = z.enum(NOTIFICATION_KINDS);
 export const slugSchema = z
   .string()
   .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "slug must be lowercase kebab-case (a-z, 0-9, single dashes)");
+
+/** A task key: `S7`, `KC3`, `S5b`. Letters, digits, dot, dash, underscore. */
+export const taskKeySchema = z
+  .string()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/, "task key may use letters, digits, '.', '_' and '-'")
+  .max(40);
 
 export const refSchema = z.strictObject({
   type: z.enum(REF_TYPES),
@@ -46,11 +54,20 @@ export const entryDataSchemas: Record<EntryKind, z.ZodType> = {
   "owner input": emptyData,
   authorization: z.strictObject({ scope: z.string().min(1), standing: z.boolean() }),
   "next steps": emptyData,
-  "status change": z.strictObject({
-    from: topicStatusSchema.nullable(),
-    to: topicStatusSchema.nullable(),
-    reason: z.string().optional(),
-  }),
+  // A topic status change, or (with `task`) a task status change written by Axiom (01, Tasks).
+  "status change": z.union([
+    z.strictObject({
+      from: topicStatusSchema.nullable(),
+      to: topicStatusSchema.nullable(),
+      reason: z.string().optional(),
+    }),
+    z.strictObject({
+      task: taskKeySchema,
+      from: taskStatusSchema,
+      to: taskStatusSchema,
+      by: z.enum(["owner", "agent", "axiom"]),
+    }),
+  ]),
   "topic created": looseData,
   "thread event": looseData,
   "git event": looseData,

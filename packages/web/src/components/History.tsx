@@ -1,8 +1,10 @@
 import { useState } from "react";
 import type { Entry, Thread } from "../api";
+import type { TaskStatus } from "../lib/domain";
 import { dayKey, dayLabel, hm } from "../lib/time";
 import { KindLabel, kindClass } from "./KindLabel";
 import { StatusPill } from "./StatusPill";
+import { TaskPill } from "./Tasks";
 
 export type Density = "dense" | "roomy";
 
@@ -25,6 +27,8 @@ interface Data {
   scope?: string;
   standing?: boolean;
   evidence?: string[];
+  /** Set on a task status change (key). */
+  task?: string;
 }
 
 function newestFirst(a: Entry, b: Entry): number {
@@ -114,7 +118,18 @@ function EntryItem({
           )
         ) : null}
       </div>
-      {e.kind === "status change" ? (
+      {e.kind === "status change" && typeof d.task === "string" ? (
+        <p className="e-body">
+          Task <b className="mono">{d.task}</b>{" "}
+          <span className="status-move">
+            <TaskPill status={d.from as TaskStatus} />
+            <span className="arrow" aria-hidden="true">
+              →
+            </span>
+            <TaskPill status={d.to as TaskStatus} />
+          </span>
+        </p>
+      ) : e.kind === "status change" ? (
         <p className="e-body">
           <span className="status-move">
             <StatusPill status={(d.from as never) ?? null} />

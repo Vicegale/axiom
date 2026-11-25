@@ -1,10 +1,11 @@
-import { api, type Entry, type TicketItem, type TopicDetailData } from "../api";
+import { api, type Entry, type TaskItem, type TicketItem, type TopicDetailData } from "../api";
 import { useAxiom } from "./DataProvider";
 import { useResource } from "./useResource";
 
 export interface TopicBundle {
   topic: TopicDetailData;
   entries: Entry[];
+  tasks: TaskItem[];
   /** Ticket slug to the title of the first epic it sits under. */
   ticketEpics: Record<string, string>;
 }
@@ -16,9 +17,10 @@ export function useTopicDetail(slug: string | undefined) {
     `topic:${slug ?? ""}`,
     async () => {
       if (!slug) return null;
-      const [topic, entries, tickets] = await Promise.all([
+      const [topic, entries, tasks, tickets] = await Promise.all([
         api.topic(slug),
         api.entries(slug),
+        api.tasks(slug),
         api.tickets().catch(() => [] as TicketItem[]),
       ]);
       const ticketEpics: Record<string, string> = {};
@@ -26,7 +28,7 @@ export function useTopicDetail(slug: string | undefined) {
         const first = t.epics[0];
         if (first) ticketEpics[t.slug] = first.title;
       }
-      return { topic, entries, ticketEpics };
+      return { topic, entries, tasks, ticketEpics };
     },
     tick,
   );

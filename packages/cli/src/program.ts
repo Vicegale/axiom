@@ -9,6 +9,9 @@ import {
   PROVIDERS,
   type Ref,
   type RefType,
+  TASK_STATUSES,
+  type TaskDetail,
+  type TaskStatus,
   TOPIC_STATUSES,
   type TopicStatus,
   type View,
@@ -55,6 +58,34 @@ function parseRef(text: string): Ref {
 function parseId(text: string, what: string): number {
   if (!/^\d+$/.test(text)) throw new UsageError(`${what} must be a number, got "${text}"`);
   return Number(text);
+}
+
+/** Accepts `to do`, `todo` and `to-do` for the first task status. */
+function parseTaskStatus(text: string): TaskStatus {
+  const word = text.trim().toLowerCase().replace(/[-_]/g, " ");
+  const found = TASK_STATUSES.find((s) => s === word || s.replace(" ", "") === word);
+  if (!found) {
+    throw new UsageError(`invalid task status "${text}" (use ${TASK_STATUSES.join(", ")})`);
+  }
+  return found;
+}
+
+/** Keys of the dependencies that are not done yet. */
+function waitsOn(task: TaskDetail, all: readonly TaskDetail[]): string[] {
+  return task.dependsOn.filter((k) => all.find((t) => t.key === k)?.status !== "done");
+}
+
+function taskText(task: TaskDetail, all: readonly TaskDetail[], spec: string | null): string {
+  const waits = waitsOn(task, all);
+  return [
+    `${task.key}  ${task.title}`,
+    `status:      ${task.status}${task.waiting ? " (waiting)" : ""}`,
+    `done when:   ${task.doneWhen ?? "-"}`,
+    `spec:        ${spec ?? "-"}`,
+    `waits on:    ${waits.length ? waits.join(", ") : "-"}`,
+    `depends on:  ${task.dependsOn.length ? task.dependsOn.join(", ") : "-"}`,
+    `dependents:  ${task.dependents.length ? task.dependents.join(", ") : "-"}`,
+  ].join("\n");
 }
 
 export function buildProgram(env: NodeJS.ProcessEnv, write: (s: string) => void): Command {
@@ -288,6 +319,115 @@ export function buildProgram(env: NodeJS.ProcessEnv, write: (s: string) => void)
     );
   }
 
+  // ---- tasks ------------------------------------------------------------------------
+  const task = sub(program, "task", "tasks of a topic, with dependencies");
+
+  /** A spec link of the topic: by id, or by path (the link is added when the topic lacks it). */
+  const specLinkId = (ctx: Context, topicRef: string | number, spec: string): number => {
+    if (/^\d+$/.test(spec)) return Number(spec);
+    const detail = ctx.axiom.getTopic(topicRef);
+    const found = detail.links.find((l) => l.kind === "spec" && l.target === spec);
+    return found
+      ? found.id
+      : ctx.axiom.addLink(detail.id, { kind: "spec", target: spec }, ctx.actor).id;
+  };
+
+  sub(task, "add", "add a task to a topic")
+    .argument("<key>", "short key, unique in the topic (S7, KC3)")
+    .argument("<title>")
+    .option("--done-when <text>", "what makes it done")
+    .option("--spec <linkId|path>", "the spec link it belongs to (a path adds the link)")
+    .option("--after <key>", "a task it waits for (repeatable)", collect, [])
+    .option("--topic <topic>", "topic slug (default: current)")
+    .action(
+      run((ctx, [key, title], o) => {
+        const topicRef = ctx.topic(o.topic);
+        const created = ctx.axiom.createTask(
+          topicRef,
+          {
+            key: key as string,
+            title: title as string,
+            doneWhen: o.doneWhen,
+            specLinkId: o.spec === undefined ? undefined : specLinkId(ctx, topicRef, o.spec),
+            dependsOn: o.after,
+          },
+          ctx.actor,
+        );
+        return { data: created, text: `Added task ${created.key}.` };
+      }),
+    );
+
+  sub(task, "status", "set a task's status")
+    .argument("<key>")
+    .argument("<status>", TASK_STATUSES.join(" | "))
+    .option("--topic <topic>", "topic slug (default: current)")
+    .action(
+      run((ctx, [key, status], o) => {
+        const t = ctx.axiom.setTaskStatus(
+          ctx.topic(o.topic),
+          key as string,
+          parseTaskStatus(status as string),
+          ctx.actor,
+        );
+        return { data: t, text: `${t.key} is now ${t.status}.` };
+      }),
+    );
+
+  sub(task, "depend", "make a task wait for others (or stop waiting with --remove)")
+    .argument("<key>")
+    .option("--on <key>", "a task it waits for (repeatable)", collect, [])
+    .option("--remove", "remove the dependencies instead")
+    .option("--topic <topic>", "topic slug (default: current)")
+    .action(
+      run((ctx, [key], o) => {
+        if (!o.on.length) throw new UsageError("give at least one --on <key>");
+        const topicRef = ctx.topic(o.topic);
+        for (const on of o.on as string[]) {
+          if (o.remove) ctx.axiom.removeTaskDependency(topicRef, key as string, on, ctx.actor);
+          else ctx.axiom.addTaskDependency(topicRef, key as string, on, ctx.actor);
+        }
+        const done = ctx.axiom.getTask(topicRef, key as string);
+        return {
+          data: done,
+          text: `${done.key} now depends on: ${done.dependsOn.join(", ") || "nothing"}.`,
+        };
+      }),
+    );
+
+  sub(task, "list", "list a topic's tasks")
+    .option("--topic <topic>", "topic slug (default: current)")
+    .action(
+      run((ctx, _a, o) => {
+        const tasks = ctx.axiom.listTasks(ctx.topic(o.topic));
+        return {
+          data: tasks,
+          text: tasks.length
+            ? table([
+                ["KEY", "STATUS", "TITLE", "WAITS ON"],
+                ...tasks.map((t) => [t.key, t.status, t.title, waitsOn(t, tasks).join(", ")]),
+              ])
+            : "No tasks.",
+        };
+      }),
+    );
+
+  sub(task, "show", "show one task")
+    .argument("<key>")
+    .option("--topic <topic>", "topic slug (default: current)")
+    .action(
+      run((ctx, [key], o) => {
+        const topicRef = ctx.topic(o.topic);
+        const tasks = ctx.axiom.listTasks(topicRef);
+        const found = tasks.find((t) => t.key === key);
+        if (!found) throw new AxiomError("not-found", `task not found: ${key}`);
+        const spec = found.specLinkId
+          ? (ctx.axiom.getTopic(topicRef).links.find((l) => l.id === found.specLinkId)?.target ??
+            null)
+          : null;
+        return { data: found, text: taskText(found, tasks, spec) };
+      }),
+    );
+
   // ---- entries --------------------------------------------------------------------
   sub(program, "entry", "write a history entry")
     .argument("<kind>", Object.keys(ENTRY_KIND_WORDS).join(" | "))
@@ -431,6 +571,7 @@ export function buildProgram(env: NodeJS.ProcessEnv, write: (s: string) => void)
     .option("--id <providerThreadId>", "the provider's thread id")
     .option("--env <environmentId>", "T3 environment id")
     .option("--title <title>", "title")
+    .option("--task <key>", "the task of the topic this thread works on")
     .action(
       run((ctx, [slug], o) => {
         if (Boolean(o.provider) !== Boolean(o.id)) {
@@ -446,12 +587,31 @@ export function buildProgram(env: NodeJS.ProcessEnv, write: (s: string) => void)
         }
         const t = ctx.axiom.attachThread(
           slug as string,
-          { ...found, environmentId: o.env, title: o.title },
+          { ...found, environmentId: o.env, title: o.title, taskKey: o.task },
           ctx.actor,
         );
         return {
           data: t,
           text: `Attached ${t.provider} thread ${t.providerThreadId} to ${slug} (thread #${t.id}).`,
+        };
+      }),
+    );
+  sub(thread, "task", "name the task the current thread works on (or clear it with --none)")
+    .argument("[key]")
+    .option("--none", "clear the thread's task")
+    .action(
+      run((ctx, [key], o) => {
+        if (Boolean(key) === Boolean(o.none)) throw new UsageError("give a task key or --none");
+        const t = ctx.currentThread();
+        if (!t) {
+          throw new UsageError(
+            "this session is not an attached thread (run `axiom thread attach <topic>` first)",
+          );
+        }
+        const updated = ctx.axiom.setThreadTask(t.id, o.none ? null : (key as string), ctx.actor);
+        return {
+          data: updated,
+          text: o.none ? "Thread has no task now." : `Thread now works on task ${key}.`,
         };
       }),
     );

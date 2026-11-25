@@ -84,6 +84,7 @@ Written by Axiom automatically:
 - 2026-11-25: Next steps are history entries (kind `next steps`), not a field on the topic.
 - 2026-11-25: Environment facts (IPs, ports, host recipes) stay in project notes and memory, outside Axiom.
 - 2026-11-25: The owner can delete an entry in exceptional cases, for example one that leaked a secret. Nobody else can.
+- 2026-11-25: A task's status change is a `status change` entry like a topic's: author `axiom` (the kind is Axiom-only), `thread_id` of the agent or thread that caused it, and data `{task, from, to, by}` with the task statuses and `by` the actor (`owner`, `agent` or `axiom` for the automatic `wip`). Task creation and dependency edits write no entry; they only move the topic's last worked time.
 - 2026-11-25: `authorization` entries are a record only. They do not grant anything: regular threads need no Axiom-level permissions, and the proactive agent's permissions come from its own spec (03).
 
 ## Open questions

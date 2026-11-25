@@ -8,11 +8,13 @@ export const AXIOM_VERSION: string = pkg.version;
 export type {
   AttachThreadInput,
   Clock,
+  CreateTaskInput,
   CreateTopicInput,
   CreateWorkItemInput,
   EntryInput,
   ListNotificationsOptions,
   ListTopicsFilter,
+  UpdateTaskInput,
 } from "./axiom.js";
 export { Axiom } from "./axiom.js";
 export * from "./constants.js";
