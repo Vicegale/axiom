@@ -5,7 +5,7 @@ import { type Actor, type Axiom, openDatabase } from "@axiom/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { T3_VERSION, T3Fixture } from "../../test-t3.js";
 import { decide, T3Provider } from "./provider.js";
-import { readT3Meta, T3Db } from "./reader.js";
+import { parseQuestions, readT3Meta, T3Db } from "./reader.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const owner: Actor = { kind: "owner" };
@@ -102,6 +102,61 @@ describe("reader", () => {
       t3.resolve(q);
       expect(db.thread("a", null)?.pendingRequests).toHaveLength(1);
       expect(db.thread("nope", null)).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
+  it("parses the structured questions of a pending request, and skips malformed ones", () => {
+    t3.thread("q");
+    const id = t3.request("q", "user_input", "x", {
+      questions: [
+        {
+          id: "Which windows?",
+          header: "Clear panes",
+          question: "Which windows should be clear?",
+          multiSelect: true,
+          options: [
+            { label: "Plant cars only", description: "Two a side" },
+            { label: "All", description: "" },
+            { description: "no label: skipped" },
+          ],
+        },
+        { question: "No id: the text is the id", options: "not a list" },
+        { id: "no question text", header: "skipped" },
+        "garbage",
+      ],
+    });
+    t3.request("q", "command", "Run it?", { requestKind: "file-change" });
+    const db = T3Db.open(t3.dir);
+    try {
+      const [question, approval] = db.pendingRequests("q");
+      expect(question?.id).toBe(id);
+      expect(question?.kind).toBe("user_input");
+      expect(question?.questions).toEqual([
+        {
+          id: "Which windows?",
+          header: "Clear panes",
+          question: "Which windows should be clear?",
+          multiSelect: true,
+          options: [
+            { label: "Plant cars only", description: "Two a side" },
+            { label: "All", description: "" },
+          ],
+        },
+        {
+          id: "No id: the text is the id",
+          header: "",
+          question: "No id: the text is the id",
+          multiSelect: false,
+          options: [],
+        },
+      ]);
+      expect(approval?.kind).toBe("command");
+      expect(approval?.questions).toEqual([]);
+      expect(approval?.requestKind).toBe("file-change");
+      expect(parseQuestions({ questions: "nope" })).toEqual([]);
+      expect(parseQuestions(null)).toEqual([]);
     } finally {
       db.close();
     }

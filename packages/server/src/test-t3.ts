@@ -147,7 +147,22 @@ export class T3Fixture {
   }
 
   /** A pending approval (`command`) or question (`user_input`) with its text. */
-  request(threadId: string, kind: "command" | "user_input", text: string | null): string {
+  /** Points `server-runtime.json` at another port (a fake MCP server in tests). */
+  setPort(port: number): this {
+    writeFileSync(
+      join(this.dir, "server-runtime.json"),
+      JSON.stringify({ version: 1, port, serverVersion: T3_VERSION }),
+    );
+    return this;
+  }
+
+  request(
+    threadId: string,
+    kind: "command" | "user_input",
+    text: string | null,
+    /** Replaces the fields of the item payload after `requestId` (e.g. `questions`). */
+    extra: Record<string, unknown> = {},
+  ): string {
     const id = `req-${seq++}`;
     const node = `node-${id}`;
     this.db
@@ -160,8 +175,12 @@ export class T3Fixture {
     if (text !== null) {
       const payload =
         kind === "user_input"
-          ? { requestId: id, questions: [{ id: "q1", header: "h", question: text, options: [] }] }
-          : { requestId: id, requestKind: "command", prompt: text };
+          ? {
+              requestId: id,
+              questions: [{ id: "q1", header: "h", question: text, options: [] }],
+              ...extra,
+            }
+          : { requestId: id, requestKind: "command", prompt: text, ...extra };
       this.db
         .prepare(
           `INSERT INTO orchestration_v2_projection_turn_items

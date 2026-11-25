@@ -82,6 +82,14 @@ export class T3Provider {
   private lastSyncAt = 0;
   /** Pending requests per Axiom thread id, as of the last sync (the Desk shows the count). */
   private pendingByThread = new Map<number, number>();
+  private pendingChanged = false;
+
+  /** True once after the pending-request counts changed in a sync (no status event needed). */
+  takePendingChanged(): boolean {
+    const v = this.pendingChanged;
+    this.pendingChanged = false;
+    return v;
+  }
 
   /**
    * The T3 desktop app's deep link for a thread, `t3code://threads/<environment>/<thread>` (T3's
@@ -222,8 +230,8 @@ export class T3Provider {
         pending.size === this.pendingByThread.size &&
         [...pending].every(([id, n]) => this.pendingByThread.get(id) === n);
       this.pendingByThread = pending;
-      // The cards show these counts: tell the UI when they moved, even if no status changed.
-      if (!same) applied++;
+      // The cards show these counts: the caller tells the UI when they moved (`takePendingChanged`).
+      if (!same) this.pendingChanged = true;
       // T3 names its threads; use that name when the Axiom thread has none.
       for (const { th, state } of planned) {
         if (!th.title && state?.title) this.ax.fillThreadTitle(th.id, state.title);

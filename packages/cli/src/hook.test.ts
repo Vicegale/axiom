@@ -1,5 +1,5 @@
 // biome-ignore-all lint/suspicious/noExplicitAny: JSON output is checked structurally
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   chmodSync,
   existsSync,
@@ -90,7 +90,7 @@ function session() {
     }
   };
   const topic = () => json(["topic", "show", "demo"]);
-  return { root, db, state, notifications, exec, json, hook, log, attach, topic };
+  return { root, db, state, env, notifications, exec, json, hook, log, attach, topic };
 }
 
 describe("axiom hook", () => {
@@ -548,6 +548,7 @@ describe("axiom hooks install / uninstall", () => {
     "UserPromptSubmit",
     "PreToolUse",
     "Notification",
+    "PermissionRequest",
     "Stop",
     "SessionEnd",
   ];
@@ -567,11 +568,18 @@ describe("axiom hooks install / uninstall", () => {
       ["UserPromptSubmit", "prompt"],
       ["PreToolUse", "pre-tool"],
       ["Notification", "notification"],
+      ["PermissionRequest", "permission"],
       ["Stop", "stop"],
       ["SessionEnd", "session-end"],
     ] as const) {
+      // The permission hook waits for the owner, so its entry carries a long timeout.
+      const timeout = ev === "permission" ? { timeout: 620 } : {};
       expect(cfg.hooks[name]).toEqual([
-        { hooks: [{ type: "command", command: `"${process.execPath}" "${CLI}" hook ${ev}` }] },
+        {
+          hooks: [
+            { type: "command", command: `"${process.execPath}" "${CLI}" hook ${ev}`, ...timeout },
+          ],
+        },
       ]);
     }
     expect(s.backups()).toHaveLength(0); // nothing to back up
@@ -651,5 +659,166 @@ describe("axiom hooks install / uninstall", () => {
     writeFileSync(s.settings, "{oops");
     expect(s.exec([...base("install"), "--settings", s.settings]).code).toBe(1);
     expect(readFileSync(s.settings, "utf8")).toBe("{oops");
+  });
+});
+
+describe("axiom hook permission", () => {
+  const PERMISSION_REQUEST = (sid = SID) =>
+    payload(
+      "PermissionRequest",
+      { tool_name: "Bash", tool_input: { command: "npm test\nsecond line", description: "x" } },
+      sid,
+    );
+
+  /** Runs `axiom hook permission` and resolves when it exits; the caller feeds the owner's side. */
+  function startHook(
+    s: ReturnType<typeof session>,
+    input: string,
+    more: Record<string, string> = {},
+  ) {
+    const child = spawn(
+      process.execPath,
+      ["--conditions=source", "--import", "tsx", entry, "--db", s.db, "hook", "permission"],
+      { env: { ...s.env, ...more }, stdio: ["pipe", "pipe", "pipe"] },
+    );
+    let out = "";
+    let err = "";
+    child.stdout.on("data", (d: Buffer) => {
+      out += d.toString();
+    });
+    child.stderr.on("data", (d: Buffer) => {
+      err += d.toString();
+    });
+    child.stdin.end(input);
+    const done = new Promise<{ code: number | null; out: string; err: string }>((resolve) => {
+      child.on("close", (code) => resolve({ code, out, err }));
+    });
+    return { child, done };
+  }
+
+  async function pendingApproval(db: string) {
+    const ax = openDatabase(db);
+    try {
+      for (let i = 0; i < 200; i++) {
+        const row = ax.db.prepare("SELECT id FROM approval WHERE decided_at IS NULL").get() as
+          | { id: number }
+          | undefined;
+        if (row) return ax.getApproval(row.id);
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      throw new Error("no pending approval appeared");
+    } finally {
+      ax.close();
+    }
+  }
+
+  const approvals = (db: string) => {
+    const ax = openDatabase(db);
+    try {
+      return ax.db.prepare("SELECT * FROM approval").all();
+    } finally {
+      ax.close();
+    }
+  };
+
+  it("is a no-op, at once and silently, for unattached, internal and T3-run sessions", async () => {
+    const s = session();
+    s.attach("attached-session");
+    const unattached = await startHook(s, PERMISSION_REQUEST("other-session")).done;
+    expect(unattached).toMatchObject({ code: 0, out: "", err: "" });
+    const internal = await startHook(s, PERMISSION_REQUEST("attached-session"), {
+      AXIOM_INTERNAL: "1",
+    }).done;
+    expect(internal).toMatchObject({ code: 0, out: "" });
+    const t3 = await startHook(s, PERMISSION_REQUEST("attached-session"), {
+      T3CODE_THREAD_ID: "t3-thread",
+    }).done;
+    expect(t3).toMatchObject({ code: 0, out: "" });
+    expect(approvals(s.db)).toEqual([]);
+    expect(s.log()).toBe("");
+  });
+
+  it("exits 0 silently on a payload it cannot read", async () => {
+    const s = session();
+    s.attach();
+    const r = await startHook(s, "not json").done;
+    expect(r).toMatchObject({ code: 0, out: "" });
+    expect(s.log()).toMatch(/permission/);
+    const empty = await startHook(s, payload("PermissionRequest", {})).done;
+    expect(empty).toMatchObject({ code: 0, out: "" });
+    expect(approvals(s.db)).toEqual([]);
+  });
+
+  it("records the approval, marks the thread waiting, and prints allow when the owner allows", async () => {
+    const s = session();
+    s.attach();
+    s.hook("prompt", PROMPT);
+    const h = startHook(s, PERMISSION_REQUEST());
+    const pending = await pendingApproval(s.db);
+    expect(pending).toMatchObject({ toolName: "Bash", inputSummary: "$ npm test" });
+    expect(pending.hookPid).toBe(h.child.pid);
+    expect(s.topic().status).toBe("hitl");
+    expect(s.notifications()).toContain("agent asked");
+    const owner = openDatabase(s.db); // another connection decides
+    owner.decideApproval(pending.id, "allow", undefined, { kind: "owner" });
+    owner.close();
+    const r = await h.done;
+    expect(r.code).toBe(0);
+    expect(JSON.parse(r.out)).toEqual({
+      hookSpecificOutput: { hookEventName: "PermissionRequest", decision: { behavior: "allow" } },
+    });
+    expect(s.topic().status).toBe("wip"); // the agent carries on
+    expect(s.log()).toBe("");
+  });
+
+  it("prints deny with the owner's reason (or a default one)", async () => {
+    const s = session();
+    s.attach();
+    const decide = async (message?: string) => {
+      const h = startHook(s, PERMISSION_REQUEST());
+      const pending = await pendingApproval(s.db);
+      const owner = openDatabase(s.db);
+      owner.decideApproval(pending.id, "deny", message, { kind: "owner" });
+      owner.close();
+      const r = await h.done;
+      expect(r.code).toBe(0);
+      return JSON.parse(r.out);
+    };
+    expect(await decide("use the test script instead")).toEqual({
+      hookSpecificOutput: {
+        hookEventName: "PermissionRequest",
+        decision: { behavior: "deny", message: "use the test script instead" },
+      },
+    });
+    expect((await decide()).hookSpecificOutput.decision).toEqual({
+      behavior: "deny",
+      message: "Denied by the owner in Axiom",
+    });
+  });
+
+  it("times out silently and leaves the approval expired", async () => {
+    const s = session();
+    s.attach();
+    const ax = openDatabase(s.db);
+    ax.setInternalSetting("approvalTimeoutSec", 1);
+    ax.close();
+    const r = await startHook(s, PERMISSION_REQUEST()).done;
+    expect(r).toMatchObject({ code: 0, out: "", err: "" });
+    const rows = approvals(s.db) as { decision: string; decided_at: string | null }[];
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ decision: "expired" });
+    expect(rows[0]?.decided_at).not.toBeNull();
+    expect(s.topic().status).toBe("hitl"); // the terminal prompt is what waits now
+  });
+
+  it("expires the approval when it is terminated", async () => {
+    const s = session();
+    s.attach();
+    const h = startHook(s, PERMISSION_REQUEST());
+    await pendingApproval(s.db);
+    h.child.kill("SIGTERM");
+    const r = await h.done;
+    expect(r.out).toBe("");
+    expect((approvals(s.db) as { decision: string }[])[0]?.decision).toBe("expired");
   });
 });

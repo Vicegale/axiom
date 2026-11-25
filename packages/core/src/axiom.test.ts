@@ -879,3 +879,68 @@ describe("the Desk: replies, summaries, arrangement", () => {
     expect(order()).toEqual([2, 0, 1]); // a failed call changes nothing
   });
 });
+
+describe("permission approvals", () => {
+  it("records a pending approval, waits on the owner, and keeps no full tool input", () => {
+    const { thread } = topicWithThread(ax);
+    const a = ax.requestApproval(thread.id, {
+      toolName: "Bash",
+      inputSummary: "$ rm -rf build\n  extra",
+      hookPid: 4242,
+    });
+    expect(a).toMatchObject({
+      toolName: "Bash",
+      inputSummary: "$ rm -rf build extra",
+      decidedAt: null,
+      decision: null,
+      hookPid: 4242,
+    });
+    expect(ax.pendingApprovals(thread.id).map((x) => x.id)).toEqual([a.id]);
+    expect(ax.pendingApprovalCounts().get(thread.id)).toBe(1);
+    expect(ax.getThread(thread.id)).toMatchObject({ status: "hitl", waitingOnOwner: true });
+    expect(ax.listNotifications().map((n) => n.kind)).toEqual(["agent asked"]);
+  });
+
+  it("allow writes an authorization entry, deny an owner input entry; only the owner decides", () => {
+    const { thread } = topicWithThread(ax);
+    const a = ax.requestApproval(thread.id, { toolName: "Bash", inputSummary: "$ npm test" });
+    expect(() => ax.decideApproval(a.id, "allow", undefined, agent(thread.id))).toThrow(AxiomError);
+    const done = ax.decideApproval(a.id, "allow", undefined, owner);
+    expect(done).toMatchObject({ decision: "allow" });
+    expect(done.decidedAt).not.toBeNull();
+    expect(ax.pendingApprovals(thread.id)).toEqual([]);
+    const auth = ax.listEntries("demo").find((e) => e.kind === "authorization");
+    expect(auth).toMatchObject({
+      author: "owner",
+      data: { scope: "Bash: $ npm test", standing: false },
+    });
+    expect(() => ax.decideApproval(a.id, "deny", undefined, owner)).toThrow(/already decided/);
+
+    const b = ax.requestApproval(thread.id, { toolName: "Write", inputSummary: "Editing a.ts" });
+    const denied = ax.decideApproval(b.id, "deny", "not that file", owner);
+    expect(denied).toMatchObject({ decision: "deny", message: "not that file" });
+    const input = ax.listEntries("demo").filter((e) => e.kind === "owner input");
+    expect(input.at(-1)?.body).toBe("Denied Write: Editing a.ts: not that file");
+  });
+
+  it("expiring keeps a decision and closes an undecided approval", () => {
+    const { thread } = topicWithThread(ax);
+    const a = ax.requestApproval(thread.id, { toolName: "Bash", inputSummary: "$ ls" });
+    ax.expireApproval(a.id);
+    expect(ax.getApproval(a.id)).toMatchObject({ decision: "expired" });
+    expect(() => ax.decideApproval(a.id, "allow", undefined, owner)).toThrow(/already decided/);
+    const b = ax.requestApproval(thread.id, { toolName: "Bash", inputSummary: "$ ls" });
+    ax.decideApproval(b.id, "allow", undefined, owner);
+    ax.expireApproval(b.id);
+    expect(ax.getApproval(b.id).decision).toBe("allow");
+    expect(() => ax.getApproval(999)).toThrow(/not found/);
+  });
+
+  it("approvalTimeoutSec defaults to 600 and is validated", () => {
+    expect(ax.getSetting("approvalTimeoutSec")).toBe(600);
+    ax.setSetting("approvalTimeoutSec", 120, owner);
+    expect(ax.getSetting("approvalTimeoutSec")).toBe(120);
+    expect(() => ax.setSetting("approvalTimeoutSec", 5, owner)).toThrow(AxiomError);
+    expect(() => ax.setSetting("approvalTimeoutSec", 9999, owner)).toThrow(AxiomError);
+  });
+});

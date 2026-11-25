@@ -173,7 +173,7 @@ describe("opening", () => {
         );
       });
     const results = await Promise.all(Array.from({ length: 6 }, run));
-    expect(results).toEqual(Array(6).fill("5 wal"));
+    expect(results).toEqual(Array(6).fill("6 wal"));
     const ax = openDatabase(path);
     expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(6);
     ax.close();
