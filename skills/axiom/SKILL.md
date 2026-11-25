@@ -44,6 +44,8 @@ Write an entry when something is worth keeping. **One kind per entry**: split a 
 - Entries are never edited. To fix a mistake: `axiom entry note "…corrected…" --corrects <entryId>`.
 - Don't record what Axiom records itself: thread start/stop, status changes, topic creation.
 
+**Write as you go, not only at the end.** Record a decision when you make it and a finding when you confirm it, so the topic shows where the work stands if you stop early or the session ends.
+
 ## 3. Tasks
 
 When you write a plan or spec with steps, record the steps as tasks in Axiom (the spec file refers to them by key; Axiom is where their status lives).
@@ -77,6 +79,16 @@ When you stop, Axiom applies this: `hitl`, `done`, `blocked` stick; `review` sti
 Monitor targets: `axiom monitor add pr-review owner/repo#49 --confirmed`, `axiom monitor add pr-checks owner/repo#49 --confirmed` (other checks need `--link-kind`).
 
 Also keep the topic's one-line state current: `axiom topic note "Rows 59, 60 merged; 61 running"`.
+
+### Before you finish
+
+Do these in order, before the final status:
+
+1. **What changed:** one `note` entry listing the files or artifacts you changed and what the owner will see differently, e.g. `axiom entry note "scripts/template.html, site/*.html rebuilt: prompt asks for a JSON reply; Paste LLM grades applies it"`. Link anything new (`axiom link add artifact …`, `axiom link add pr …`).
+2. **Evidence that lasts:** a `verification` whose `--evidence` is a command anyone can rerun (`npm test`, `uv run scripts/build_site.py`) or a file in the repo, not a temporary scratch path.
+3. **Status note:** `axiom topic note "…"` with the one-line state a reader should see first.
+4. **Tasks:** mark the tasks you finished `done` (or `blocked`).
+5. **Status:** then `axiom topic status …` as above.
 
 ## 5. Rules
 
