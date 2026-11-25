@@ -38,7 +38,23 @@ Write an entry when something is worth keeping. **One kind per entry**: split a 
 - Entries are never edited. To fix a mistake: `axiom entry note "…corrected…" --corrects <entryId>`.
 - Don't record what Axiom records itself: thread start/stop, status changes, topic creation.
 
-## 3. Status
+## 3. Tasks
+
+When you write a plan or spec with steps, record the steps as tasks in Axiom (the spec file refers to them by key; Axiom is where their status lives).
+
+```sh
+axiom task add S1 "Core database" --spec docs/plan/v1.md --done-when "tests pass"
+axiom task add S2 "CLI" --spec docs/plan/v1.md --after S1     # S2 waits on S1
+axiom task depend S6 --on S3 --on S4                          # more dependencies
+axiom task list                                               # key, status, title, waits on
+axiom thread task S2                                          # this thread now works on S2
+axiom task status S2 done                                     # or blocked / to do
+```
+
+- Statuses: `to do`, `wip`, `blocked`, `done`. A task becomes `wip` by itself while a thread that names it is working; you set `done` or `blocked`.
+- Dependencies stay within the topic; cycles are rejected.
+
+## 4. Status
 
 `wip` is set automatically while you run; never set it yourself. Set a status before you stop when it isn't simply "idle":
 
@@ -56,7 +72,7 @@ Monitor targets: `axiom monitor add pr-review owner/repo#49 --confirmed`, `axiom
 
 Also keep the topic's one-line state current: `axiom topic note "Rows 59, 60 merged; 61 running"`.
 
-## 4. Rules
+## 5. Rules
 
 - Never bypass the owner's processes (review, CI, approvals). Axiom is a record, not a permission system.
 - Don't write secrets into entries. If one slips in, tell the owner; only they can delete entries.
