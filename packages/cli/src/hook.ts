@@ -1,7 +1,14 @@
 import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { defaultDatabasePath, describeToolUse, openDatabase } from "@axiom/core";
+import {
+  type Axiom,
+  defaultDatabasePath,
+  describeToolUse,
+  openDatabase,
+  type RuntimePatch,
+} from "@axiom/core";
+import { readTranscriptRuntime } from "./transcript.js";
 
 export const HOOK_EVENTS = [
   "session-start",
@@ -26,6 +33,16 @@ interface HookPayload {
   last_assistant_message?: unknown;
   tool_name?: string;
   tool_input?: unknown;
+  transcript_path?: unknown;
+  effort?: unknown;
+}
+
+/** The reasoning effort level a payload carries (`effort: {level: "high"}`), when it does. */
+function effortLevel(p: HookPayload): string | undefined {
+  const e = p.effort;
+  if (typeof e !== "object" || e === null) return undefined;
+  const level = (e as { level?: unknown }).level;
+  return typeof level === "string" && level.trim() !== "" ? level.trim() : undefined;
 }
 
 /** The reply a Stop payload carries, when there is one. */
@@ -61,6 +78,25 @@ export function runningSubagentCount(p: HookPayload): number {
       (t as { type?: unknown }).type === "subagent" &&
       (t as { status?: unknown }).status === "running",
   ).length;
+}
+
+/**
+ * Stores the session's effort (from the payload) and model and context (from the tail of its
+ * transcript). Whatever is missing is left alone; a transcript that cannot be read is not an error.
+ */
+function recordRuntime(axiom: Axiom, threadId: number, payload: HookPayload): void {
+  const patch: RuntimePatch = {};
+  const effort = effortLevel(payload);
+  if (effort) patch.effort = effort;
+  if (typeof payload.transcript_path === "string" && payload.transcript_path !== "") {
+    const t = readTranscriptRuntime(payload.transcript_path);
+    if (t) {
+      patch.model = t.model;
+      patch.contextUsed = t.contextUsed;
+      patch.contextMax = t.contextMax;
+    }
+  }
+  axiom.setThreadRuntime(threadId, patch);
 }
 
 /** A permission request, as opposed to an idle reminder or any other notification. */
@@ -108,7 +144,12 @@ export function runHook(
         const thread = t3Id
           ? axiom.findThread({ provider: "t3", providerThreadId: t3Id })
           : axiom.findThread({ provider: "claude-code", providerThreadId: sessionId as string });
-        if (thread && thread.endedAt === null) axiom.setThreadActivity(thread.id, line);
+        if (thread && thread.endedAt === null) {
+          axiom.setThreadActivity(thread.id, line);
+          // T3 reports its own threads' effort; a direct session's comes with the payload.
+          const effort = t3Id ? undefined : effortLevel(payload);
+          if (effort) axiom.setThreadRuntime(thread.id, { effort });
+        }
       } finally {
         axiom.close();
       }
@@ -180,6 +221,7 @@ export function runHook(
           // re-invoked and stops again with none left.
           axiom.setRunningSubagents(thread.id, subagents);
           if (subagents === 0) axiom.threadStopped(thread.id);
+          recordRuntime(axiom, thread.id, payload);
           break;
         }
         case "session-end":

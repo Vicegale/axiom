@@ -517,6 +517,97 @@ describe("axiom hook pre-tool (the activity line)", () => {
   });
 });
 
+describe("axiom hook: model, effort and context", () => {
+  const runtime = (db: string, id = 1) => {
+    const ax = openDatabase(db);
+    try {
+      const t = ax.getThread(id);
+      return {
+        model: t.model,
+        effort: t.effort,
+        used: t.contextUsed,
+        max: t.contextMax,
+        at: t.runtimeAt,
+      };
+    } finally {
+      ax.close();
+    }
+  };
+  const transcript = (s: { root: string }, lines: object[]) => {
+    const path = join(s.root, "transcript.jsonl");
+    writeFileSync(path, lines.map((l) => JSON.stringify(l)).join("\n"));
+    return path;
+  };
+  const turn = {
+    type: "assistant",
+    message: {
+      role: "assistant",
+      model: "claude-opus-5-5",
+      usage: { input_tokens: 5, cache_creation_input_tokens: 95, cache_read_input_tokens: 190_000 },
+    },
+  };
+
+  it("a stop takes the effort from the payload and model and context from the transcript", () => {
+    const s = session();
+    s.attach();
+    s.hook("prompt", PROMPT);
+    const path = transcript(s, [turn]);
+    s.hook("stop", payload("Stop", { effort: { level: "high" }, transcript_path: path }));
+    expect(runtime(s.db)).toMatchObject({
+      model: "claude-opus-5-5",
+      effort: "high",
+      used: 190_100,
+      max: 1_000_000,
+    });
+    expect(runtime(s.db).at).not.toBeNull();
+    // Ephemeral: nothing about it in the history.
+    expect(JSON.stringify(s.topic().history)).not.toContain("opus");
+    expect(s.log()).toBe("");
+  });
+
+  it("a stop with a missing transcript still stores the effort, and never fails", () => {
+    const s = session();
+    s.attach();
+    s.hook(
+      "stop",
+      payload("Stop", { effort: { level: "xhigh" }, transcript_path: join(s.root, "gone.jsonl") }),
+    );
+    expect(runtime(s.db)).toMatchObject({ model: null, effort: "xhigh", used: null });
+    s.hook("stop", payload("Stop", { effort: "high", transcript_path: 7 }));
+    expect(runtime(s.db).effort).toBe("xhigh");
+    expect(s.log()).toBe("");
+  });
+
+  it("pre-tool stores the effort level too, and a repeat writes nothing", () => {
+    const s = session();
+    s.attach();
+    const pre = payload("PreToolUse", {
+      tool_name: "Bash",
+      tool_input: { command: "ls" },
+      effort: { level: "medium" },
+    });
+    s.hook("pre-tool", pre);
+    const first = runtime(s.db);
+    expect(first).toMatchObject({ effort: "medium", model: null });
+    s.hook("pre-tool", pre);
+    expect(runtime(s.db).at).toBe(first.at);
+  });
+
+  it("leaves a T3 thread's runtime to the T3 sync", () => {
+    const s = session();
+    s.exec(["topic", "new", "demo", "--title", "Demo"]);
+    s.exec(["thread", "attach", "demo", "--provider", "t3", "--id", "t3-thread-1"]);
+    const path = transcript(s, [turn]);
+    s.hook("stop", payload("Stop", { effort: { level: "high" }, transcript_path: path }), {
+      T3CODE_THREAD_ID: "t3-thread-1",
+    });
+    s.hook("pre-tool", payload("PreToolUse", { tool_name: "Bash", effort: { level: "high" } }), {
+      T3CODE_THREAD_ID: "t3-thread-1",
+    });
+    expect(runtime(s.db)).toMatchObject({ model: null, effort: null, used: null });
+  });
+});
+
 describe("axiom hooks install / uninstall", () => {
   const CLI = "/opt/axiom/packages/cli/dist/index.js";
   const base = (s: string) => ["hooks", s, "--cli-entry", CLI];

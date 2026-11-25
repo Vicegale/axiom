@@ -250,6 +250,18 @@ export function registerSendRoutes(app: Hono, o: SendingOptions): void {
     }
   };
 
+  /**
+   * The model and effort the owner chose for a send: shown on the card at once (the context is
+   * unchanged; the provider reports the real values when the run finishes).
+   */
+  const recordChoice = (threadId: number, input: { model?: string; effort?: string }) => {
+    if (input.model === undefined && input.effort === undefined) return;
+    ax.setThreadRuntime(threadId, {
+      ...(input.model !== undefined ? { model: input.model } : {}),
+      ...(input.effort !== undefined ? { effort: input.effort } : {}),
+    });
+  };
+
   /** What the owner said is history. */
   const record = (topicId: number, text: string) => {
     ax.addEntry(topicId, { kind: "owner input", body: text }, owner);
@@ -293,6 +305,7 @@ export function registerSendRoutes(app: Hono, o: SendingOptions): void {
           );
         }
         ax.threadReopened(th.id);
+        recordChoice(th.id, input);
         try {
           await spawnDetached(
             claudeCli(),
@@ -362,6 +375,7 @@ export function registerSendRoutes(app: Hono, o: SendingOptions): void {
         if (r.code !== 0) throw failure("t3 thread start", r);
         const id = parseStartedThreadId(r.stdout);
         thread = ax.attachThread(slug, { provider: "t3", providerThreadId: id, title }, owner);
+        recordChoice(thread.id, input);
       } else {
         const cwd = input.cwd ?? repo;
         if (!cwd) {
@@ -377,6 +391,7 @@ export function registerSendRoutes(app: Hono, o: SendingOptions): void {
           owner,
         );
         ax.setThreadCwd(thread.id, cwd);
+        recordChoice(thread.id, input);
         try {
           await spawnDetached(
             claudeCli(),

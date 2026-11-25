@@ -1,4 +1,4 @@
-import type { Axiom, Thread } from "@axiom/core";
+import type { Axiom, RuntimePatch, Thread } from "@axiom/core";
 import {
   readT3Meta,
   T3Db,
@@ -83,6 +83,14 @@ export class T3Provider {
   /** Pending requests per Axiom thread id, as of the last sync (the Desk shows the count). */
   private pendingByThread = new Map<number, number>();
   private pendingChanged = false;
+  private runtimeChanged = false;
+
+  /** True once after a sync changed some thread's model, effort or context (the cards show them). */
+  takeRuntimeChanged(): boolean {
+    const v = this.runtimeChanged;
+    this.runtimeChanged = false;
+    return v;
+  }
 
   /** True once after the pending-request counts changed in a sync (no status event needed). */
   takePendingChanged(): boolean {
@@ -243,6 +251,18 @@ export class T3Provider {
         if (a.text !== th.activityText && (th.activityAt === null || a.at > th.activityAt)) {
           this.ax.setThreadActivity(th.id, a.text, a.at);
         }
+      }
+      // Model, effort and context: only values T3 gives, and only when they differ.
+      for (const { th, state } of planned) {
+        const r = state?.runtime;
+        if (!r || state?.removed) continue;
+        const patch: RuntimePatch = {};
+        if (r.model !== null) patch.model = r.model;
+        if (r.effort !== null) patch.effort = r.effort;
+        if (r.contextUsed !== null) patch.contextUsed = r.contextUsed;
+        // A window size T3 stops reporting is kept.
+        if (r.contextMax !== null) patch.contextMax = r.contextMax;
+        if (this.ax.setThreadRuntime(th.id, patch)) this.runtimeChanged = true;
       }
       for (const { th, action } of planned) {
         if (!action) continue;

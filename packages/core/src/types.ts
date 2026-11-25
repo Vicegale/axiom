@@ -80,6 +80,22 @@ export interface Thread {
   /** The newest step the agent took (ephemeral, one line), and when. */
   activityText: string | null;
   activityAt: string | null;
+  /** What the thread runs on (ephemeral, latest only): model id, effort, and context window use. */
+  model: string | null;
+  effort: string | null;
+  contextUsed: number | null;
+  /** The context window size; null when unknown. */
+  contextMax: number | null;
+  /** When any of these last changed. */
+  runtimeAt: string | null;
+}
+
+/** A change to a thread's model, effort or context: absent keys stay as they are. */
+export interface RuntimePatch {
+  model?: string | null;
+  effort?: string | null;
+  contextUsed?: number | null;
+  contextMax?: number | null;
 }
 
 export interface Link {

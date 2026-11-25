@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryLocation } from "wouter/memory-location";
 import { App } from "../App";
-import type { DeskTopic } from "../api";
+import type { DeskThread, DeskTopic } from "../api";
 import { expectAccessible } from "../test/axe";
 import { deskThread, deskTopic, FakeServer, notification } from "../test/fakeApi";
 import { seedTracker } from "../test/seed";
@@ -501,5 +501,144 @@ describe("the live activity line", () => {
     expect(css).toMatch(
       /prefers-reduced-motion[^{]*\{[\s\S]*\.dk-run\.live \.dk-rundot \{ animation: none/,
     );
+  });
+});
+
+describe("model, effort and context", () => {
+  const setRuntime = (r: Partial<NonNullable<DeskThread["runtime"]>> | null) => {
+    const th = server.desk[0]?.threads[1];
+    if (th) {
+      th.runtime = r && {
+        model: null,
+        effort: null,
+        contextUsed: null,
+        contextMax: null,
+        at: "2026-11-25T10:00:00Z",
+        ...r,
+      };
+    }
+  };
+  const runtime = () => card("Alpha").querySelector(".dk-runtime") as HTMLElement | null;
+
+  it("shows nothing while the thread's runtime is unknown", async () => {
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    expect(runtime()).toBeNull();
+    expect(within(card("Alpha")).queryByRole("meter")).toBeNull();
+  });
+
+  it("shows the model's name, the effort and a context meter", async () => {
+    setRuntime({
+      model: "claude-opus-5-5",
+      effort: "high",
+      contextUsed: 190_000,
+      contextMax: 1_000_000,
+    });
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    const r = runtime() as HTMLElement;
+    expect(r.textContent).toContain("Opus 5.5 · high");
+    expect(r.querySelector(".dk-model")?.getAttribute("title")).toBe(
+      "claude-opus-5-5 · effort high",
+    );
+    expect(r.textContent).toContain("190k / 1M");
+    const meter = within(card("Alpha")).getByRole("meter", { name: "Context used" });
+    expect(meter.getAttribute("aria-valuenow")).toBe("190000");
+    expect(meter.getAttribute("aria-valuemin")).toBe("0");
+    expect(meter.getAttribute("aria-valuemax")).toBe("1000000");
+    expect(meter.getAttribute("aria-valuetext")).toBe("190k of 1M");
+    expect(meter.getAttribute("data-level")).toBe("ok");
+    expect((meter.firstElementChild as HTMLElement).style.width).toBe("19%");
+    expect(meter.closest(".dk-ctx")?.getAttribute("title")).toBe(
+      "Context: 190,000 of 1,000,000 tokens (19%)",
+    );
+  });
+
+  it("turns amber above 80 % and red above 95 %", async () => {
+    const level = async (used: number) => {
+      setRuntime({ model: "claude-opus-5-5", contextUsed: used, contextMax: 1_000_000 });
+      const { unmount } = render(<App router={{ hook: memoryLocation({ path: "/desk" }).hook }} />);
+      await screen.findAllByRole("article", { name: "Alpha" });
+      const l = screen.getByRole("meter").getAttribute("data-level");
+      unmount();
+      return l;
+    };
+    expect(await level(800_000)).toBe("ok");
+    expect(await level(800_001)).toBe("warn");
+    expect(await level(950_000)).toBe("warn");
+    expect(await level(950_001)).toBe("full");
+    expect(await level(2_000_000)).toBe("full"); // never past the end of the bar
+  });
+
+  it("shows only the tokens, no bar, when the window size is unknown", async () => {
+    setRuntime({ model: "gpt-5.4", contextUsed: 12_345 });
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    const r = runtime() as HTMLElement;
+    expect(r.textContent).toContain("gpt-5.4");
+    expect(r.textContent).toContain("12k ctx");
+    expect(within(card("Alpha")).queryByRole("meter")).toBeNull();
+    expect(r.querySelector(".dk-ctx")?.getAttribute("title")).toBe(
+      "Context: 12,345 tokens (window size unknown)",
+    );
+  });
+
+  it("shows just the model when nothing is known of the context, and just the effort without one", async () => {
+    setRuntime({ model: "claude-sonnet-5-5" });
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    expect((runtime() as HTMLElement).textContent).toBe("Sonnet 5.5");
+    expect(runtime()?.querySelector(".dk-ctx")).toBeNull();
+  });
+
+  it("is accessible", async () => {
+    setRuntime({
+      model: "claude-opus-5-5",
+      effort: "high",
+      contextUsed: 900_000,
+      contextMax: 1_000_000,
+    });
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    await expectAccessible();
+  });
+});
+
+describe("the Artifacts menu on the card", () => {
+  const artifacts = [
+    { id: 11, kind: "artifact", target: "docs/plan.md", label: "Plan", description: "The plan" },
+    {
+      id: 12,
+      kind: "artifact",
+      target: "https://example.com/r.pdf",
+      label: null,
+      description: null,
+    },
+  ];
+
+  it("appears next to the link count when the topic has artifacts", async () => {
+    patch(0, { artifacts });
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    const button = within(card("Alpha")).getByRole("button", { name: "Artifacts · 2" });
+    expect(button.closest(".dk-links")?.textContent).toContain("3 links");
+    const menu = within(card("Alpha")).getByRole("menu", { hidden: true });
+    const items = within(menu).getAllByRole("menuitem", { hidden: true });
+    expect(items).toHaveLength(2);
+    expect(items[0]?.getAttribute("href")).toBe("/topic/alpha/doc/11");
+    expect(items[0]?.textContent).toContain("The plan");
+  });
+
+  it("is absent when the topic has none", async () => {
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    expect(within(card("Alpha")).queryByRole("button", { name: /^Artifacts/ })).toBeNull();
+  });
+
+  it("is accessible", async () => {
+    patch(0, { artifacts });
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    await expectAccessible();
   });
 });

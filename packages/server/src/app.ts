@@ -403,6 +403,17 @@ export function createApp(ctx: AppContext): Hono {
       // The newest step the agent took; the card shows it while the thread runs.
       activity:
         t.activityText === null ? null : { text: t.activityText, at: t.activityAt ?? t.startedAt },
+      // What it runs on: model, effort and context use (null until something is known).
+      runtime:
+        t.model === null && t.effort === null && t.contextUsed === null
+          ? null
+          : {
+              model: t.model,
+              effort: t.effort,
+              contextUsed: t.contextUsed,
+              contextMax: t.contextMax,
+              at: t.runtimeAt,
+            },
       // Questions and permission requests waiting on the owner (the card fetches them when > 0).
       pendingRequests: pendingRequestCount(t),
       hasReply: t.lastReply !== null,
@@ -444,6 +455,16 @@ export function createApp(ctx: AppContext): Hono {
           deskOrder: s.deskOrder,
           taskCounts: s.taskCounts,
           linkCount: d.links.length,
+          // Only the artifacts (the card's menu), not every link.
+          artifacts: d.links
+            .filter((l) => l.kind === "artifact")
+            .map((l) => ({
+              id: l.id,
+              kind: l.kind,
+              target: l.target,
+              label: l.label,
+              description: l.description,
+            })),
           repository: d.links.find((l) => l.kind === "repository")?.target ?? null,
           lastWorkedAt: s.lastWorkedAt,
           highlighted: s.highlighted,

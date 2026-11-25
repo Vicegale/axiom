@@ -1,18 +1,23 @@
 import { type KeyboardEvent, type PointerEvent, useId, useState } from "react";
 import { Link } from "wouter";
-import { api, type DeskThread, type DeskTopic } from "../../api";
+import { api, type DeskThread, type DeskTopic, type ThreadRuntime } from "../../api";
 import { useResource } from "../../data/useResource";
 import { hrefs } from "../../layouts/shared/routes";
 import { isPlainClick } from "../../lib/click";
 import {
   activityAge,
+  contextLevel,
+  contextRatio,
+  modelName,
   runLine,
   runningActivity,
   threadLabel,
   threadsByActivity,
+  tokenCount,
 } from "../../lib/desk";
 import { ago } from "../../lib/time";
 import { useNow } from "../../lib/useNow";
+import { ArtifactsMenu } from "../ArtifactsMenu";
 import { StatusPill } from "../StatusPill";
 import { ReplyMarkdown } from "./LazyReply";
 import { ReplyBox } from "./ReplyBox";
@@ -93,6 +98,61 @@ function ActivityAge({ at }: { at: string }) {
       · {age}
     </time>
   ) : null;
+}
+
+/**
+ * What the thread runs on: "Opus 5.5 · high" and a context meter ("190k / 1M" with a bar when the
+ * window is known, "190k ctx" without). Nothing at all until something is known.
+ */
+function Runtime({ runtime: r }: { runtime: ThreadRuntime | null }) {
+  if (!r || (r.model === null && r.effort === null && r.contextUsed === null)) return null;
+  const used = r.contextUsed;
+  const max = r.contextMax;
+  const ratio = contextRatio(used, max);
+  const nf = new Intl.NumberFormat("en");
+  const model = r.model === null ? null : modelName(r.model);
+  const modelTip = [r.model, r.effort ? `effort ${r.effort}` : null].filter(Boolean).join(" · ");
+  return (
+    <div className="dk-runtime">
+      {model !== null || r.effort !== null ? (
+        <span className="dk-model" title={modelTip}>
+          {[model, r.effort].filter((x) => x !== null).join(" · ")}
+        </span>
+      ) : null}
+      {used !== null && ratio !== null && max !== null ? (
+        <span
+          className="dk-ctx"
+          title={`Context: ${nf.format(used)} of ${nf.format(max)} tokens (${Math.round(ratio * 100)}%)`}
+        >
+          {/* biome-ignore lint/a11y/useSemanticElements: a native <meter> cannot be styled alike in every browser */}
+          <span
+            className="dk-bar"
+            role="meter"
+            aria-label="Context used"
+            aria-valuemin={0}
+            aria-valuemax={max}
+            aria-valuenow={Math.min(used, max)}
+            aria-valuetext={`${tokenCount(used)} of ${tokenCount(max)}`}
+            data-level={contextLevel(ratio)}
+          >
+            <span className="dk-bar-fill" style={{ width: `${ratio * 100}%` }} />
+          </span>
+          <span aria-hidden="true">
+            {tokenCount(used)} / {tokenCount(max)}
+          </span>
+        </span>
+      ) : used !== null ? (
+        <span
+          className="dk-ctx"
+          title={`Context: ${nf.format(used)} tokens (window size unknown)`}
+          role="img"
+          aria-label={`Context used: ${tokenCount(used)} tokens`}
+        >
+          <span aria-hidden="true">{tokenCount(used)} ctx</span>
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 /** One fixed-height line: the run state, and for a running thread its newest step. */
@@ -209,15 +269,20 @@ export function DeskCard({ topic, now, theme, move, onFavorite, onHide, onOpen, 
           </span>
         ) : null}
       </span>
-      <p className="dk-meta">
+      <div className="dk-meta">
         <span>{tc.total === 0 ? "No tasks yet" : `${tc.done}/${tc.total} done`}</span>
         <span>
           Last worked <time dateTime={topic.lastWorkedAt}>{ago(topic.lastWorkedAt, now)}</time>
         </span>
-        <span>
-          {topic.linkCount} {topic.linkCount === 1 ? "link" : "links"}
+        <span className="dk-links">
+          <span>
+            {topic.linkCount} {topic.linkCount === 1 ? "link" : "links"}
+          </span>
+          {topic.artifacts.length > 0 ? (
+            <ArtifactsMenu links={topic.artifacts} slug={topic.slug} />
+          ) : null}
         </span>
-      </p>
+      </div>
 
       <div className="dk-thread">
         <label htmlFor={`${uid}-th`}>Thread</label>
@@ -242,6 +307,7 @@ export function DeskCard({ topic, now, theme, move, onFavorite, onHide, onOpen, 
 
       {thread ? (
         <>
+          <Runtime runtime={thread.runtime} />
           <RunLine thread={thread} now={now} />
           <RequestsPanel thread={thread} />
           <div className="dk-now" aria-busy={thread.summaryPending ? true : undefined}>

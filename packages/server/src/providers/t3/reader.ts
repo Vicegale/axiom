@@ -32,6 +32,13 @@
  *   (`$.fileName`), `web_search` (`$.patterns[]`), `subagent` (`$.title`). `updated_at` is the
  *   line's time. Other types (assistant text, checkpoints, todo lists, notices) are skipped.
  *
+ * - Model, effort and context for the Desk card's indicator: the thread's `payload_json`
+ *   `$.modelSelection.model` and the `$.modelSelection.options[]` entry whose `id` is `effort` or
+ *   `reasoningEffort` (its `value`); and, from `orchestration_v2_projection_provider_turns`
+ *   (`thread_id`, `started_at`, `ordinal`, `payload_json`), the newest turn that reports
+ *   `$.tokenUsage.usedTokens` (with `$.tokenUsage.maxTokens` when known; `$.model` is the model the
+ *   turn ran on, used when the thread names none).
+ *
  * - `projection_projects`: `project_id`, `title`, `workspace_root`, `default_model_selection_json`
  *   (null or `null` when the project has no default model), `pinned_at`, `archived_at`,
  *   `deleted_at`. Read for the new-topic dialog's project select (live projects only).
@@ -90,6 +97,16 @@ export interface T3ThreadState {
   latestRunId: string | null;
   /** The newest step the agent took, as one short line, or null when there is none. */
   activity: { text: string; at: string } | null;
+  /** Model, effort and context use, or null when T3 says nothing of them. */
+  runtime: T3Runtime | null;
+}
+
+/** What a T3 thread runs on; a field is null when T3 does not say. */
+export interface T3Runtime {
+  model: string | null;
+  effort: string | null;
+  contextUsed: number | null;
+  contextMax: number | null;
 }
 
 export interface T3ThreadSummary {
@@ -197,6 +214,16 @@ const ACTIVITY_SQL = `SELECT type, updated_at, payload_json
     AND type IN ('reasoning', 'command_execution', 'dynamic_tool', 'file_change', 'web_search', 'subagent')
   ORDER BY ordinal DESC LIMIT 1`;
 
+const MODEL_SQL = `SELECT payload_json FROM orchestration_v2_projection_threads WHERE thread_id = ?`;
+
+const CONTEXT_SQL = `SELECT json_extract(payload_json, '$.model') AS model,
+    json_extract(payload_json, '$.tokenUsage.usedTokens') AS used,
+    json_extract(payload_json, '$.tokenUsage.maxTokens') AS max
+  FROM orchestration_v2_projection_provider_turns
+  WHERE thread_id = ? AND json_valid(payload_json)
+    AND json_extract(payload_json, '$.tokenUsage.usedTokens') IS NOT NULL
+  ORDER BY started_at DESC, ordinal DESC LIMIT 1`;
+
 const PROJECTS_SQL = `SELECT project_id, title, workspace_root, default_model_selection_json, pinned_at
   FROM projection_projects WHERE deleted_at IS NULL AND archived_at IS NULL
   ORDER BY (pinned_at IS NULL), title COLLATE NOCASE, project_id`;
@@ -209,6 +236,26 @@ function hasModelSelection(json: string | null): boolean {
   } catch {
     return false;
   }
+}
+
+/** The thread's chosen model and effort from its payload (`$.modelSelection`); exported for tests. */
+export function modelSelection(payload: unknown): { model: string | null; effort: string | null } {
+  const sel = (payload as { modelSelection?: unknown } | null)?.modelSelection as
+    | { model?: unknown; options?: unknown }
+    | null
+    | undefined;
+  const text = (v: unknown) => (typeof v === "string" && v.trim() !== "" ? v.trim() : null);
+  let effort: string | null = null;
+  if (Array.isArray(sel?.options)) {
+    for (const o of sel.options as unknown[]) {
+      const { id, value } = (o ?? {}) as { id?: unknown; value?: unknown };
+      if ((id === "effort" || id === "reasoningEffort") && text(value)) {
+        effort = text(value);
+        break;
+      }
+    }
+  }
+  return { model: text(sel?.model), effort };
 }
 
 const THINKING_CHARS = 80;
@@ -372,6 +419,8 @@ export class T3Db {
     this.db.prepare(PENDING_SQL);
     this.db.prepare(REQUEST_ITEM_SQL);
     this.db.prepare(ACTIVITY_SQL);
+    this.db.prepare(MODEL_SQL);
+    this.db.prepare(CONTEXT_SQL);
     this.db.prepare(PROJECTS_SQL);
   }
 
@@ -405,6 +454,27 @@ export class T3Db {
     } catch {}
     const text = activityLine(row.type, payload);
     return text ? { text, at: row.updated_at } : null;
+  }
+
+  /** The thread's model, effort and context use; null when T3 says nothing of them. */
+  runtime(threadId: string): T3Runtime | null {
+    let payload: unknown;
+    const row = this.db.prepare(MODEL_SQL).get(threadId) as { payload_json: string } | undefined;
+    try {
+      payload = row ? JSON.parse(row.payload_json) : null;
+    } catch {}
+    const sel = modelSelection(payload);
+    const turn = this.db.prepare(CONTEXT_SQL).get(threadId) as
+      | { model: unknown; used: unknown; max: unknown }
+      | undefined;
+    const tokens = (v: unknown) => (typeof v === "number" && v > 0 ? Math.round(v) : null);
+    const runtime: T3Runtime = {
+      model: sel.model ?? (typeof turn?.model === "string" && turn.model ? turn.model : null),
+      effort: sel.effort,
+      contextUsed: typeof turn?.used === "number" && turn.used >= 0 ? Math.round(turn.used) : null,
+      contextMax: tokens(turn?.max),
+    };
+    return Object.values(runtime).some((v) => v !== null) ? runtime : null;
   }
 
   private pending(threadId: string): T3Request[] {
@@ -459,6 +529,7 @@ export class T3Db {
       removed,
       latestRunId: row.run_id ?? null,
       activity: removed ? null : this.activity(row.thread_id),
+      runtime: removed ? null : this.runtime(row.thread_id),
     };
   }
 

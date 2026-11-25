@@ -2,12 +2,16 @@ import { describe, expect, it } from "vitest";
 import { deskThread, deskTopic } from "../test/fakeApi";
 import {
   activityAge,
+  contextLevel,
+  contextRatio,
+  modelName,
   moveTo,
   ownerIsNext,
   runLine,
   runningActivity,
   sortDesk,
   threadsByActivity,
+  tokenCount,
 } from "./desk";
 
 const slugs = (l: { slug: string }[]) => l.map((t) => t.slug);
@@ -98,4 +102,52 @@ it("uses the step only for a running thread", () => {
   expect(runningActivity(deskThread({ id: 1, status: "wip", activity }))).toBe("$ ls");
   expect(runningActivity(deskThread({ id: 1, status: "idle", activity }))).toBeNull();
   expect(runningActivity(deskThread({ id: 1, status: "wip" }))).toBeNull();
+});
+
+describe("modelName", () => {
+  it("words Claude ids the way the owner says them", () => {
+    expect(modelName("claude-opus-5-5")).toBe("Opus 5.5");
+    expect(modelName("claude-sonnet-5")).toBe("Sonnet 5");
+    expect(modelName("claude-haiku-4-5-20251001")).toBe("Haiku 4.5");
+    expect(modelName("claude-opus-4-1[1m]")).toBe("Opus 4.1");
+    expect(modelName("claude-3-5-sonnet-20241022")).toBe("Sonnet 3.5");
+  });
+
+  it("leaves any other id as it is", () => {
+    expect(modelName("gpt-5.4")).toBe("gpt-5.4");
+    expect(modelName("opus")).toBe("opus");
+    expect(modelName("claude-weird")).toBe("claude-weird");
+  });
+});
+
+describe("token counts and the context meter", () => {
+  it("shortens token counts", () => {
+    const cases: [number, string][] = [
+      [0, "0"],
+      [950, "950"],
+      [1200, "1.2k"],
+      [1000, "1k"],
+      [12_345, "12k"],
+      [190_000, "190k"],
+      [999_600, "1M"],
+      [1_000_000, "1M"],
+      [1_500_000, "1.5M"],
+    ];
+    for (const [n, want] of cases) expect(tokenCount(n), String(n)).toBe(want);
+  });
+
+  it("knows the ratio only when both numbers are known, and caps it", () => {
+    expect(contextRatio(190_000, 1_000_000)).toBeCloseTo(0.19);
+    expect(contextRatio(null, 1_000_000)).toBeNull();
+    expect(contextRatio(10, null)).toBeNull();
+    expect(contextRatio(10, 0)).toBeNull();
+    expect(contextRatio(3_000_000, 1_000_000)).toBe(1);
+  });
+
+  it("is neutral up to 80 %, amber above, red above 95 %", () => {
+    expect(contextLevel(0.8)).toBe("ok");
+    expect(contextLevel(0.81)).toBe("warn");
+    expect(contextLevel(0.95)).toBe("warn");
+    expect(contextLevel(0.96)).toBe("full");
+  });
 });

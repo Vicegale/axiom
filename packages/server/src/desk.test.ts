@@ -211,6 +211,49 @@ if [ "$(wc -l < "$DIR/calls")" -lt 2 ]; then echo "I cannot do that"; else echo 
     expect(find(body, "a").activity?.text).toBe("$ npm test");
   });
 
+  it("GET /api/desk carries the runtime (model, effort, context) or null, and a lean artifact list", async () => {
+    const a = thread("a", "s1");
+    thread("b", "s2");
+    cli.setThreadRuntime(
+      a.id,
+      {
+        model: "claude-opus-5-5",
+        effort: "high",
+        contextUsed: 190_000,
+        contextMax: 1_000_000,
+      },
+      "2026-11-25T10:00:00.000Z",
+    );
+    cli.addLink("a", { kind: "repository", target: "/tmp/r" }, owner);
+    cli.addLink(
+      "a",
+      { kind: "artifact", target: "/tmp/r/out.html", label: "Out", description: "The page" },
+      owner,
+    );
+    await start({ claudeCli: claudeSaying(GOOD) });
+    const { body } = await api("/api/desk");
+    const first = (slug: string) => body.topics.find((t: Any) => t.slug === slug);
+    expect(first("a").threads[0].runtime).toEqual({
+      model: "claude-opus-5-5",
+      effort: "high",
+      contextUsed: 190_000,
+      contextMax: 1_000_000,
+      at: "2026-11-25T10:00:00.000Z",
+    });
+    expect(first("b").threads[0].runtime).toBeNull();
+    expect(first("a").linkCount).toBe(2);
+    expect(first("a").artifacts).toEqual([
+      {
+        id: expect.any(Number),
+        kind: "artifact",
+        target: "/tmp/r/out.html",
+        label: "Out",
+        description: "The page",
+      },
+    ]);
+    expect(first("b").artifacts).toEqual([]);
+  });
+
   it("a missing binary is an error on the thread, not a crash", async () => {
     const th = thread();
     cli.setThreadReply(th.id, "reply");

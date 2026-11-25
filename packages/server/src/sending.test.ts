@@ -143,6 +143,7 @@ describe("POST /api/threads/:id/send", () => {
     expect(r.body.error.message).toMatch(/cannot change the model or effort/);
     expect(t3.ran()).toBe(false);
     expect(ownerInputs()).toHaveLength(0);
+    expect(cli.getThread(th.id).model).toBeNull();
   });
 
   it("maps a failing binary to 502 with trimmed stderr and writes no history", async () => {
@@ -228,6 +229,12 @@ describe("POST /api/threads/:id/send", () => {
     expect(env).not.toMatch(/^AXIOM_INTERNAL=/m);
     expect(cli.getThread(th.id).endedAt).toBeNull();
     expect(ownerInputs()[0].body).toBe("Go on");
+    // The chosen model and effort show on the card at once; the context is untouched.
+    expect(cli.getThread(th.id)).toMatchObject({
+      model: "claude-sonnet-5-5",
+      effort: "high",
+      contextUsed: null,
+    });
   });
 
   it("omits model and effort flags when none are given", async () => {
@@ -237,6 +244,7 @@ describe("POST /api/threads/:id/send", () => {
     await start({ claudeCli: claude.path });
     await api(`/api/threads/${th.id}/send`, { method: "POST", body: { text: "hi" } });
     expect(claude.argv()).toEqual(["-p", "--resume", "sess-2", "--allowedTools=Bash(axiom *)"]);
+    expect(cli.getThread(th.id)).toMatchObject({ model: null, effort: null, runtimeAt: null });
   });
 
   it("answers 409 with the resume command while the session is open, and runs nothing", async () => {
@@ -322,6 +330,10 @@ describe("POST /api/topics/:slug/threads/new", () => {
       title: "Build the thing",
     });
     expect(cli.getTopic("demo").threads.map((t) => t.providerThreadId)).toEqual(["new-9"]);
+    expect(cli.getTopic("demo").threads[0]).toMatchObject({
+      model: "claude-opus-5-5",
+      effort: "max",
+    });
     expect(ownerInputs()[0].body).toBe("Build the thing\nwith care");
   });
 
@@ -430,6 +442,7 @@ describe("POST /api/topics/:slug/threads/new", () => {
       title: "Start here",
     });
     expect(cli.threadCwd(r.body.id)).toBe(work);
+    expect(cli.getThread(r.body.id)).toMatchObject({ model: "claude-haiku-5-5", effort: "low" });
     expect(ownerInputs()).toHaveLength(1);
   });
 

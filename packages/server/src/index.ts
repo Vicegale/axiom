@@ -100,7 +100,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   const syncT3 = () => {
     try {
       const applied = t3.sync();
-      if (t3.takePendingChanged() || applied > 0) bus.emit();
+      const runtime = t3.takeRuntimeChanged();
+      if (t3.takePendingChanged() || runtime || applied > 0) bus.emit();
     } catch (e) {
       console.error("T3 sync failed:", e);
     }

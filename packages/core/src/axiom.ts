@@ -55,6 +55,7 @@ import type {
   MonitorTarget,
   Notification,
   Ref,
+  RuntimePatch,
   Task,
   TaskDetail,
   Thread,
@@ -960,6 +961,40 @@ export class Axiom {
       at ?? this.iso(),
       threadId,
     );
+  }
+
+  /**
+   * Stores what a thread runs on: model, effort, context used / window size. Only the keys given
+   * change, and nothing is written when they already hold those values (so a poll that sees
+   * nothing new makes no noise). Ephemeral: never a history entry. Returns whether anything
+   * changed.
+   */
+  setThreadRuntime(threadId: number, patch: RuntimePatch, at?: string): boolean {
+    const row = this.threadRow(threadId);
+    const columns: Record<keyof RuntimePatch, string> = {
+      model: "model",
+      effort: "effort",
+      contextUsed: "context_used",
+      contextMax: "context_max",
+    };
+    const sets: string[] = [];
+    const values: (string | number | null)[] = [];
+    for (const key of Object.keys(columns) as (keyof RuntimePatch)[]) {
+      const next = patch[key];
+      if (next === undefined) continue;
+      const value = typeof next === "string" ? next.trim() || null : next;
+      if ((row[key] ?? null) === value) continue;
+      sets.push(`${columns[key]} = ?`);
+      values.push(value);
+    }
+    if (sets.length === 0) return false;
+    this.run(
+      `UPDATE thread SET ${sets.join(", ")}, runtime_at = ? WHERE id = ?`,
+      ...values,
+      at ?? this.iso(),
+      threadId,
+    );
+    return true;
   }
 
   /** Threads whose latest reply has no summary yet (never summarised, or the reply is newer). */

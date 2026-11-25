@@ -41,6 +41,9 @@ export class T3Fixture {
       archived?: boolean;
       deleted?: boolean;
       subagent?: boolean;
+      /** The thread's `modelSelection` (synthetic): model id and its options, e.g. effort. */
+      model?: string;
+      options?: { id: string; value: unknown }[];
     } = {},
   ): this {
     this.db
@@ -59,6 +62,15 @@ export class T3Fixture {
         over.deleted ? "2026-11-25T09:30:00.000Z" : null,
         JSON.stringify({
           lineage: { relationshipToParent: over.subagent ? "subagent" : null },
+          ...(over.model
+            ? {
+                modelSelection: {
+                  instanceId: "claudeAgent",
+                  model: over.model,
+                  ...(over.options ? { options: over.options } : {}),
+                },
+              }
+            : {}),
         }),
       );
     return this;
@@ -219,6 +231,45 @@ export class T3Fixture {
         type,
         updatedAt,
         JSON.stringify({ type, ordinal, ...payload }),
+      );
+    return this;
+  }
+
+  /** A provider turn with its token usage (synthetic); the newest `startedAt` is the one read. */
+  turn(
+    threadId: string,
+    ordinal: number,
+    over: {
+      startedAt?: string;
+      model?: string;
+      usedTokens?: number;
+      maxTokens?: number;
+      noUsage?: boolean;
+    } = {},
+  ): this {
+    const usage =
+      over.usedTokens === undefined || over.noUsage
+        ? undefined
+        : { usedTokens: over.usedTokens, ...(over.maxTokens ? { maxTokens: over.maxTokens } : {}) };
+    this.db
+      .prepare(
+        `INSERT INTO orchestration_v2_projection_provider_turns
+           (provider_turn_id, thread_id, provider_thread_id, node_id, ordinal, status, started_at,
+            payload_json)
+         VALUES (?, ?, ?, ?, ?, 'completed', ?, ?)`,
+      )
+      .run(
+        `turn-${seq++}`,
+        threadId,
+        `pt-${threadId}`,
+        `node-${seq}`,
+        ordinal,
+        over.startedAt ?? `2026-11-25T09:00:${String(ordinal).padStart(2, "0")}.000Z`,
+        JSON.stringify({
+          ordinal,
+          ...(over.model ? { model: over.model } : {}),
+          ...(usage ? { tokenUsage: usage } : {}),
+        }),
       );
     return this;
   }

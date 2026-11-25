@@ -824,6 +824,46 @@ describe("the Desk: replies, summaries, arrangement", () => {
     expect(ax.getThread(thread.id).activityText).toHaveLength(300);
   });
 
+  it("stores model, effort and context: only what changed, no history", () => {
+    const { thread } = topicWithThread(ax);
+    const before = ax.listEntries("demo").length;
+    expect(ax.getThread(thread.id)).toMatchObject({
+      model: null,
+      effort: null,
+      contextUsed: null,
+      contextMax: null,
+      runtimeAt: null,
+    });
+    expect(ax.setThreadRuntime(thread.id, {})).toBe(false);
+    expect(
+      ax.setThreadRuntime(thread.id, { model: " claude-opus-5-5 ", effort: "high" }, "T1"),
+    ).toBe(true);
+    expect(ax.getThread(thread.id)).toMatchObject({
+      model: "claude-opus-5-5",
+      effort: "high",
+      contextUsed: null,
+      runtimeAt: "T1",
+    });
+    // The same values again: no write, so the time stays.
+    expect(ax.setThreadRuntime(thread.id, { model: "claude-opus-5-5", effort: "high" }, "T2")).toBe(
+      false,
+    );
+    expect(ax.getThread(thread.id).runtimeAt).toBe("T1");
+    // Absent keys stay; null clears; blank text clears.
+    expect(
+      ax.setThreadRuntime(thread.id, { contextUsed: 190_000, contextMax: 1_000_000 }, "T3"),
+    ).toBe(true);
+    expect(ax.setThreadRuntime(thread.id, { contextMax: null, effort: "  " }, "T4")).toBe(true);
+    expect(ax.getThread(thread.id)).toMatchObject({
+      model: "claude-opus-5-5",
+      effort: null,
+      contextUsed: 190_000,
+      contextMax: null,
+      runtimeAt: "T4",
+    });
+    expect(ax.listEntries("demo")).toHaveLength(before);
+  });
+
   it("lists threads whose reply has no summary, and overwrites the summary each time", () => {
     const { thread } = topicWithThread(ax);
     expect(ax.threadsNeedingSummary(10)).toEqual([]);

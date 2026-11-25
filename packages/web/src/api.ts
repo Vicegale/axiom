@@ -87,6 +87,15 @@ export interface Thread {
   open?: { kind: "url"; url: string } | { kind: "command"; command: string } | null;
 }
 
+export interface ThreadRuntime {
+  model: string | null;
+  effort: string | null;
+  contextUsed: number | null;
+  /** The context window size; null when unknown. */
+  contextMax: number | null;
+  at: string | null;
+}
+
 /** A thread as GET /api/desk returns it (the full reply is fetched on its own). */
 export interface DeskThread {
   id: number;
@@ -103,6 +112,8 @@ export interface DeskThread {
   summaryError: string | null;
   /** The newest step the agent took ("$ npm test", "Reading app.ts"), kept after it stops. */
   activity: { text: string; at: string } | null;
+  /** What it runs on: model, effort and context use (the latest only); null until known. */
+  runtime: ThreadRuntime | null;
   hasReply: boolean;
   /** Questions and permission requests waiting on the owner; the card fetches them when above 0. */
   pendingRequests: number;
@@ -121,6 +132,8 @@ export interface DeskTopic {
   deskOrder: number | null;
   taskCounts: TaskCounts;
   linkCount: number;
+  /** The topic's artifact links, for the card's Artifacts menu. */
+  artifacts: LinkItem[];
   /** The topic's repository link target, if it has one. */
   repository?: string | null;
   lastWorkedAt: string;

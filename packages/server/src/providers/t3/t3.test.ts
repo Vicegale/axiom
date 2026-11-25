@@ -607,3 +607,135 @@ describe("the activity line", () => {
     expect(thread("a")?.activityText).toBeNull();
   });
 });
+
+describe("model, effort and context", () => {
+  const runtime = (id: string) => {
+    const db = T3Db.open(t3.dir);
+    try {
+      return db.thread(id, null)?.runtime ?? null;
+    } finally {
+      db.close();
+    }
+  };
+  const stored = (id: string) => {
+    const t = thread(id);
+    return {
+      model: t?.model,
+      effort: t?.effort,
+      used: t?.contextUsed,
+      max: t?.contextMax,
+    };
+  };
+
+  it("says nothing for a thread that names no model and has no usage", () => {
+    t3.thread("a");
+    expect(runtime("a")).toBeNull();
+  });
+
+  it("reads the model, either effort option id, and the newest turn's usage", () => {
+    t3.thread("a", { model: "claude-opus-5-5", options: [{ id: "effort", value: "high" }] });
+    t3.turn("a", 1, { usedTokens: 1000, maxTokens: 1_000_000 });
+    t3.turn("a", 2, { usedTokens: 190_000, maxTokens: 1_000_000 });
+    expect(runtime("a")).toEqual({
+      model: "claude-opus-5-5",
+      effort: "high",
+      contextUsed: 190_000,
+      contextMax: 1_000_000,
+    });
+    t3.thread("b", {
+      model: "gpt-5.4",
+      options: [
+        { id: "fast", value: true },
+        { id: "reasoningEffort", value: "xhigh" },
+      ],
+    });
+    expect(runtime("b")).toEqual({
+      model: "gpt-5.4",
+      effort: "xhigh",
+      contextUsed: null,
+      contextMax: null,
+    });
+  });
+
+  it("orders turns by start time, skips turns without usage, and tolerates a missing max", () => {
+    t3.thread("a");
+    t3.turn("a", 2, { startedAt: "2026-11-25T09:00:00.000Z", usedTokens: 50 });
+    t3.turn("a", 1, { startedAt: "2026-11-25T10:00:00.000Z", usedTokens: 70, model: "claude-x-1" });
+    t3.turn("a", 3, { startedAt: "2026-11-25T11:00:00.000Z", noUsage: true });
+    // The thread names no model: the turn's is used.
+    expect(runtime("a")).toEqual({
+      model: "claude-x-1",
+      effort: null,
+      contextUsed: 70,
+      contextMax: null,
+    });
+    // Another thread's turns do not leak in.
+    t3.thread("b");
+    expect(runtime("b")).toBeNull();
+  });
+
+  it("survives broken payloads", () => {
+    t3.thread("a");
+    t3.db
+      .prepare(
+        "UPDATE orchestration_v2_projection_threads SET payload_json = '{oops' WHERE thread_id = 'a'",
+      )
+      .run();
+    t3.db
+      .prepare(
+        `INSERT INTO orchestration_v2_projection_provider_turns
+           (provider_turn_id, thread_id, provider_thread_id, node_id, ordinal, status, payload_json)
+         VALUES ('bad', 'a', 'p', 'n', 1, 'completed', '{oops')`,
+      )
+      .run();
+    expect(runtime("a")).toBeNull();
+  });
+
+  it("the sync stores them, and writes again only when something changed", () => {
+    t3.thread("a", { model: "claude-opus-5-5", options: [{ id: "effort", value: "high" }] });
+    t3.turn("a", 1, { usedTokens: 190_000, maxTokens: 1_000_000 });
+    attach("a");
+    const before = ax.listEntries("topic-a").length;
+    provider.sync();
+    expect(stored("a")).toEqual({
+      model: "claude-opus-5-5",
+      effort: "high",
+      used: 190_000,
+      max: 1_000_000,
+    });
+    expect(provider.takeRuntimeChanged()).toBe(true);
+    const at = thread("a")?.runtimeAt;
+    expect(at).not.toBeNull();
+
+    // Nothing new: no write, no change flag.
+    provider.sync();
+    expect(thread("a")?.runtimeAt).toBe(at);
+    expect(provider.takeRuntimeChanged()).toBe(false);
+
+    // A new turn moves the context; a thread that loses its usage keeps the last numbers.
+    t3.turn("a", 2, { usedTokens: 210_000, maxTokens: 1_000_000 });
+    provider.sync();
+    expect(stored("a").used).toBe(210_000);
+    expect(provider.takeRuntimeChanged()).toBe(true);
+    expect(ax.listEntries("topic-a")).toHaveLength(before);
+
+    // A model change in T3 follows; a removed thread is left alone.
+    t3.db
+      .prepare(
+        `UPDATE orchestration_v2_projection_threads
+         SET payload_json = json_set(payload_json, '$.modelSelection.model', 'claude-sonnet-5-5')
+         WHERE thread_id = 'a'`,
+      )
+      .run();
+    provider.sync();
+    expect(stored("a").model).toBe("claude-sonnet-5-5");
+    t3.remove("a");
+    t3.db
+      .prepare(
+        "UPDATE orchestration_v2_projection_threads SET payload_json = json_set(payload_json, '$.modelSelection.model', 'ignored') WHERE thread_id = 'a'",
+      )
+      .run();
+    provider.sync();
+    expect(stored("a").model).toBe("claude-sonnet-5-5");
+  });
+});

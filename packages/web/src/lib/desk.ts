@@ -95,3 +95,37 @@ export function moveTo(order: readonly string[], slug: string, index: number): s
   rest.splice(Math.max(0, Math.min(index, rest.length)), 0, slug);
   return rest;
 }
+
+/**
+ * A model id as the owner says it: `claude-opus-5-5` is "Opus 5.5", `claude-3-5-sonnet-20241022`
+ * is "Sonnet 3.5". Anything else (another vendor's id, an alias) stays as it is.
+ */
+export function modelName(id: string): string {
+  const base = id.replace(/\[1m\]$/i, "");
+  const cap = (f: string) => f.charAt(0).toUpperCase() + f.slice(1);
+  const modern = /^claude-(opus|sonnet|haiku)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?$/.exec(base);
+  if (modern) return `${cap(modern[1] as string)} ${modern[2]}${modern[3] ? `.${modern[3]}` : ""}`;
+  const legacy = /^claude-(\d+)(?:-(\d{1,2}))?-(opus|sonnet|haiku)(?:-\d{8})?$/.exec(base);
+  if (legacy) return `${cap(legacy[3] as string)} ${legacy[1]}${legacy[2] ? `.${legacy[2]}` : ""}`;
+  return id;
+}
+
+/** A token count in the card's short form: 950, 1.2k, 190k, 1M, 1.5M. */
+export function tokenCount(n: number): string {
+  const trim = (x: number) => String(Math.round(x * 10) / 10);
+  if (n >= 999_500) return `${trim(n / 1_000_000)}M`;
+  if (n >= 10_000) return `${Math.round(n / 1000)}k`;
+  if (n >= 1000) return `${trim(n / 1000)}k`;
+  return String(Math.round(n));
+}
+
+/** How full the context is, as a fraction (0 to 1), or null when the window or the use is unknown. */
+export function contextRatio(used: number | null, max: number | null): number | null {
+  if (used === null || max === null || max <= 0) return null;
+  return Math.min(1, Math.max(0, used / max));
+}
+
+/** The meter's colour step: neutral, `warn` above 80 %, `full` above 95 %. */
+export function contextLevel(ratio: number): "ok" | "warn" | "full" {
+  return ratio > 0.95 ? "full" : ratio > 0.8 ? "warn" : "ok";
+}
