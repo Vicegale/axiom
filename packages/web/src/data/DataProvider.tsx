@@ -29,6 +29,8 @@ export interface AxiomData {
   topics: TopicListItem[] | undefined;
   notifications: AxiomNotification[] | undefined;
   hiddenCount: number;
+  /** What needs the owner in Steward's view: open questions, urgent and attention findings, suggestions. */
+  stewardCount: number;
   settings: Settings | undefined;
   health: Health | undefined;
   error: Error | null;
@@ -83,6 +85,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const notes = useResource<NotificationsResponse>("notifications", api.notifications, tick);
   const settings = useResource("settings", api.settings, tick);
   const health = useResource("health", api.health, tick);
+  const stewardCount = useResource("stewardCount", api.stewardCount, tick);
 
   const [saved, setSaved] = useState<Settings | undefined>();
   // biome-ignore lint/correctness/useExhaustiveDependencies: a fresh fetch supersedes a saved copy.
@@ -103,6 +106,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       topics: topics.data,
       notifications: notes.data?.notifications,
       hiddenCount: notes.data?.hiddenCount ?? 0,
+      stewardCount: stewardCount.data?.count ?? 0,
       settings: saved ?? settings.data,
       applySettings: setSaved,
       health: health.data,
@@ -116,6 +120,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       live,
       topics.data,
       notes.data,
+      stewardCount.data,
       settings.data,
       saved,
       health.data,

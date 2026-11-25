@@ -35,6 +35,9 @@ export function useActions() {
         run(() => api.setTaskStatus(slug, key, status)),
       confirmMonitor: (id: number) => run(() => api.confirmMonitor(id)),
       deleteEntry: (id: number) => run(() => api.deleteEntry(id)),
+      answerSteward: (id: number, text: string) => run(() => api.answerStewardItem(id, text)),
+      dismissSteward: (id: number) => run(() => api.dismissStewardItem(id)),
+      undoSteward: (id: number) => run(() => api.undoStewardAction(id)),
       saveSettings: (patch: Partial<Settings>) =>
         run(async () => applySettings(await api.putSettings(patch))),
     }),

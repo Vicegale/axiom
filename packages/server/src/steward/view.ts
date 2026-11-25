@@ -1,0 +1,247 @@
+import {
+  type Axiom,
+  countTokens,
+  modelFamily,
+  type StewardAction,
+  type StewardBlindSpot,
+  type StewardItem,
+  type StewardMemory,
+  type StewardRun,
+  type StewardWake,
+} from "@axiom/core";
+
+/**
+ * What the Steward page shows (ST4), in one read: the brief and its wake's stages, blind spots,
+ * the open items grouped as the page lays them out, Steward's own status changes, token use today
+ * per model family against its cap, the latest wakes, and the read-only memory core.
+ */
+
+export interface StewardSourceState {
+  /** The source is switched on in settings. */
+  on: boolean;
+  /** Reachable at the last wake's checklist; null when off or no wake has checked yet. */
+  ok: boolean | null;
+  reason: string | null;
+}
+
+export interface StewardViewItem extends StewardItem {
+  /** Urgent findings on a topic also raised a desktop notification. */
+  notified: boolean;
+  /** A status change Steward made for this item, with undo while it still holds. */
+  action: StewardAction | null;
+}
+
+export interface StewardViewStage {
+  runId: number;
+  stage: StewardRun["stage"];
+  model: string;
+  effort: StewardRun["effort"];
+  status: StewardRun["status"];
+  error: string | null;
+  tokens: number;
+  /** What the stage did, in a few words. */
+  did: string;
+}
+
+export interface StewardViewWake {
+  id: number;
+  trigger: StewardWake["trigger"];
+  triggerDetail: string | null;
+  startedAt: string;
+  endedAt: string | null;
+  status: StewardWake["status"];
+  error: string | null;
+  tokens: number;
+  summary: string;
+  stages: StewardViewStage[];
+}
+
+export interface StewardViewUsage {
+  /** `haiku`, `sonnet`, `opus` or the model itself when of no known family. */
+  family: string;
+  models: string[];
+  runs: number;
+  used: number;
+  cap: number | null;
+}
+
+export interface StewardView {
+  enabled: boolean;
+  nextWakeAt: string | null;
+  running: boolean;
+  count: number;
+  brief: { text: string; at: string; wake: StewardViewWake } | null;
+  blindSpots: StewardBlindSpot[];
+  sources: {
+    github: StewardSourceState;
+    slack: StewardSourceState;
+    googleDrive: StewardSourceState;
+  };
+  needs: StewardViewItem[];
+  questions: StewardViewItem[];
+  ready: StewardViewItem[];
+  info: StewardViewItem[];
+  usage: StewardViewUsage[];
+  wakes: StewardViewWake[];
+  memory: StewardMemory[];
+}
+
+/** Open questions, urgent and attention findings and open suggestions: what needs the owner. */
+export function stewardCount(ax: Axiom): number {
+  return ax
+    .listStewardItems({ state: "open" })
+    .filter(
+      (i) =>
+        i.kind === "question" ||
+        i.kind === "suggestion" ||
+        (i.kind === "finding" && (i.level === "urgent" || i.level === "attention")),
+    ).length;
+}
+
+function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+function wakeView(ax: Axiom, w: StewardWake, items: StewardItem[]): StewardViewWake {
+  const mine = items.filter((i) => i.wakeId === w.id);
+  const count = (kind: StewardItem["kind"]) => mine.filter((i) => i.kind === kind).length;
+  const [f, q, s] = [count("finding"), count("question"), count("suggestion")];
+  const parts = [
+    f ? plural(f, "finding") : "",
+    q ? plural(q, "question") : "",
+    s ? plural(s, "suggestion") : "",
+  ].filter(Boolean);
+  const summary =
+    w.status === "running"
+      ? "running"
+      : w.status === "failed" || w.status === "cut short"
+        ? w.status
+        : parts.length
+          ? parts.join(" · ")
+          : "nothing new";
+  const gathered = (w.gathered ?? {}) as { activity?: unknown[] };
+  const runs = ax.listStewardRuns({ wakeId: w.id });
+  const stages = runs.map<StewardViewStage>((r) => ({
+    runId: r.id,
+    stage: r.stage,
+    model: r.model,
+    effort: r.effort,
+    status: r.status,
+    error: r.error,
+    tokens: countTokens(r),
+    did:
+      r.status === "failed" || r.status === "cut short"
+        ? (r.error ?? r.status)
+        : r.status === "running"
+          ? "running"
+          : r.stage === "gather"
+            ? plural(Array.isArray(gathered.activity) ? gathered.activity.length : 0, "item") +
+              " read"
+            : r.stage === "decide"
+              ? parts.length
+                ? parts.join(", ")
+                : "nothing new"
+              : r.stage,
+  }));
+  return {
+    id: w.id,
+    trigger: w.trigger,
+    triggerDetail: w.triggerDetail,
+    startedAt: w.startedAt,
+    endedAt: w.endedAt,
+    status: w.status,
+    error: w.error,
+    tokens: stages.reduce((n, s2) => n + s2.tokens, 0),
+    summary,
+    stages,
+  };
+}
+
+export function buildStewardView(ax: Axiom, nextWakeAt: string | null): StewardView {
+  const settings = ax.getStewardSettings();
+  const all = ax.listStewardItems();
+  const actions = ax.listStewardActions();
+  const open = all.filter((i) => i.state === "open");
+  const decorate = (i: StewardItem): StewardViewItem => ({
+    ...i,
+    notified: i.level === "urgent" && i.topicId !== null,
+    action: actions.filter((a) => a.itemId === i.id).at(-1) ?? null,
+  });
+  const newest = (a: StewardItem, b: StewardItem) => b.id - a.id;
+  const findings = open.filter((i) => i.kind === "finding");
+  const rank = (i: StewardItem) => (i.level === "urgent" ? 0 : 1);
+
+  const wakeRows = ax.listStewardWakes(30);
+  const briefWake = wakeRows.find((w) => w.brief !== null);
+  const latest = wakeRows[0];
+
+  // Token use today: one row per family with a cap or with runs today.
+  const today = ax.stewardUsageForDay();
+  const families = new Set<string>([
+    ...Object.keys(settings.dailyCaps),
+    ...today.map((u) => modelFamily(u.model)),
+  ]);
+  const usage = [...families].map<StewardViewUsage>((family) => {
+    const mine = today.filter((u) => modelFamily(u.model) === family);
+    return {
+      family,
+      models: mine.map((u) => u.model),
+      runs: mine.reduce((n, u) => n + u.runs, 0),
+      used: mine.reduce((n, u) => n + u.total, 0),
+      cap: Object.hasOwn(settings.dailyCaps, family) ? (settings.dailyCaps[family] ?? null) : null,
+    };
+  });
+  const order = ["haiku", "sonnet", "opus"];
+  usage.sort((a, b) => {
+    const [x, y] = [order.indexOf(a.family), order.indexOf(b.family)];
+    return (x < 0 ? 99 : x) - (y < 0 ? 99 : y) || a.family.localeCompare(b.family);
+  });
+
+  // Sources as the last checklist saw them: unreachable ones leave a "source unreachable" spot.
+  const spots = latest?.blindSpots ?? [];
+  const source = (key: "github" | "slack" | "googleDrive"): StewardSourceState => {
+    if (!settings.sources[key]) return { on: false, ok: null, reason: null };
+    if (!latest) return { on: true, ok: null, reason: null };
+    const spot = spots.find((s) => s.kind === "source unreachable" && s.ref === key);
+    return { on: true, ok: !spot, reason: spot?.text ?? null };
+  };
+
+  return {
+    enabled: settings.enabled,
+    nextWakeAt,
+    running: ax.runningStewardWake() !== null,
+    count: stewardCount(ax),
+    brief: briefWake?.brief
+      ? {
+          text: briefWake.brief,
+          at: briefWake.endedAt ?? briefWake.startedAt,
+          wake: wakeView(ax, briefWake, all),
+        }
+      : null,
+    blindSpots: spots,
+    sources: {
+      github: source("github"),
+      slack: source("slack"),
+      googleDrive: source("googleDrive"),
+    },
+    needs: findings
+      .filter((i) => i.level === "urgent" || i.level === "attention")
+      .sort((a, b) => rank(a) - rank(b) || newest(a, b))
+      .map(decorate),
+    questions: open
+      .filter((i) => i.kind === "question")
+      .sort(newest)
+      .map(decorate),
+    ready: open
+      .filter((i) => i.kind === "suggestion")
+      .sort(newest)
+      .map(decorate),
+    info: findings
+      .filter((i) => i.level === "info" || i.level === null)
+      .sort(newest)
+      .map(decorate),
+    usage,
+    wakes: wakeRows.slice(0, 6).map((w) => wakeView(ax, w, all)),
+    memory: ax.listStewardMemory({ scope: "core" }),
+  };
+}

@@ -1,0 +1,139 @@
+/* The Steward view (03, mockup B). Tokens from tokens.css; --meta from app.css. */
+.st-app { display: grid; grid-template-rows: 2.75rem minmax(0, 1fr); height: 100vh; height: 100dvh; overflow: hidden; background: var(--bg); }
+.st-app.has-banner { grid-template-rows: 2.75rem auto minmax(0, 1fr); }
+.st-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap;
+  padding: 0 0.875rem; min-height: 2.75rem; background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.st-bar-start, .st-bar-end { display: flex; align-items: center; gap: 0.625rem; min-width: 0; }
+.st-bar-start h1 { font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.01em; }
+.st-bar-btn { border-color: var(--line); }
+.st-toggle {
+  display: inline-flex; align-items: center; gap: 0.4375rem; height: 1.75rem; padding: 0 0.625rem 0 0.4375rem;
+  border: 1px solid var(--line-strong); border-radius: 0.375rem; background: var(--panel); color: var(--text); cursor: pointer; font-size: 0.8125rem;
+}
+.st-toggle:disabled { opacity: 0.6; cursor: default; }
+.st-toggle .st-sw { position: relative; flex: none; width: 1.375rem; height: 0.75rem; border-radius: 0.375rem; background: var(--line-strong); }
+.st-toggle .st-sw::after { content: ""; position: absolute; left: 0.125rem; top: 0.125rem; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--text-3); }
+.st-toggle.on { border-color: color-mix(in srgb, var(--steward) 50%, transparent); }
+.st-toggle.on .st-sw { background: color-mix(in srgb, var(--steward) 40%, transparent); }
+.st-toggle.on .st-sw::after { left: 0.75rem; background: var(--steward); }
+.st-ic { display: inline-flex; color: var(--steward); }
+
+.st-main { min-height: 0; overflow: auto; outline: none; scrollbar-gutter: stable; }
+.st-page { max-width: 80rem; margin: 0 auto; padding: 1rem 1.25rem 2.5rem; display: grid; gap: 0.875rem; }
+.st-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 0.5rem; min-width: 0; }
+.st-meta { color: var(--meta); font-size: 0.75rem; font-weight: 400; }
+.st-num { font-variant-numeric: tabular-nums; }
+.st-mono { font: 0.6875rem var(--font-mono); color: var(--text-2); }
+.st-blind { color: var(--k-authorization); }
+.st-empty { padding: 0.25rem 0.875rem 0.875rem; font-size: 0.8125rem; color: var(--text-2); max-width: 60ch; }
+.st-empty.flush { padding: 0; }
+
+.st-brief { padding: 0.875rem 1rem; display: grid; gap: 0.375rem; }
+.st-brief-h { display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap; }
+.st-brief h2 { font-size: 1.0625rem; font-weight: 600; }
+.st-lead { color: var(--text-2); font-size: 0.875rem; max-width: 80ch; }
+.st-lead.dim { color: var(--text-2); }
+.st-disclosure { margin-left: auto; padding: 0.125rem 0.25rem; border: 0; background: none; color: var(--meta); font-size: 0.75rem; cursor: pointer; border-radius: 0.1875rem; }
+.st-disclosure:hover { color: var(--text); }
+.st-stages-wrap { margin: 0.25rem 0 0.375rem; overflow-x: auto; }
+.st-stages { border-collapse: collapse; font-size: 0.75rem; }
+.st-stages td { padding: 0.125rem 0.75rem 0.125rem 0; white-space: nowrap; }
+
+.st-cols { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 0.875rem; align-items: start; }
+.st-stack { display: grid; gap: 0.875rem; min-width: 0; }
+.st-bottom { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: 0.875rem; align-items: start; }
+@media (max-width: 1100px) { .st-cols, .st-bottom { grid-template-columns: minmax(0, 1fr); } }
+
+.st-sec-h { display: flex; align-items: baseline; gap: 0.5rem; padding: 0.625rem 0.875rem; }
+.st-sec-h h2 { font-size: 0.8125rem; font-weight: 600; outline-offset: 2px; }
+.st-n { color: var(--meta); font: 0.75rem var(--font-mono); }
+.st-end { margin-left: auto; }
+.st-end .btn { text-decoration: none; }
+.st-sub { padding: 0.625rem 0.875rem 0.375rem; font-size: 0.75rem; font-weight: 400; color: var(--meta); border-top: 1px solid var(--line); }
+.st-sub + .st-list > .st-item:first-child { border-top: 0; }
+.st-pad { padding: 0 0.875rem 0.75rem; display: grid; gap: 0.625rem; }
+
+.st-list { display: block; }
+.st-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.75rem; padding: 0.6875rem 0.875rem; border-top: 1px solid var(--line); }
+.st-item-main { display: grid; gap: 0.25rem; min-width: 0; }
+.st-item-acts { display: flex; gap: 0.25rem; align-items: flex-start; }
+.st-item-title { font-size: 0.8125rem; font-weight: 500; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.st-item-text { font-size: 0.84375rem; overflow-wrap: anywhere; }
+.st-item-text.dim { color: var(--text-2); font-size: 0.8125rem; }
+.st-meta-line { display: flex; align-items: center; flex-wrap: wrap; gap: 0 0.375rem; font-size: 0.75rem; color: var(--meta); }
+.st-meta-part + .st-meta-part::before { content: "·"; margin-right: 0.375rem; opacity: 0.7; }
+.st-tlink { color: var(--text-2); text-decoration: none; }
+.st-tlink:hover { color: var(--text); text-decoration: underline; }
+.lv-urgent { box-shadow: inset 3px 0 0 var(--st-error); }
+.lv-attention { box-shadow: inset 3px 0 0 var(--st-hitl); }
+.st-lvl { font: 0.625rem/1rem var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; padding: 0 0.3125rem; border-radius: 0.1875rem; color: color-mix(in srgb, var(--st-error) var(--ink-mix), var(--text)); background: color-mix(in srgb, var(--st-error) 14%, transparent); }
+.st-did { display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap; font-size: 0.78125rem; color: var(--text-2); }
+.st-status { font: 0.6875rem var(--font-mono); padding: 0 0.375rem; border-radius: 0.25rem; border: 1px solid var(--line-strong); }
+.st-link-btn { padding: 0.125rem 0.25rem; border: 0; background: none; color: var(--text-2); font-size: 0.78125rem; text-decoration: underline; cursor: pointer; border-radius: 0.1875rem; }
+.st-link-btn:hover { color: var(--text); }
+.st-primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+.st-primary:hover { background: var(--text-2); border-color: var(--text-2); }
+.st-primary:disabled { opacity: 0.5; }
+.st-answer { display: flex; gap: 0.375rem; margin-top: 0.25rem; }
+.st-answer input { flex: 1; min-width: 0; height: 1.75rem; padding: 0 0.625rem; border-radius: 0.375rem; border: 1px solid var(--focus); background: var(--bg); color: var(--text); }
+.st-answer input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/* revealed on hover or keyboard focus within the item; always shown on touch screens */
+.st-reveal { opacity: 0; transition: opacity 0.12s; }
+.st-item:hover .st-reveal, .st-item:focus-within .st-reveal, .st-reveal:focus-visible { opacity: 1; }
+@media (hover: none) { .st-reveal { opacity: 1; } }
+
+.st-core-meter { display: grid; grid-template-columns: 1fr auto; gap: 0.625rem; align-items: center; }
+.st-meter { display: block; height: 0.25rem; border-radius: 0.125rem; background: var(--raised); overflow: hidden; }
+.st-meter > span { display: block; height: 100%; background: var(--steward); }
+.st-meter.over > span { background: var(--st-error); }
+.st-mem { display: grid; }
+.st-mem li { padding: 0.3125rem 0; border-top: 1px solid var(--line); font-size: 0.8125rem; }
+.st-mem li:first-child { border-top: 0; }
+.st-usage { list-style: none; }
+.st-usage-row { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr) max-content; gap: 0.625rem; align-items: center; font-size: 0.8125rem; }
+.st-wakes { display: grid; }
+.st-wk { display: grid; grid-template-columns: 2.75rem minmax(0, 1fr) max-content; gap: 0.5rem; padding: 0.375rem 0; border-top: 1px solid var(--line); font-size: 0.78rem; }
+.st-wk:first-child { border-top: 0; }
+
+/* settings dialog */
+dialog.st-settings {
+  margin: auto; width: min(38rem, 94vw); max-height: 92vh; padding: 0; overflow: hidden; color: var(--text);
+  background: var(--panel); border: 1px solid var(--line-strong); border-radius: 0.375rem; box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.35);
+}
+dialog.st-settings[open] { display: flex; flex-direction: column; }
+dialog.st-settings::backdrop { background: rgba(6, 7, 9, 0.55); }
+.st-set-form { display: flex; flex-direction: column; gap: 0.875rem; min-height: 0; padding: 1rem 1.125rem; overflow-y: auto; }
+.st-set-head { display: flex; align-items: center; justify-content: space-between; }
+.st-set-head h2 { font-size: 0.9375rem; font-weight: 600; }
+.st-set-form fieldset { margin: 0; padding: 0; border: 0; display: grid; gap: 0.5rem; min-width: 0; }
+.st-set-form legend { padding: 0; margin-bottom: 0.375rem; font-size: 0.8125rem; font-weight: 600; }
+.st-set-hint { font-size: 0.75rem; color: var(--text-2); }
+.st-set-row { display: grid; grid-template-columns: 5rem 1fr 1fr; gap: 0.5rem; align-items: center; }
+.st-set-label { font-size: 0.8125rem; color: var(--text-2); }
+.st-set-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.625rem; }
+.st-set-field { display: grid; gap: 0.25rem; font-size: 0.75rem; color: var(--text-2); }
+.st-set-form input:not([type="checkbox"]), .st-set-form select {
+  width: 100%; min-height: 1.875rem; padding: 0.25rem 0.5rem; color: var(--text); background: var(--bg);
+  border: 1px solid var(--control); border-radius: 0.1875rem; font: inherit; font-size: 0.8125rem;
+}
+.st-set-form :focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.st-set-form select:disabled { opacity: 0.6; }
+.st-set-form fieldset.st-set-checks { display: flex; }
+.st-set-checks { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; }
+.st-set-checks.col { flex-direction: column; gap: 0.375rem; }
+.st-source { flex-wrap: wrap; }
+.st-source .st-set-hint { margin-left: 0.25rem; }
+.st-set-error { font-size: 0.78rem; color: color-mix(in srgb, var(--st-error) var(--ink-mix), var(--text)); }
+.st-set-foot { display: flex; justify-content: flex-end; gap: 0.5rem; }
+
+@media (max-width: 700px) {
+  .st-page { padding: 0.75rem; }
+  .st-set-row { grid-template-columns: 1fr 1fr; }
+  .st-set-label { grid-column: 1 / -1; }
+  .st-set-grid { grid-template-columns: minmax(0, 1fr); }
+}
+.st-kind { color: var(--steward); }
+.st-kind.blind { color: var(--k-authorization); }

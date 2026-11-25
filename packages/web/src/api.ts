@@ -262,11 +262,128 @@ export interface NotificationsResponse {
   hiddenCount: number;
 }
 
+export interface StewardStageModel {
+  model: string;
+  effort: Effort;
+}
+
+/** Steward's settings (03 Decisions); the server validates them whole. */
+export interface StewardSettings {
+  enabled: boolean;
+  workingHours: { start: string; end: string; days: number[] };
+  wakeIntervalMin: number;
+  ghPollIntervalMin: number;
+  stages: { gather: StewardStageModel; decide: StewardStageModel };
+  /** A promoted task's rating mapped to a model and effort, or null for "report only". */
+  complexity: {
+    simple: StewardStageModel | null;
+    medium: StewardStageModel | null;
+    hard: StewardStageModel | null;
+  };
+  dailyCaps: Record<string, number>;
+  stageTimeoutMin: number;
+  memoryCoreTokens: number;
+  prSignals: string[];
+  sources: { github: boolean; slack: boolean; googleDrive: boolean };
+}
+
 export interface Settings {
   mutedKinds: NotificationKind[];
   staleAfterDays: number;
   layout: "inbox" | "board" | "console";
   theme: "dark" | "light" | "system";
+  steward: StewardSettings;
+}
+
+export type StewardLevel = "urgent" | "attention" | "info";
+export type StewardStatus = "running" | "done" | "failed" | "cut short";
+
+export interface StewardAction {
+  id: number;
+  itemId: number;
+  kind: "rebase in place" | "status change";
+  data: unknown;
+  doneAt: string;
+  undoneAt: string | null;
+}
+
+export interface StewardItem {
+  id: number;
+  wakeId: number | null;
+  kind: "finding" | "question" | "suggestion";
+  topicId: number | null;
+  topicSlug: string | null;
+  level: StewardLevel | null;
+  title: string;
+  body: string | null;
+  signal: string | null;
+  source: string | null;
+  state: string;
+  createdAt: string;
+  /** Urgent findings on a topic raised a desktop notification. */
+  notified: boolean;
+  action: StewardAction | null;
+}
+
+export interface StewardStage {
+  runId: number;
+  stage: string;
+  model: string;
+  effort: Effort;
+  status: StewardStatus;
+  error: string | null;
+  tokens: number;
+  did: string;
+}
+
+export interface StewardWake {
+  id: number;
+  trigger: "timer" | "event" | "tidy-up" | "owner";
+  triggerDetail: string | null;
+  startedAt: string;
+  endedAt: string | null;
+  status: StewardStatus;
+  error: string | null;
+  tokens: number;
+  summary: string;
+  stages: StewardStage[];
+}
+
+export interface StewardBlindSpot {
+  kind: string;
+  text: string;
+  topic?: string;
+  ref?: string;
+}
+
+export interface StewardSource {
+  on: boolean;
+  ok: boolean | null;
+  reason: string | null;
+}
+
+export interface StewardMemoryItem {
+  id: number;
+  scope: "core" | "attached" | "general";
+  text: string;
+}
+
+/** GET /api/steward: everything the Steward page shows. */
+export interface StewardView {
+  enabled: boolean;
+  nextWakeAt: string | null;
+  running: boolean;
+  count: number;
+  brief: { text: string; at: string; wake: StewardWake } | null;
+  blindSpots: StewardBlindSpot[];
+  sources: { github: StewardSource; slack: StewardSource; googleDrive: StewardSource };
+  needs: StewardItem[];
+  questions: StewardItem[];
+  ready: StewardItem[];
+  info: StewardItem[];
+  usage: { family: string; models: string[]; runs: number; used: number; cap: number | null }[];
+  wakes: StewardWake[];
+  memory: StewardMemoryItem[];
 }
 
 export interface T3Health {
@@ -478,6 +595,12 @@ export const api = {
       decision,
       ...(message ? { message } : {}),
     }),
+  steward: () => request<StewardView>("GET", "/api/steward"),
+  stewardCount: () => request<{ count: number }>("GET", "/api/steward/count"),
+  answerStewardItem: (id: number, text: string) =>
+    request<unknown>("POST", `/api/steward/items/${id}/answer`, { text }),
+  dismissStewardItem: (id: number) => request<unknown>("POST", `/api/steward/items/${id}/dismiss`),
+  undoStewardAction: (id: number) => request<unknown>("POST", `/api/steward/actions/${id}/undo`),
   health: () => request<Health>("GET", "/api/health"),
   composeOptions: () => request<ComposeOptions>("GET", "/api/compose/options"),
   sendToThread: (id: number, body: SendBody) =>

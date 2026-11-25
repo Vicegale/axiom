@@ -11,6 +11,7 @@ import {
   STEWARD_ITEM_STATES,
   STEWARD_LEVELS,
   type Subagent,
+  stewardSettingsSchema,
   type Thread,
   type Ticket,
   TOPIC_STATUSES,
@@ -38,6 +39,7 @@ import type { T3Provider } from "./providers/t3/provider.js";
 import { livePendingApprovals, registerRequestRoutes } from "./requests.js";
 import { registerSendRoutes } from "./sending.js";
 import { serveWeb } from "./static.js";
+import { buildStewardView, stewardCount } from "./steward/view.js";
 
 const owner: Actor = { kind: "owner" };
 const PING_MS = 15_000;
@@ -60,6 +62,8 @@ export interface AppContext {
   sendGraceMs?: number;
   /** Replaces `fetch` for calls to T3's MCP endpoint (tests). */
   fetchImpl?: typeof fetch;
+  /** When Steward's next timer wake is due (ISO), or null; set once the scheduler exists. */
+  stewardNextWake?: () => string | null;
 }
 
 const STATUS_CODES = { "not-found": 404, permission: 403, validation: 400, conflict: 409 } as const;
@@ -111,6 +115,8 @@ const bodies = {
     staleAfterDays: z.number().int().positive().optional(),
     layout: z.enum(["inbox", "board", "console"]).optional(),
     theme: z.enum(["dark", "light", "system"]).optional(),
+    /** All of Steward's settings at once (the page sends the whole object). */
+    steward: stewardSettingsSchema.optional(),
   }),
 };
 
@@ -678,6 +684,7 @@ export function createApp(ctx: AppContext): Hono {
     theme: (ax.getSetting("theme") as string | undefined) ?? "system",
     summaries: ax.getSetting("summaries"),
     approvalTimeoutSec: ax.getSetting("approvalTimeoutSec"),
+    steward: ax.getStewardSettings(),
   });
 
   // Steward's recent wakes with their blind spots and what stage 1 gathered (newest first), and
@@ -686,6 +693,9 @@ export function createApp(ctx: AppContext): Hono {
     const n = Number(c.req.query("limit") ?? 20);
     return c.json(ax.listStewardWakes(Number.isInteger(n) && n > 0 ? Math.min(n, 100) : 20));
   });
+  // The Steward page in one read, and the count that sits beside its tab in every header.
+  app.get("/api/steward", (c) => c.json(buildStewardView(ax, ctx.stewardNextWake?.() ?? null)));
+  app.get("/api/steward/count", (c) => c.json({ count: stewardCount(ax) }));
   app.get("/api/steward/prs", (c) => c.json(ax.listStewardPrs()));
 
   // The Steward view's data (ST3; the UI is ST4). Items are filterable by state (default open),

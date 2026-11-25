@@ -142,6 +142,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
     heartbeatGapMs: options.stewardHeartbeatGapMs,
     connectors: options.stewardConnectors,
   });
+  ctx.stewardNextWake = () => steward.nextWakeAt();
   steward.start();
   const timer = setInterval(maintain, options.maintenanceMs ?? HOUR_MS);
 

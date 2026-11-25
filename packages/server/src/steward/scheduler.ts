@@ -58,6 +58,20 @@ export function inWorkingHours(hours: StewardSettings["workingHours"], date: Dat
   return start <= end ? mins >= start && mins < end : mins >= start || mins < end;
 }
 
+/**
+ * The first moment at or after `from` that falls inside the working hours (local time), or null
+ * when the hours name no day.
+ */
+export function nextWorkingTime(hours: StewardSettings["workingHours"], from: Date): Date | null {
+  if (inWorkingHours(hours, from)) return from;
+  const [h, m] = [Number(hours.start.slice(0, 2)), Number(hours.start.slice(3))];
+  for (let d = 0; d <= 8; d++) {
+    const t = new Date(from.getFullYear(), from.getMonth(), from.getDate() + d, h, m);
+    if (t.getTime() > from.getTime() && inWorkingHours(hours, t)) return t;
+  }
+  return null;
+}
+
 const RANK: Record<StewardWakeTrigger, number> = { timer: 0, event: 1, "tidy-up": 1, owner: 2 };
 
 interface WakeRequest {
@@ -117,6 +131,21 @@ export class Steward {
   private cli(): string {
     const s = this.o.ax.getSetting("claudeCli");
     return typeof s === "string" && s ? s : this.o.claudeCli;
+  }
+
+  /**
+   * When the next timer wake is due (ISO), or null when Steward is off or no working day is set.
+   * It is the last wake's start plus the interval, moved into the working hours; a time already
+   * past means "at the next look at the clock" and is returned as now.
+   */
+  nextWakeAt(): string | null {
+    const s = this.settings();
+    if (!s.enabled) return null;
+    const now = this.now();
+    const last = this.o.ax.listStewardWakes(1)[0];
+    const due = last ? new Date(Date.parse(last.startedAt) + s.wakeIntervalMin * 60_000) : now;
+    const next = nextWorkingTime(s.workingHours, due.getTime() > now.getTime() ? due : now);
+    return next ? next.toISOString() : null;
   }
 
   /** Resolves when no wake is running and none is waiting (for tests and shutdown). */

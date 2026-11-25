@@ -9,12 +9,87 @@ import type {
   EpicItem,
   PendingRequest,
   Settings,
+  StewardItem,
+  StewardSettings,
+  StewardView,
   TaskItem,
   Thread,
   TicketItem,
   TopicDetailData,
   TopicListItem,
 } from "../api";
+
+export const STEWARD_DEFAULTS: StewardSettings = {
+  enabled: false,
+  workingHours: { start: "09:00", end: "19:00", days: [1, 2, 3, 4, 5] },
+  wakeIntervalMin: 30,
+  ghPollIntervalMin: 10,
+  stages: {
+    gather: { model: "haiku", effort: "low" },
+    decide: { model: "sonnet", effort: "low" },
+  },
+  complexity: {
+    simple: { model: "sonnet", effort: "medium" },
+    medium: { model: "opus", effort: "high" },
+    hard: null,
+  },
+  dailyCaps: { haiku: 5_000_000, sonnet: 1_500_000, opus: 400_000 },
+  stageTimeoutMin: 10,
+  memoryCoreTokens: 2000,
+  prSignals: [
+    "ci failed",
+    "changes requested",
+    "new review comments",
+    "conflict coming",
+    "no reviewer",
+    "ready to merge",
+  ],
+  sources: { github: true, slack: true, googleDrive: true },
+};
+
+export function emptyStewardView(): StewardView {
+  const off = { on: true, ok: null, reason: null };
+  return {
+    enabled: false,
+    nextWakeAt: null,
+    running: false,
+    count: 0,
+    brief: null,
+    blindSpots: [],
+    sources: { github: off, slack: off, googleDrive: off },
+    needs: [],
+    questions: [],
+    ready: [],
+    info: [],
+    usage: [
+      { family: "haiku", models: [], runs: 0, used: 0, cap: 5_000_000 },
+      { family: "sonnet", models: [], runs: 0, used: 0, cap: 1_500_000 },
+      { family: "opus", models: [], runs: 0, used: 0, cap: 400_000 },
+    ],
+    wakes: [],
+    memory: [],
+  };
+}
+
+export function stewardItem(
+  over: Partial<StewardItem> & { id: number; kind: StewardItem["kind"] },
+): StewardItem {
+  return {
+    wakeId: null,
+    topicId: null,
+    topicSlug: null,
+    level: null,
+    title: `Item ${over.id}`,
+    body: null,
+    signal: null,
+    source: null,
+    state: "open",
+    createdAt: T0,
+    notified: false,
+    action: null,
+    ...over,
+  };
+}
 
 export interface Call {
   method: string;
@@ -158,7 +233,15 @@ export class FakeServer {
   notifications: AxiomNotification[] = [];
   epics: EpicItem[] = [];
   tickets: TicketItem[] = [];
-  settings: Settings = { mutedKinds: [], staleAfterDays: 14, layout: "inbox", theme: "dark" };
+  settings: Settings = {
+    mutedKinds: [],
+    staleAfterDays: 14,
+    layout: "inbox",
+    theme: "dark",
+    steward: structuredClone(STEWARD_DEFAULTS),
+  };
+  /** The Steward page's data (GET /api/steward). */
+  steward: StewardView = emptyStewardView();
   calls: Call[] = [];
   desk: DeskTopic[] = [];
   /** Full replies by thread id; a missing one is a 404. */
@@ -346,6 +429,26 @@ export class FakeServer {
     }
     if (method === "GET" && path === "/api/notifications") {
       return this.json({ notifications: this.notifications, hiddenCount: 0 });
+    }
+    if (method === "GET" && path === "/api/steward") {
+      return this.json({ ...this.steward, enabled: this.settings.steward.enabled });
+    }
+    if (method === "GET" && path === "/api/steward/count") {
+      const v = this.steward;
+      return this.json({ count: v.needs.length + v.questions.length + v.ready.length });
+    }
+    const stItemM = /^\/api\/steward\/items\/(\d+)\/(answer|dismiss)$/.exec(path);
+    if (stItemM && method === "POST") {
+      const id = Number(stItemM[1]);
+      for (const k of ["needs", "questions", "ready", "info"] as const) {
+        this.steward[k] = this.steward[k].filter((i) => i.id !== id);
+      }
+      return this.json({ id });
+    }
+    const stUndoM = /^\/api\/steward\/actions\/(\d+)\/undo$/.exec(path);
+    if (stUndoM && method === "POST") {
+      this.steward.info = this.steward.info.filter((i) => i.action?.id !== Number(stUndoM[1]));
+      return this.json({ id: Number(stUndoM[1]) });
     }
     if (method === "GET" && path === "/api/settings") return this.json(this.settings);
     if (method === "PUT" && path === "/api/settings") {

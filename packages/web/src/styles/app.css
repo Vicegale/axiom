@@ -485,3 +485,8 @@ a { color: inherit; text-decoration: none; }
 .page-switch a { padding: 0.1875rem 0.5625rem; border-radius: var(--radius); color: var(--text-2); font-size: 0.75rem; text-decoration: none; }
 .page-switch a:hover { color: var(--text); }
 .page-switch a[aria-current="page"] { color: var(--text); background: var(--raised); }
+
+/* Steward in the page switch: its icon and the count of what needs the owner. */
+.page-switch a.ps-steward { display: inline-flex; align-items: center; gap: 0.3125rem; }
+.ps-ic { display: inline-flex; color: var(--steward); }
+.ps-count { min-width: 1rem; height: 1rem; padding: 0 0.25rem; display: inline-grid; place-items: center; border-radius: 0.5rem; background: var(--steward); color: var(--steward-on); font: 600 0.625rem/1 var(--font-mono); }

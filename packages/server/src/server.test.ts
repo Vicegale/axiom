@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Actor, type Axiom, openDatabase } from "@axiom/core";
+import { type Actor, type Axiom, DEFAULT_STEWARD_SETTINGS, openDatabase } from "@axiom/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { backupIfDue, newestBackupMs, runBackup } from "./backup.js";
 import { type RunningServer, startServer } from "./index.js";
@@ -404,6 +404,7 @@ describe("settings", () => {
       theme: "system",
       summaries: { enabled: true },
       approvalTimeoutSec: 600,
+      steward: DEFAULT_STEWARD_SETTINGS,
     });
     const put = await api("/api/settings", {
       method: "PUT",
@@ -417,6 +418,7 @@ describe("settings", () => {
       theme: "dark",
       summaries: { enabled: true },
       approvalTimeoutSec: 600,
+      steward: DEFAULT_STEWARD_SETTINGS,
     });
     expect(cli.getSetting("theme")).toBe("dark");
   });

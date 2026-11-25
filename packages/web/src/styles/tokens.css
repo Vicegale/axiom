@@ -13,6 +13,8 @@
   /* history entry kinds */
   --k-note: #8b93a0; --k-decision: #f5a524; --k-finding: #ff8a3d; --k-verification: #3fcf8e; --k-owner: #ff6b9a;
   --k-authorization: #b48cff; --k-next: #46b7ff; --k-axiom: #5c6470;
+  --steward: #e0a84f; /* Steward's accent: its icon, count and toggle */
+  --steward-on: #17120a; /* text on a --steward fill */
   --ink-mix: 55%; /* how much of a status colour tints its text: 4.5:1 in both themes */
   --radius: 0.375rem;
   color-scheme: dark;
@@ -27,5 +29,7 @@
   --st-review: #5b55e0; --st-done: #23914a; --st-stale: #8a7556; --st-error: #d93636;
   --k-note: #6b7380; --k-decision: #b87400; --k-finding: #d1601a; --k-verification: #1d9a5f; --k-owner: #d43c72;
   --k-authorization: #7b52d6; --k-next: #1f7fc4; --k-axiom: #7a818a;
+  --steward: #9c6615; /* 4.5:1 against white and the panels */
+  --steward-on: #ffffff;
   color-scheme: light;
 }

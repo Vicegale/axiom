@@ -12,3 +12,22 @@ export function Lock() {
     </svg>
   );
 }
+
+/** Steward's icon, Facet: a diamond with its left half filled. */
+export function Facet({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 1.5 14.5 8 8 14.5 1.5 8Z" />
+      <path d="M8 1.5v13L1.5 8z" fill="currentColor" />
+    </svg>
+  );
+}
