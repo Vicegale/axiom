@@ -48,8 +48,6 @@
   position: relative; flex: 1; min-height: 0; display: flex; align-items: stretch; gap: 8px;
   padding: 12px 14px; overflow-x: auto; overflow-y: hidden;
   background-color: var(--bg);
-  background-image: radial-gradient(circle, var(--bg-dots) 1px, transparent 1.4px);
-  background-size: 18px 18px;
 }
 .bd-rule { flex: 0 0 1px; margin: 14px 2px; background: var(--line-strong); }
 .bd-lane {

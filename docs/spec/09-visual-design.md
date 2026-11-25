@@ -77,6 +77,8 @@ Where they would collide:
 - 2026-11-25: Ship one layout first (Inbox), then Board and Console, so the shared pieces settle before three layouts depend on them.
 - 2026-11-25: Expected outcome: the owner settles into one layout and pulls ideas from the others into it; the three may converge into one experience over time.
 - 2026-11-25: The multi-task view is a separate vertical of the application, not a tracker layout (see 02).
+- 2026-11-25: No dotted-grid background in the tracker. It is reserved for when Axiom shows graphs.
+- 2026-11-25: The settings page has a Notifications section: one toggle per notification kind, all on by default (turning one off mutes that kind), plus muted topics and browser notifications. The stale threshold has its own section.
 
 ## Open questions
 
