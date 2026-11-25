@@ -62,7 +62,8 @@ Every table has an integer primary key `id`. Times are UTC ISO-8601 strings. Enu
 | topic_id | |
 | kind | `project`, `repository`, `branch`, `worktree`, `pr`, `spec`, `artifact`. |
 | target | Path, URL, or `owner/repo#123`. |
-| label | Optional. |
+| label | Optional, at most 120 characters. |
+| description | Optional one-line description, at most 200 characters. The web app shows it under an artifact in the Artifacts menu. Added by migration 0003. |
 | created_at, created_by_thread_id | |
 
 A PR that belongs to two topics is two link rows.
