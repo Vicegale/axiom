@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -41,7 +41,7 @@ describe("opening", () => {
     expect(pragma("journal_mode")).toBe("wal");
     expect(pragma("foreign_keys")).toBe(1);
     expect(pragma("busy_timeout")).toBe(5000);
-    expect(pragma("user_version")).toBe(2);
+    expect(pragma("user_version")).toBe(3);
     const names = (
       ax.db
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
@@ -62,7 +62,7 @@ describe("opening", () => {
     a.close();
     const b = openDatabase(path);
     expect(b.getTopic("keep").title).toBe("keep");
-    expect(Object.values(b.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(2);
+    expect(Object.values(b.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(3);
     b.close();
   });
 
@@ -75,6 +75,33 @@ describe("opening", () => {
     expect(migrate(db, migrations)).toBe(2);
     expect(migrate(db, migrations)).toBe(2);
     db.close();
+  });
+
+  it("upgrades a version 2 database: links gain a nullable description and keep their rows", () => {
+    const path = join(dir, "v2.db");
+    const raw = new DatabaseSync(path);
+    const read = (f: string) =>
+      readFileSync(fileURLToPath(new URL(`../migrations/${f}`, import.meta.url)), "utf8");
+    migrate(raw, [
+      { version: 1, sql: read("0001_init.sql") },
+      { version: 2, sql: read("0002_tasks.sql") },
+    ]);
+    raw.exec(
+      "INSERT INTO topic (slug, title, created_at, last_worked_at) VALUES ('t', 't', 'x', 'x')",
+    );
+    raw.exec(
+      "INSERT INTO link (topic_id, kind, target, label, created_at) VALUES (1, 'artifact', 'a.md', 'A', 'x')",
+    );
+    raw.close();
+    const ax = openDatabase(path);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(3);
+    const links = ax.getTopic("t").links;
+    expect(links).toHaveLength(1);
+    expect(links[0]).toMatchObject({ label: "A", description: null });
+    expect(ax.updateLink("t", links[0].id, { description: "d" }, { kind: "owner" }).description).toBe(
+      "d",
+    );
+    ax.close();
   });
 
   it("rolls back a failing migration", () => {
@@ -108,9 +135,9 @@ describe("opening", () => {
         );
       });
     const results = await Promise.all(Array.from({ length: 6 }, run));
-    expect(results).toEqual(Array(6).fill("2 wal"));
+    expect(results).toEqual(Array(6).fill("3 wal"));
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(2);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(3);
     ax.close();
   }, 60_000);
 });

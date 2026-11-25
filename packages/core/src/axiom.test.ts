@@ -467,6 +467,44 @@ describe("links and monitor targets", () => {
   });
 });
 
+describe("link descriptions", () => {
+  it("stores, trims, updates and clears label and description", () => {
+    ax.createTopic({ slug: "t", title: "t" }, owner);
+    const l = ax.addLink(
+      "t",
+      { kind: "artifact", target: "a.md", label: " A ", description: " About a " },
+      owner,
+    );
+    expect(l).toMatchObject({ label: "A", description: "About a" });
+    const bare = ax.addLink("t", { kind: "artifact", target: "b.md" }, owner);
+    expect(bare.description).toBeNull();
+    const u = ax.updateLink("t", bare.id, { description: "later" }, owner);
+    expect(u).toMatchObject({ description: "later", label: null });
+    expect(ax.updateLink("t", l.id, { label: "" }, owner)).toMatchObject({
+      label: null,
+      description: "About a",
+    });
+    expect(ax.updateLink("t", l.id, { description: "" }, owner).description).toBeNull();
+    expect(ax.getTopic("t").links.map((x) => x.description)).toEqual([null, "later"]);
+  });
+
+  it("validates lengths and the link's topic", () => {
+    ax.createTopic({ slug: "t", title: "t" }, owner);
+    ax.createTopic({ slug: "u", title: "u" }, owner);
+    const l = ax.addLink("t", { kind: "artifact", target: "a.md" }, owner);
+    expect(() => ax.updateLink("t", l.id, { description: "x".repeat(201) }, owner)).toThrow(
+      AxiomError,
+    );
+    expect(() => ax.updateLink("t", l.id, { label: "x".repeat(121) }, owner)).toThrow(AxiomError);
+    expect(() =>
+      ax.addLink("t", { kind: "artifact", target: "c", description: "x".repeat(201) }, owner),
+    ).toThrow(AxiomError);
+    ax.updateLink("t", l.id, { description: "x".repeat(200), label: "y".repeat(120) }, owner);
+    expect(() => ax.updateLink("u", l.id, { label: "z" }, owner)).toThrow(/not found/);
+    expect(() => ax.updateLink("t", 999, { label: "z" }, owner)).toThrow(/not found/);
+  });
+});
+
 describe("thread uniqueness", () => {
   it("rejects re-attaching a provider thread to the same or another topic", () => {
     ax.createTopic({ slug: "a", title: "a" }, owner);
