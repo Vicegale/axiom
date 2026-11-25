@@ -62,7 +62,6 @@ const reducedMotion = () =>
 /** How long the collapse animation runs; keep in step with replybox.css. */
 const COLLAPSE_MS = 140;
 
-const NEW = "new";
 /** Claude models on T3 go through the `claudeAgent` provider instance (as in the New topic dialog). */
 const T3_INSTANCE = "claudeAgent";
 
@@ -306,19 +305,16 @@ export function ReplyBox({
   const barLabel = targetName ? `Reply to ${targetName}…` : "Start a thread…";
   const draftLine = text.trim().split("\n")[0] ?? "";
 
-  const targetOptions: ChipOption[] = [
-    ...threads.map((t) => ({
-      value: String(t.id),
-      label: label(t),
-      hint: t.provider === "t3" ? "T3" : "Claude Code",
-    })),
-    {
-      value: NEW,
-      label: "New thread",
-      hint: "Starts a thread attached to this topic",
-      separated: threads.length > 0,
-    },
-  ];
+  // Which thread "This thread" goes back to after the owner switched to a new one.
+  const lastThread = useRef<number | null>(threadId ?? thread?.id ?? null);
+  if (target) lastThread.current = target.id;
+  const replyTo = threads.find((t) => t.id === lastThread.current) ?? thread ?? threads[0] ?? null;
+
+  const targetOptions: ChipOption[] = threads.map((t) => ({
+    value: String(t.id),
+    label: label(t),
+    hint: t.provider === "t3" ? "T3" : "Claude Code",
+  }));
   const sendName = target ? `Send to ${label(target)}` : "Start a new thread";
 
   if (!open && !closing) {
@@ -405,16 +401,39 @@ export function ReplyBox({
         <ComposerToolbar
           chips={
             <>
-              <ChipMenu
-                name="Thread"
-                display={target ? label(target) : "New thread"}
-                valueText={target ? label(target) : "new thread"}
-                value={target ? String(target.id) : NEW}
-                options={targetOptions}
-                icon={target ? undefined : <Glyph d={PLUS} />}
-                disabledReason={threads.length === 0 ? "This topic has no thread yet." : undefined}
-                onChange={(v) => changeThread(v === NEW ? null : Number(v))}
-              />
+              <fieldset className="rc-dest">
+                <legend className="sr-only">Send to</legend>
+                <button
+                  type="button"
+                  className="rc-dest-opt"
+                  aria-pressed={target !== null}
+                  disabled={replyTo === null}
+                  title={replyTo ? `Reply in ${label(replyTo)}` : "This topic has no thread yet."}
+                  onClick={() => replyTo && !target && changeThread(replyTo.id)}
+                >
+                  This thread
+                </button>
+                <button
+                  type="button"
+                  className="rc-dest-opt"
+                  aria-pressed={target === null}
+                  title="Start a new thread attached to this topic"
+                  onClick={() => target && changeThread(null)}
+                >
+                  <Glyph d={PLUS} />
+                  New thread
+                </button>
+              </fieldset>
+              {target && threads.length > 1 && (
+                <ChipMenu
+                  name="Thread"
+                  display={label(target)}
+                  valueText={label(target)}
+                  value={String(target.id)}
+                  options={targetOptions}
+                  onChange={(v) => changeThread(Number(v))}
+                />
+              )}
               {!target && (
                 <ChipMenu
                   name="Provider"

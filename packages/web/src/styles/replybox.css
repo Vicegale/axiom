@@ -143,3 +143,17 @@
 }
 .pp-row[data-kind="action"][data-active="true"] { background: var(--panel-2); color: var(--text); }
 .pp-empty { margin: 0; padding: 1rem 0.5rem; font-size: 0.8125rem; text-align: center; color: var(--text-2); }
+
+/* Where the message goes: the selected thread or a new one. Always visible, so the choice is never hidden in a menu. */
+.rc-dest { display: inline-flex; margin: 0; padding: 0; min-width: 0; border: 1px solid var(--line-strong); border-radius: 0.75rem; overflow: hidden; }
+.rc-dest-opt {
+  display: inline-flex; align-items: center; gap: 0.25rem; height: 1.375rem; padding: 0 0.5rem;
+  font: inherit; font-size: 0.75rem; white-space: nowrap; color: var(--text-3); background: transparent; border: 0; cursor: pointer;
+}
+.rc-dest-opt + .rc-dest-opt { border-left: 1px solid var(--line-strong); }
+.rc-dest-opt:hover:not(:disabled) { color: var(--text); }
+.rc-dest-opt[aria-pressed="true"] { color: var(--text); background: var(--panel-2); }
+.rc-dest-opt:disabled { cursor: not-allowed; opacity: 0.55; }
+.rc-dest-opt:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.rc-dest-opt svg { width: 0.75rem; height: 0.75rem; }
+@media (forced-colors: active) { .rc-dest-opt[aria-pressed="true"] { outline: 2px solid Highlight; outline-offset: -2px; } }

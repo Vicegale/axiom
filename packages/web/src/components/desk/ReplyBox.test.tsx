@@ -252,10 +252,29 @@ describe("ReplyBox", () => {
     expect(posts()[0]?.path).toBe("/api/threads/2/send");
   });
 
+  it("shows where the message goes, and switches back to the same thread", async () => {
+    setup(T3);
+    expect(chip("This thread").getAttribute("aria-pressed")).toBe("true");
+    expect(chip("New thread").getAttribute("aria-pressed")).toBe("false");
+    pick(/^Thread:/, "Write the docs");
+    fireEvent.click(chip("New thread"));
+    expect(chip("New thread").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByRole("button", { name: /^Thread:/ })).toBeNull();
+    fireEvent.click(chip("This thread"));
+    expect(chip(/^Thread: Write the docs/)).toBeTruthy();
+    expect(box().getAttribute("aria-label")).toBe("Message to Write the docs");
+  });
+
+  it("has no thread chip when the topic has a single thread", () => {
+    setup(T3, [T3]);
+    expect(chip("This thread").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByRole("button", { name: /^Thread:/ })).toBeNull();
+  });
+
   it("New thread turns Send into Start thread, with a provider chip", async () => {
     const { onSent } = setup(T3);
     expect(screen.queryByRole("button", { name: /^Provider:/ })).toBeNull();
-    pick(/^Thread:/, "New thread");
+    fireEvent.click(chip("New thread"));
     expect(send().getAttribute("aria-label")).toBe("Start a new thread");
     expect(box().getAttribute("aria-label")).toBe("Message to a new thread");
     expect(chip("Provider: T3")).toBeTruthy();
@@ -276,7 +295,7 @@ describe("ReplyBox", () => {
 
   it("starts a new T3 thread without model or effort", async () => {
     setup(T3);
-    pick(/^Thread:/, "New thread");
+    fireEvent.click(chip("New thread"));
     await screen.findByText(/Could not list T3 projects/);
     expect(chip(/^Model:/).getAttribute("aria-disabled")).toBe("true");
     expect(chip(/^Model:/).title).toMatch(/new T3 thread uses the project's default/);
@@ -286,13 +305,14 @@ describe("ReplyBox", () => {
     expect(posts()[0]?.body).toEqual({ text: "Hello", provider: "t3" });
   });
 
-  it("works with no thread: it starts one, and the target chip says why it is fixed", async () => {
+  it("works with no thread: it starts one, and This thread says why it is off", async () => {
     setup(null, []);
     type("x");
     expect(send().getAttribute("aria-label")).toBe("Start a new thread");
     await waitFor(() => expect(send().disabled).toBe(false));
-    expect(chip(/^Thread: new thread/).getAttribute("aria-disabled")).toBe("true");
-    expect(chip(/^Thread:/).title).toBe("This topic has no thread yet.");
+    expect(chip("This thread").disabled).toBe(true);
+    expect(chip("This thread").title).toBe("This topic has no thread yet.");
+    expect(chip("New thread").getAttribute("aria-pressed")).toBe("true");
     expect(localStorage.getItem("axiom.reply-draft:demo:new")).toBe("x");
   });
 
@@ -441,7 +461,7 @@ describe("ReplyBox", () => {
     it("shows a Project chip only for a new T3 thread", async () => {
       setupNew("/work/one", T3);
       expect(screen.queryByRole("button", { name: /^Project:/ })).toBeNull();
-      pick(/^Thread:/, "New thread");
+      fireEvent.click(chip("New thread"));
       await screen.findByRole("button", { name: /^Project:/ });
       pick(/^Provider:/, "Claude Code");
       expect(screen.queryByRole("button", { name: /^Project:/ })).toBeNull();
