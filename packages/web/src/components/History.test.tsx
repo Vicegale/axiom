@@ -143,3 +143,26 @@ describe("History", () => {
     expect(screen.queryByRole("button")).toBeNull();
   });
 });
+
+describe("History task status changes", () => {
+  it("shows the task key and its task statuses, not topic statuses", () => {
+    const { container } = render(
+      <History
+        entries={[
+          entry({
+            id: 1,
+            at: "2026-11-25T08:00:00",
+            author: "axiom",
+            kind: "status change",
+            body: "Task S7: to do -> wip",
+            data: { task: "S7", from: "to do", to: "wip", by: "axiom" },
+          }),
+        ]}
+      />,
+    );
+    const li = container.querySelector("[data-entry-id='1']") as HTMLElement;
+    expect(li.textContent).toContain("Task S7");
+    expect(li.querySelector(".pill.s-idle")?.textContent).toBe("to do");
+    expect(li.querySelector(".pill.s-wip")?.textContent).toBe("wip");
+  });
+});

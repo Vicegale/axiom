@@ -12,9 +12,15 @@ export function Reader({ slug, now }: Props) {
     <main className="reader" aria-label="Selected topic" tabIndex={-1}>
       {slug ? (
         <TopicLoader slug={slug}>
-          {({ topic, entries, ticketEpics }) => (
+          {({ topic, entries, tasks, ticketEpics }) => (
             <div className="r-scroll">
-              <Detail topic={topic} entries={entries} ticketEpics={ticketEpics} now={now} />
+              <Detail
+                topic={topic}
+                entries={entries}
+                tasks={tasks}
+                ticketEpics={ticketEpics}
+                now={now}
+              />
             </div>
           )}
         </TopicLoader>

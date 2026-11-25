@@ -1,6 +1,7 @@
 @import "./styles/tokens.css";
 @import "tailwindcss";
 @import "./styles/app.css";
+@import "./styles/tasks.css";
 @import "./styles/topic-tabs.css";
 @import "./styles/board.css";
 @import "./styles/console.css";

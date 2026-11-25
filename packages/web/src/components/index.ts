@@ -5,4 +5,5 @@ export { NotificationsList } from "./NotificationsList";
 export { ParentChip } from "./ParentChip";
 export { StatusPill } from "./StatusPill";
 export { T3Picker } from "./T3Picker";
+export { GraphSection, TaskBadge, TaskPill, TasksSection } from "./Tasks";
 export { TopicDetail, type TopicDetailActions } from "./TopicDetail";

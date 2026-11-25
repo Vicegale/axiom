@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import type { Attention, TopicListItem } from "../../api";
-import { ParentChip } from "../../components";
+import { ParentChip, TaskBadge } from "../../components";
 import { StatusPill } from "../../components/StatusPill";
 import {
   PILES,
@@ -79,6 +79,7 @@ export function TopicRow({
               <span className="sr-only">Unread. </span>
             </>
           ) : null}
+          <TaskBadge counts={t.taskCounts} />
           <time className="row-when" dateTime={t.lastWorkedAt}>
             {ago(t.lastWorkedAt, now, true)}
           </time>

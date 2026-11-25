@@ -13,6 +13,7 @@ export function useTopicActions(slug: string): TopicDetailActions {
     onDismissStale: () => void actions.dismissStalePrompt(slug),
     onConfirmMonitor: (id) => void actions.confirmMonitor(id),
     onDeleteEntry: (id) => void actions.deleteEntry(id),
+    onTaskStatus: (key, status) => void actions.setTaskStatus(slug, key, status),
   };
 }
 
@@ -41,7 +42,7 @@ export function TopicLoader({
 }
 
 /** Which parts of TopicDetail a tab shows; the rest are hidden (see styles/topic-tabs.css). */
-export type DetailPart = "top" | "threads" | "links" | "monitors" | "history";
+export type DetailPart = "top" | "threads" | "tasks" | "graph" | "links" | "monitors" | "history";
 
 /**
  * The shared TopicDetail with only some of its parts visible. A tab in the Board sheet or the
@@ -53,12 +54,15 @@ export function TopicSlice({
   show,
   now,
   withHistory = true,
+  onPickTask,
 }: {
   bundle: TopicBundle;
   show: readonly DetailPart[];
   now: Date;
   /** False when the caller renders the history itself, so it is not rendered twice. */
   withHistory?: boolean;
+  /** A graph node was picked: the Board sheet and Console panel switch to the Tasks tab. */
+  onPickTask?: (key: string) => void;
 }) {
   const actions = useTopicActions(bundle.topic.slug);
   return (
@@ -66,6 +70,9 @@ export function TopicSlice({
       <TopicDetail
         topic={bundle.topic}
         entries={withHistory ? bundle.entries : undefined}
+        tasks={bundle.tasks}
+        hideEmptyTasks={false}
+        onPickTask={onPickTask}
         ticketEpics={bundle.ticketEpics}
         now={now}
         actions={actions}

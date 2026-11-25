@@ -1,6 +1,6 @@
 /* TopicDetail with only some of its parts showing: the Board sheet and the Console panel tabs.
    The component itself is untouched; <TopicSlice> sets data-show to the parts a tab wants.
-   Parts: top (header, status, facts), threads, links, monitors, history. The stale prompt always
+   Parts: top (header, status, facts), threads, tasks, graph, links, monitors, history. The stale prompt always
    shows. */
 .tt .r-inner { max-width: none; }
 .tt .r-h1 { display: none; }
@@ -9,6 +9,8 @@
 .tt .two { grid-template-columns: minmax(0, 1fr); }
 .tt:not([data-show~="top"]) .r-inner > :not(section):not(.two):not(.prompt) { display: none; }
 .tt:not([data-show~="threads"]) section[aria-labelledby="h-threads"] { display: none; }
+.tt:not([data-show~="tasks"]) section[aria-labelledby="h-tasks"] { display: none; }
+.tt:not([data-show~="graph"]) section[aria-labelledby="h-graph"] { display: none; }
 .tt:not([data-show~="links"]) section[aria-labelledby="h-links"] { display: none; }
 .tt:not([data-show~="monitors"]) section[aria-labelledby="h-mons"] { display: none; }
 .tt:not([data-show~="history"]) section[aria-labelledby="h-hist"] { display: none; }

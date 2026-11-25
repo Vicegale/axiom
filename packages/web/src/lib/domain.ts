@@ -14,6 +14,17 @@ export const TOPIC_STATUSES = [
 ] as const;
 export type TopicStatus = (typeof TOPIC_STATUSES)[number];
 
+export const TASK_STATUSES = ["to do", "wip", "blocked", "done"] as const;
+export type TaskStatus = (typeof TASK_STATUSES)[number];
+
+/** The colour class a task status borrows from the topic statuses (see styles/app.css). */
+export const TASK_STATUS_CLASS: Record<TaskStatus, string> = {
+  "to do": "s-idle",
+  wip: "s-wip",
+  blocked: "s-blocked",
+  done: "s-done",
+};
+
 export const NOTIFICATION_KINDS = [
   "agent stopped",
   "agent asked",

@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryLocation } from "wouter/memory-location";
 import { App } from "../../App";
-import { FakeServer } from "../../test/fakeApi";
+import { FakeServer, linkTasks, task } from "../../test/fakeApi";
 import { seedTracker } from "../../test/seed";
 
 let server: FakeServer;
@@ -175,12 +175,14 @@ describe("Console shell", () => {
     await waitFor(() => expect(loc.history?.at(-1)).toBe("/topic/watch"));
   });
 
-  it("filters history by kind with chips, and has the five panel tabs", async () => {
+  it("filters history by kind with chips, and has the seven panel tabs", async () => {
     open("/topic/ask");
     const panel = within(await screen.findByRole("region", { name: "Selected topic" }));
     expect(panel.getAllByRole("tab").map((t) => t.textContent)).toEqual([
       "History",
       "Threads",
+      "Tasks",
+      "Graph",
       "Links",
       "Monitors",
       "Overview",
@@ -214,6 +216,8 @@ describe("Console shell", () => {
     const shown = () => document.querySelector(".cs-pbody .tt")?.getAttribute("data-show");
     for (const [tab, parts] of [
       ["Threads", "threads"],
+      ["Tasks", "tasks"],
+      ["Graph", "graph"],
       ["Links", "links"],
       ["Monitors", "monitors"],
       ["Overview", "top"],
@@ -243,5 +247,32 @@ describe("Console shell", () => {
     const panel = within(await screen.findByRole("region", { name: "Selected topic" }));
     fireEvent.click(await panel.findByRole("button", { name: "Mark stale" }));
     await waitFor(() => expect(server.called("POST", "/api/topics/sleepy/stale")).toHaveLength(1));
+  });
+});
+
+describe("Console shell tasks", () => {
+  it("has Tasks and Graph panel tabs, a badge in the table, and a node click opens the Tasks tab", async () => {
+    server.tasks.set(
+      "ask",
+      linkTasks([
+        task({ key: "A", title: "First", status: "done" }),
+        task({ key: "B", title: "Second", dependsOn: ["A"] }),
+      ]),
+    );
+    open("/topic/ask");
+    const panel = within(await screen.findByRole("region", { name: "Selected topic" }));
+    await waitFor(() =>
+      expect(
+        document.querySelector('tr.cs-row[data-slug="ask"] [data-testid="task-badge"]')
+          ?.textContent,
+      ).toContain("1/2"),
+    );
+    fireEvent.click(panel.getByRole("tab", { name: "Graph" }));
+    await waitFor(() => expect(document.querySelectorAll(".g-node")).toHaveLength(2));
+    expect(document.querySelectorAll(".g-edge")).toHaveLength(1);
+    fireEvent.click(document.querySelector('.g-node[data-task-key="B"]') as Element);
+    expect(panel.getByRole("tab", { name: "Tasks" }).getAttribute("aria-selected")).toBe("true");
+    expect(document.querySelector("#task-B")?.classList.contains("is-picked")).toBe(true);
+    expect(panel.getByRole("combobox", { name: "Status of B" })).toBeTruthy();
   });
 });

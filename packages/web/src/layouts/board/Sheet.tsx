@@ -8,6 +8,8 @@ export const SHEET_TABS = [
   { id: "overview", label: "Overview", show: ["top", "monitors"] },
   { id: "history", label: "History", show: ["history"] },
   { id: "threads", label: "Threads", show: ["threads"] },
+  { id: "tasks", label: "Tasks", show: ["tasks"] },
+  { id: "graph", label: "Graph", show: ["graph"] },
   { id: "links", label: "Links", show: ["links"] },
 ] as const satisfies readonly { id: string; label: string; show: readonly DetailPart[] }[];
 
@@ -91,7 +93,14 @@ export function Sheet({ slug, listItem, now, onClose }: Props) {
           aria-labelledby={`bd-tab-${tab}`}
         >
           <TopicLoader slug={slug} emptyClass="bd-empty">
-            {(bundle) => <TopicSlice bundle={bundle} show={current.show} now={now} />}
+            {(bundle) => (
+              <TopicSlice
+                bundle={bundle}
+                show={current.show}
+                now={now}
+                onPickTask={() => setTab("tasks")}
+              />
+            )}
           </TopicLoader>
         </div>
       </aside>

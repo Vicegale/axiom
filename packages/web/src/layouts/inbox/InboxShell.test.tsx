@@ -2,7 +2,15 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryLocation } from "wouter/memory-location";
 import { App } from "../../App";
-import { entry, FakeServer, notification, thread, topic } from "../../test/fakeApi";
+import {
+  entry,
+  FakeServer,
+  linkTasks,
+  notification,
+  task,
+  thread,
+  topic,
+} from "../../test/fakeApi";
 
 let server: FakeServer;
 
@@ -287,5 +295,49 @@ describe("Inbox shell", () => {
     server.details.set("run", { threads: [thread({ id: 5, title: "Worker", status: "wip" })] });
     open("/topic/run");
     expect(await screen.findByText("Worker")).toBeTruthy();
+  });
+});
+
+describe("Inbox tasks", () => {
+  it("shows a 5/8-style badge on rows, and Tasks plus Graph sections in the reader", async () => {
+    seed();
+    server.tasks.set(
+      "ask",
+      linkTasks([
+        task({ key: "A", title: "First", status: "done" }),
+        task({ key: "B", title: "Second", dependsOn: ["A"] }),
+      ]),
+    );
+    open("/topic/ask");
+    await screen.findByRole("heading", { level: 2, name: "Tasks" });
+    expect(screen.getByRole("heading", { level: 2, name: "Dependency graph" })).toBeTruthy();
+    await waitFor(() => {
+      const row = document.querySelector('a.row[data-slug="ask"]');
+      expect(row?.querySelector('[data-testid="task-badge"]')?.textContent).toContain("1/2");
+    });
+    // A topic without tasks shows neither section nor badge.
+    fireEvent.click(document.querySelector('a.row[data-slug="watch"]') as Element);
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Tasks" })).toBeNull());
+  });
+
+  it("changes a task's status from its row", async () => {
+    seed();
+    server.tasks.set("ask", linkTasks([task({ key: "A", title: "First" })]));
+    open("/topic/ask");
+    const select = (await screen.findByRole("combobox", {
+      name: "Status of A",
+    })) as HTMLSelectElement;
+    expect(select.value).toBe("to do");
+    fireEvent.change(select, { target: { value: "done" } });
+    await waitFor(() =>
+      expect(server.called("POST", "/api/topics/ask/tasks/A/status")[0]?.body).toEqual({
+        status: "done",
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        (screen.getByRole("combobox", { name: "Status of A" }) as HTMLSelectElement).value,
+      ).toBe("done"),
+    );
   });
 });

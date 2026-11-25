@@ -1,10 +1,21 @@
-import type { Entry, LinkItem, MonitorTarget, Parent, Thread, TopicDetailData } from "../api";
+import { useState } from "react";
+import type {
+  Entry,
+  LinkItem,
+  MonitorTarget,
+  Parent,
+  TaskItem,
+  Thread,
+  TopicDetailData,
+} from "../api";
+import type { TaskStatus } from "../lib/domain";
 import { LINK_LABEL, LINK_ORDER, PROVIDER_LABEL } from "../lib/domain";
 import { ago, fullStamp, idleDays, stamp } from "../lib/time";
 import { type Density, History } from "./History";
 import { Lock } from "./Icons";
 import { StatusPill } from "./StatusPill";
 import { T3Picker } from "./T3Picker";
+import { GraphSection, TasksSection } from "./Tasks";
 
 export interface TopicDetailActions {
   onToggleMute: (muted: boolean) => void;
@@ -12,12 +23,19 @@ export interface TopicDetailActions {
   onDismissStale: () => void;
   onConfirmMonitor: (id: number) => void;
   onDeleteEntry: (id: number) => void;
+  onTaskStatus: (key: string, status: TaskStatus) => void;
 }
 
 interface Props {
   topic: TopicDetailData;
   /** undefined while the history is still loading. */
   entries: readonly Entry[] | undefined;
+  /** The topic's tasks; undefined while they load. */
+  tasks?: readonly TaskItem[];
+  /** Hide the Tasks and Graph sections while the topic has no tasks (the tabs show them). */
+  hideEmptyTasks?: boolean;
+  /** Called when a graph node is picked, so a tabbed container can switch to the Tasks tab. */
+  onPickTask?: (key: string) => void;
   /** Ticket slug to the title of the epic it sits under, for "in <epic>". */
   ticketEpics?: Record<string, string>;
   density?: Density;
@@ -32,12 +50,17 @@ interface Props {
 export function TopicDetail({
   topic: t,
   entries,
+  tasks,
+  hideEmptyTasks = true,
+  onPickTask,
   ticketEpics = {},
   density = "roomy",
   now,
   actions,
 }: Props) {
   const at = now ?? new Date();
+  const [picked, setPicked] = useState<{ key: string; n: number } | null>(null);
+  const showTasks = tasks !== undefined && (tasks.length > 0 || !hideEmptyTasks);
   const attnStatus = t.status ?? (t.openThreadStatuses.includes("error") ? "error" : "hitl");
   return (
     <article className="r-inner" aria-labelledby="r-title">
@@ -131,6 +154,24 @@ export function TopicDetail({
           <p className="empty-line">No threads attached.</p>
         )}
       </section>
+
+      {showTasks ? (
+        <>
+          <TasksSection
+            tasks={tasks}
+            links={t.links}
+            picked={picked}
+            onStatus={actions.onTaskStatus}
+          />
+          <GraphSection
+            tasks={tasks}
+            onPick={(key) => {
+              setPicked((p) => ({ key, n: (p?.n ?? 0) + 1 }));
+              onPickTask?.(key);
+            }}
+          />
+        </>
+      ) : null}
 
       <div className="two">
         <section className="sec" aria-labelledby="h-links">

@@ -25,6 +25,7 @@ function actions(): TopicDetailActions {
     onDismissStale: vi.fn(),
     onConfirmMonitor: vi.fn(),
     onDeleteEntry: vi.fn(),
+    onTaskStatus: vi.fn(),
   };
 }
 
