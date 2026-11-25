@@ -74,14 +74,14 @@ export class T3Provider {
   private lastSyncAt = 0;
 
   /**
-   * Where a T3 thread opens in T3's own web UI (`http://127.0.0.1:<port>/<environment>/<thread>`),
-   * or null when T3's port is unknown.
+   * The T3 desktop app's deep link for a thread, `t3code://threads/<environment>/<thread>` (T3's
+   * `promptLinkAppPath` maps it to the thread route), or null when the environment is unknown.
    */
   threadUrl(threadId: string, environmentId: string | null): string | null {
-    const meta = readT3Meta(this.dir);
-    const env = environmentId ?? meta.environmentId;
-    if (!meta.port || !env) return null;
-    return `http://127.0.0.1:${meta.port}/${encodeURIComponent(env)}/${encodeURIComponent(threadId)}`;
+    const env = environmentId ?? readT3Meta(this.dir).environmentId;
+    if (!env) return null;
+    const seg = (s: string) => encodeURIComponent(s).replace(/%3A/gi, ":");
+    return `t3code://threads/${seg(env)}/${seg(threadId)}`;
   }
 
   constructor(options: T3ProviderOptions) {

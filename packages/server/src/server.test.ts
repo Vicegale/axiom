@@ -125,7 +125,7 @@ describe("topics", () => {
     cli.attachThread("a", { provider: "t3", providerThreadId: "t3-1" }, owner);
     let threads = (await api("/api/topics/a")).body.threads;
     expect(threads[0].open).toEqual({ kind: "command", command: "claude --resume sess-1" });
-    expect(threads[1].open).toBeNull(); // T3 is not readable in tests: no port to link to
+    expect(threads[1].open).toBeNull(); // T3 is not readable in tests: no environment to link to
     cli.setThreadCwd(cc.id, "/home/me/it's here");
     threads = (await api("/api/topics/a")).body.threads;
     expect(threads[0].open.command).toBe("cd '/home/me/it'\\''s here' && claude --resume sess-1");
