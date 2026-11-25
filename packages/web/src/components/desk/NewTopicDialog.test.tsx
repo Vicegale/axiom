@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryLocation } from "wouter/memory-location";
 import { App } from "../../App";
@@ -46,9 +46,22 @@ async function openDialog() {
 const field = (name: string | RegExp) => screen.getByLabelText(name) as HTMLInputElement;
 const type = (name: string | RegExp, value: string) =>
   fireEvent.change(field(name), { target: { value } });
-const submit = () => fireEvent.click(screen.getByRole("button", { name: /^(Create|Retry)/ }));
+const submit = () =>
+  fireEvent.click(
+    within(document.querySelector(".nt-actions") as HTMLElement).getByRole("button", {
+      name: /^(Create|Retry)/,
+    }),
+  );
 
-const select = (name: string | RegExp) => screen.getByLabelText(name) as HTMLSelectElement;
+const chip = (name: string | RegExp) => screen.getByRole("button", { name }) as HTMLButtonElement;
+const pick = (chipName: string | RegExp, option: string) => {
+  fireEvent.click(chip(chipName));
+  fireEvent.click(
+    screen.getByRole("menuitemradio", { name: new RegExp(`^${option}`), hidden: true }),
+  );
+};
+const send = () =>
+  within(screen.getByRole("dialog")).getByLabelText(/^(Create and start|Retry start)/);
 
 describe("+ New topic: T3 projects", () => {
   it("offers the T3 projects in the folder suggestions when there is no first message", async () => {
@@ -59,24 +72,26 @@ describe("+ New topic: T3 projects", () => {
         "T3: Bare",
       ]),
     );
-    expect(screen.queryByLabelText(/^T3 project/)).toBeNull();
+    expect(field(/^Project folder/)).toBeTruthy();
   });
 
-  it("shows a T3 project select for a T3 first thread and a folder field for Claude Code", async () => {
+  it("has a Project chip for a T3 first thread and a Folder chip for Claude Code", async () => {
     await openDialog();
     type("Title", "Fix it");
     type(/^First message/, "Do the thing");
-    const sel = select(/^T3 project/);
-    expect(sel.value).toBe("");
-    expect([...sel.options].map((o) => o.textContent)).toEqual([
-      "Choose a T3 project…",
-      "Foo — /home/u/projects/foo",
-      "Bare — /home/u/projects/bare",
-    ]);
+    expect(chip("Project: none")).toBeTruthy();
+    fireEvent.click(chip("Project: none"));
+    expect(
+      screen
+        .getAllByRole("menuitemradio", { hidden: true })
+        .map((o) => o.textContent)
+        .filter((t) => /\/home\/u\/projects/.test(t ?? "")),
+    ).toEqual(["Foo/home/u/projects/foo", "Bare/home/u/projects/bare"]);
+    // The plain folder field is replaced by the chip once a message is written.
     expect(screen.queryByLabelText(/^Project folder/)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Claude Code" }));
-    expect(screen.queryByLabelText(/^T3 project/)).toBeNull();
-    expect(field(/^Project folder/)).toBeTruthy();
+    pick("Provider: T3", "Claude Code");
+    expect(screen.queryByRole("button", { name: /^Project:/ })).toBeNull();
+    expect(chip("Folder: none")).toBeTruthy();
   });
 
   it("requires a project, then sends its id and sets the repository from its folder", async () => {
@@ -85,8 +100,9 @@ describe("+ New topic: T3 projects", () => {
     type(/^First message/, "Do the thing");
     submit();
     expect(await screen.findByText("Choose the T3 project to start a thread in.")).toBeTruthy();
+    expect(document.activeElement).toBe(chip("Project: none"));
     expect(server.called("POST", "/api/topics")).toHaveLength(0);
-    type(/^T3 project/, "proj-foo");
+    pick("Project: none", "Foo");
     submit();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(server.called("POST", "/api/topics")[0]?.body).toMatchObject({
@@ -99,23 +115,27 @@ describe("+ New topic: T3 projects", () => {
     });
   });
 
-  it("preselects the project whose folder was typed", async () => {
+  it("selects the project whose folder was typed", async () => {
     await openDialog();
     type(/^Project folder/, "/home/u/projects/bare/");
     type(/^First message/, "Do the thing");
-    expect(select(/^T3 project/).value).toBe("proj-bare");
+    expect(chip("Project: Bare")).toBeTruthy();
   });
 
   it("requires a model for a project without a default model", async () => {
     await openDialog();
     type("Title", "Fix it");
     type(/^First message/, "Do the thing");
-    type(/^T3 project/, "proj-bare");
-    expect(screen.getByText(/this project has no default model, so one is required/)).toBeTruthy();
+    pick("Project: none", "Bare");
+    expect(screen.getByText(/project has no default model, so one is required/)).toBeTruthy();
+    expect(chip("Model: required")).toBeTruthy();
+    expect(send().hasAttribute("disabled")).toBe(true);
+    expect((send() as HTMLButtonElement).title).toMatch(/Choose a model/);
     submit();
     expect(await screen.findByText("This project has no default model: choose one.")).toBeTruthy();
     expect(server.called("POST", "/api/topics")).toHaveLength(0);
-    type(/^Model/, "claude-opus-5-5");
+    pick("Model: required", "claude-opus-5-5");
+    expect(send().hasAttribute("disabled")).toBe(false);
     submit();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(server.called("POST", "/api/topics/fix-it/threads/new")[0]?.body).toMatchObject({
@@ -128,17 +148,18 @@ describe("+ New topic: T3 projects", () => {
   it("does not ask for a model when the project has a default", async () => {
     await openDialog();
     type(/^First message/, "Do the thing");
-    type(/^T3 project/, "proj-foo");
+    pick("Project: none", "Foo");
     expect(screen.queryByText(/so one is required/)).toBeNull();
+    expect(chip("Model: default")).toBeTruthy();
   });
 
-  it("falls back to the folder field with the error when T3 cannot be read", async () => {
+  it("falls back to a Folder chip with the error when T3 cannot be read", async () => {
     server.t3Projects = null;
     await openDialog();
     type("Title", "Fix it");
     type(/^First message/, "Do the thing");
     expect(await screen.findByText(/Could not list T3 projects/)).toBeTruthy();
-    type(/^Project folder/, "/home/u/projects/foo");
+    pick("Folder: none", "~/projects/foo");
     submit();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(server.called("POST", "/api/topics/fix-it/threads/new")[0]?.body).toMatchObject({
@@ -147,7 +168,7 @@ describe("+ New topic: T3 projects", () => {
     });
   });
 
-  it("is accessible with the select shown", async () => {
+  it("is accessible with the composer filled", async () => {
     await openDialog();
     type(/^First message/, "Do the thing");
     await expectAccessible();
@@ -198,7 +219,7 @@ describe("+ New topic", () => {
     submit();
     expect(await screen.findByText(/Choose the T3 project/)).toBeTruthy();
     expect(server.called("POST", "/api/topics")).toHaveLength(0);
-    expect(document.activeElement).toBe(select(/^T3 project/));
+    expect(document.activeElement).toBe(chip("Project: none"));
   });
 
   it("creates the topic only, with goal, parent and folder", async () => {
@@ -227,9 +248,13 @@ describe("+ New topic", () => {
     type("Title", "Fix it");
     type(/^Project folder/, "/home/u/projects/foo");
     type(/^First message/, "Do the thing");
-    expect(screen.getByRole("button", { name: "Create and start" })).toBeTruthy();
-    type("Model", "claude-opus-5-5");
-    type("Effort", "high");
+    expect(
+      screen.getByRole("button", { name: "Create and start", description: /Ctrl\+Enter/ }),
+    ).toBeTruthy();
+    expect(chip(/^Effort/).getAttribute("aria-disabled")).toBe("true");
+    expect(chip(/^Effort/).title).toMatch(/Choose a model first/);
+    pick("Model: default", "claude-opus-5-5");
+    pick("Effort: default", "high");
     expect(screen.getByText(/claudeAgent/)).toBeTruthy();
     submit();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -247,10 +272,10 @@ describe("+ New topic", () => {
   it("starts a Claude Code thread with cwd and no provider instance", async () => {
     await openDialog();
     type("Title", "Fix it");
-    type(/^Project folder/, "/home/u/projects/foo");
     type(/^First message/, "Do the thing");
-    fireEvent.click(screen.getByRole("button", { name: "Claude Code" }));
-    type("Model", "claude-sonnet-5-5");
+    pick("Provider: T3", "Claude Code");
+    pick("Folder: none", "Foo");
+    pick("Model: default", "claude-sonnet-5-5");
     submit();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(server.called("POST", "/api/topics/fix-it/threads/new")[0]?.body).toEqual({
@@ -259,6 +284,62 @@ describe("+ New topic", () => {
       cwd: "/home/u/projects/foo",
       model: "claude-sonnet-5-5",
     });
+  });
+
+  it("types a folder path for Claude Code with Type a path…", async () => {
+    await openDialog();
+    type("Title", "Fix it");
+    type(/^First message/, "Do the thing");
+    pick("Provider: T3", "Claude Code");
+    expect(screen.queryByRole("textbox", { name: "Folder" })).toBeNull();
+    pick("Folder: none", "Type a path");
+    fireEvent.change(screen.getByRole("textbox", { name: "Folder" }), {
+      target: { value: "/tmp/elsewhere" },
+    });
+    expect(chip("Folder: /tmp/elsewhere").textContent).toContain("elsewhere");
+    submit();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(server.called("POST", "/api/topics/fix-it/threads/new")[0]?.body).toEqual({
+      text: "Do the thing",
+      provider: "claude-code",
+      cwd: "/tmp/elsewhere",
+    });
+  });
+
+  it("enables the send icon only when the form is valid with a message", async () => {
+    await openDialog();
+    expect(send().hasAttribute("disabled")).toBe(true);
+    type(/^First message/, "Do the thing");
+    expect((send() as HTMLButtonElement).title).toMatch(/title/);
+    type("Title", "Fix it");
+    expect((send() as HTMLButtonElement).title).toMatch(/Choose a T3 project/);
+    expect(send().hasAttribute("disabled")).toBe(true);
+    pick("Project: none", "Foo");
+    expect(send().hasAttribute("disabled")).toBe(false);
+    fireEvent.click(send());
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(server.called("POST", "/api/topics/fix-it/threads/new")).toHaveLength(1);
+  });
+
+  it("changes the footer to Create and start when there is a message", async () => {
+    await openDialog();
+    const footer = () => document.querySelector(".nt-actions") as HTMLElement;
+    expect(within(footer()).getByRole("button", { name: "Create topic" })).toBeTruthy();
+    type(/^First message/, "Do the thing");
+    expect(within(footer()).getByRole("button", { name: "Create and start" })).toBeTruthy();
+    type(/^First message/, "");
+    expect(within(footer()).getByRole("button", { name: "Create topic" })).toBeTruthy();
+  });
+
+  it("submits with Ctrl+Enter from the message", async () => {
+    await openDialog();
+    type("Title", "Fix it");
+    type(/^First message/, "Do the thing");
+    pick("Project: none", "Foo");
+    fireEvent.keyDown(field(/^First message/), { key: "Enter", ctrlKey: true });
+    await waitFor(() =>
+      expect(server.called("POST", "/api/topics/fix-it/threads/new")).toHaveLength(1),
+    );
   });
 
   it("keeps the dialog on a start failure and retries without creating a second topic", async () => {
@@ -270,8 +351,13 @@ describe("+ New topic", () => {
     submit();
     const alert = await screen.findByText(/did not start: .*exited with 1/);
     expect(alert).toBeTruthy();
+    // The error sits inside the composer box, and the send icon retries.
+    expect(alert.closest(".rc-box")).toBeTruthy();
     expect(screen.getByRole("dialog")).toBeTruthy();
-    const retry = screen.getByRole("button", { name: "Retry start" });
+    const retry = within(document.querySelector(".nt-actions") as HTMLElement).getByRole("button", {
+      name: "Retry start",
+    });
+    expect(send().getAttribute("aria-label")).toBe("Retry start");
     fireEvent.click(retry);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(server.called("POST", "/api/topics")).toHaveLength(1);

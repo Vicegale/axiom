@@ -96,7 +96,7 @@
 .rc-opt[aria-checked="true"] .rc-tick { visibility: visible; }
 .rc-opt-body { display: flex; flex-direction: column; gap: 0.0625rem; min-width: 0; }
 .rc-opt-label { font-size: 0.8125rem; line-height: 1.3; overflow-wrap: anywhere; }
-.rc-opt-hint { font-size: 0.6875rem; line-height: 1.4; color: var(--text-2); }
+.rc-opt-hint { overflow-wrap: anywhere; font-size: 0.6875rem; line-height: 1.4; color: var(--text-2); }
 
 @media (prefers-reduced-motion: reduce) {
   .rc-wrap.in, .rc-wrap.out { animation: none; }

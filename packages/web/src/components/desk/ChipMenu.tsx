@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type ReactNode, useId, useRef } from "react";
+import { type KeyboardEvent, type ReactNode, type Ref, useId, useRef } from "react";
 
 export interface ChipOption {
   value: string;
@@ -23,6 +23,8 @@ interface Props {
   /** Set when the chip cannot be changed: it stays visible and explains itself. */
   disabledReason?: string;
   muted?: boolean;
+  /** The pill, for focusing it (e.g. on a validation error). */
+  buttonRef?: Ref<HTMLButtonElement>;
 }
 
 const MENU_WIDTH = 240;
@@ -43,6 +45,7 @@ export function ChipMenu({
   icon,
   disabledReason,
   muted,
+  buttonRef,
 }: Props) {
   const id = useId();
   const button = useRef<HTMLButtonElement>(null);
@@ -111,7 +114,11 @@ export function ChipMenu({
     <>
       <button
         type="button"
-        ref={button}
+        ref={(el) => {
+          button.current = el;
+          if (typeof buttonRef === "function") buttonRef(el);
+          else if (buttonRef) buttonRef.current = el;
+        }}
         className={`rc-chip${muted ? " muted" : ""}`}
         popoverTarget={disabled ? undefined : id}
         aria-haspopup="menu"
