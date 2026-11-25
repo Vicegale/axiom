@@ -1,4 +1,5 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ComposeOptions, DeskThread } from "../../api";
 import { ReplyBox } from "./ReplyBox";
@@ -64,42 +65,101 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const setup = (thread: DeskThread | null = T3, threads = [T3, CC]) => {
-  const onSent = vi.fn();
-  const onClose = vi.fn();
-  render(
+function Harness({
+  thread,
+  threads,
+  startOpen,
+  onSent,
+}: {
+  thread: DeskThread | null;
+  threads: DeskThread[];
+  startOpen: boolean;
+  onSent: () => void;
+}) {
+  const [open, setOpen] = useState(startOpen);
+  return (
     <ReplyBox
       topicSlug="demo"
       thread={thread}
       threads={threads}
+      open={open}
+      onOpenChange={setOpen}
       onSent={onSent}
-      onClose={onClose}
-    />,
+    />
   );
-  return { onSent, onClose };
+}
+
+const setup = (thread: DeskThread | null = T3, threads = [T3, CC], startOpen = true) => {
+  const onSent = vi.fn();
+  render(<Harness thread={thread} threads={threads} startOpen={startOpen} onSent={onSent} />);
+  return { onSent };
 };
-const box = () => screen.getByLabelText("Message") as HTMLTextAreaElement;
+const bar = () => screen.getByRole("button", { name: /^(Reply to|Start a thread)/ });
+const box = () => screen.getByRole("textbox", { name: /^Message to/ }) as HTMLTextAreaElement;
 const type = (value: string) => fireEvent.change(box(), { target: { value } });
+const send = () =>
+  screen.getByRole("button", { name: /^(Send to|Start a new thread)/ }) as HTMLButtonElement;
 const posts = () => calls.filter((c) => c.method === "POST");
+const chip = (name: RegExp | string) => screen.getByRole("button", { name }) as HTMLButtonElement;
+const pick = (chipName: RegExp | string, option: string) => {
+  fireEvent.click(chip(chipName));
+  fireEvent.click(
+    screen.getByRole("menuitemradio", { name: new RegExp(`^${option}`), hidden: true }),
+  );
+};
+const menuOf = (name: string) => screen.getByRole("menu", { name, hidden: true });
+
+describe("ReplyBox collapsed", () => {
+  it("is a single bar naming the thread, with the box hidden", () => {
+    setup(T3, [T3, CC], false);
+    expect(bar().getAttribute("aria-expanded")).toBe("false");
+    expect(bar().textContent).toContain("Reply to Fix the importer…");
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("says 'Start a thread…' when the topic has none", () => {
+    setup(null, [], false);
+    expect(bar().textContent).toContain("Start a thread…");
+  });
+
+  it("expands on click and focuses the text", () => {
+    setup(T3, [T3, CC], false);
+    fireEvent.click(bar());
+    expect(document.activeElement).toBe(box());
+    expect(screen.queryByRole("button", { name: /^Reply to/ })).toBeNull();
+  });
+
+  it("shows a one-line preview of the draft with a Draft tag", () => {
+    localStorage.setItem("axiom.reply-draft:demo:1", "first line\nsecond line");
+    setup(T3, [T3, CC], false);
+    expect(bar().textContent).toContain("Draft");
+    expect(bar().textContent).toContain("first line");
+    expect(bar().textContent).not.toContain("second line");
+    expect(bar().getAttribute("aria-label")).toContain("draft");
+  });
+});
 
 describe("ReplyBox", () => {
-  it("focuses the textarea and names the target", async () => {
+  it("focuses the textarea, labels it by target, and loads the options", async () => {
     setup();
     expect(document.activeElement).toBe(box());
-    expect(screen.getByText("Fix the importer")).toBeTruthy();
+    expect(box().getAttribute("aria-label")).toBe("Message to Fix the importer");
+    expect(chip(/^Thread: Fix the importer/)).toBeTruthy();
     await waitFor(() => expect(calls.some((c) => c.path === "/api/compose/options")).toBe(true));
   });
 
-  it("sends to the selected T3 thread without model or effort, clears, and closes", async () => {
-    const { onSent, onClose } = setup();
+  it("sends to the selected T3 thread without model or effort, clears, and collapses", async () => {
+    const { onSent } = setup();
     type("  Please continue  ");
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(send());
     await waitFor(() => expect(onSent).toHaveBeenCalled());
-    expect(onClose).toHaveBeenCalled();
     expect(posts()).toEqual([
       { method: "POST", path: "/api/threads/1/send", body: { text: "Please continue" } },
     ]);
     expect(localStorage.getItem("axiom.reply-draft:demo:1")).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("textbox")).toBeNull());
+    expect(bar().textContent).not.toContain("Draft");
+    expect(document.activeElement).toBe(bar());
   });
 
   it("Ctrl+Enter and Cmd+Enter send", async () => {
@@ -115,32 +175,43 @@ describe("ReplyBox", () => {
     expect(posts()).toHaveLength(2);
   });
 
-  it("does not send an empty message", () => {
+  it("disables Send while the box is empty, and ignores the shortcut", () => {
     setup();
-    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "New thread" }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    expect(send().disabled).toBe(true);
+    expect(send().className).not.toContain("ready");
     type("   ");
     fireEvent.keyDown(box(), { key: "Enter", ctrlKey: true });
     expect(posts()).toHaveLength(0);
+    type("hi");
+    expect(send().disabled).toBe(false);
+    expect(send().className).toContain("ready");
   });
 
-  it("disables model and effort for an existing T3 thread, with a hint", () => {
+  it("disables the model and effort chips for an existing T3 thread, with the reason", () => {
     setup(T3);
-    // the new-thread provider follows the thread (T3), so the picker is off
-    expect((screen.getByLabelText("Model") as HTMLSelectElement).disabled).toBe(true);
-    expect((screen.getByLabelText("Effort") as HTMLSelectElement).disabled).toBe(true);
-    expect(screen.getByText(/cannot change the model or effort/)).toBeTruthy();
+    for (const name of [/^Model:/, /^Effort:/]) {
+      expect(chip(name).getAttribute("aria-disabled")).toBe("true");
+      expect(chip(name).title).toMatch(/cannot change the model or effort/);
+      expect(chip(name).getAttribute("popovertarget")).toBeNull();
+    }
+    expect(screen.getAllByText(/cannot change the model or effort/)[0]?.className).toContain(
+      "sr-only",
+    );
   });
 
-  it("sends model and effort to a Claude Code thread", async () => {
+  it("chips open menus whose items change the value", async () => {
     const { onSent } = setup(CC);
-    await screen.findByRole("option", { name: "claude-sonnet-5-5" });
-    fireEvent.change(screen.getByLabelText("Model"), { target: { value: "claude-sonnet-5-5" } });
-    fireEvent.change(screen.getByLabelText("Effort"), { target: { value: "max" } });
+    await waitFor(() => expect(calls.length).toBeGreaterThan(0));
+    await screen.findByRole("menuitemradio", { name: "claude-sonnet-5-5", hidden: true });
+    expect(chip("Model: default").getAttribute("aria-haspopup")).toBe("menu");
+    fireEvent.click(chip("Model: default"));
+    expect(menuOf("Model").matches(":popover-open")).toBe(true);
+    pick("Model: default", "claude-sonnet-5-5");
+    expect(chip("Model: claude-sonnet-5-5")).toBeTruthy();
+    pick("Effort: default", "max");
+    expect(chip("Effort: max").textContent).toContain("max");
     type("go");
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(send());
     await waitFor(() => expect(onSent).toHaveBeenCalled());
     expect(posts()[0]).toEqual({
       method: "POST",
@@ -149,27 +220,48 @@ describe("ReplyBox", () => {
     });
   });
 
-  it("switches the target thread", async () => {
+  it("a menu moves with the arrow keys and Escape closes it without collapsing the box", async () => {
+    setup(CC);
+    await screen.findByRole("menuitemradio", { name: "claude-sonnet-5-5", hidden: true });
+    chip("Model: default").focus();
+    fireEvent.click(chip("Model: default"));
+    const items = within(menuOf("Model")).getAllByRole("menuitemradio", { hidden: true });
+    expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(menuOf("Model"), { key: "ArrowDown" });
+    expect(document.activeElement).toBe(items[1]);
+    fireEvent.keyDown(menuOf("Model"), { key: "End" });
+    expect(document.activeElement).toBe(items.at(-1));
+    const menu = menuOf("Model");
+    fireEvent.keyDown(menu, { key: "Escape" });
+    if (menu.matches(":popover-open")) menu.hidePopover();
+    expect(document.activeElement).toBe(chip("Model: default"));
+    expect(screen.getByRole("textbox")).toBeTruthy();
+  });
+
+  it("switches the target thread from the target chip", async () => {
     setup(T3);
-    fireEvent.change(screen.getByLabelText("Thread"), { target: { value: "2" } });
-    expect(screen.getByText("Write the docs")).toBeTruthy();
+    pick(/^Thread:/, "Write the docs");
+    expect(chip(/^Thread: Write the docs/)).toBeTruthy();
+    expect(box().getAttribute("aria-label")).toBe("Message to Write the docs");
     type("x");
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(send());
     await waitFor(() => expect(posts()).toHaveLength(1));
     expect(posts()[0]?.path).toBe("/api/threads/2/send");
   });
 
-  it("starts a new thread with the chosen provider", async () => {
-    const { onSent, onClose } = setup(T3);
-    fireEvent.change(screen.getByLabelText("New thread with"), {
-      target: { value: "claude-code" },
-    });
-    await screen.findByRole("option", { name: "claude-opus-5-5" });
-    fireEvent.change(screen.getByLabelText("Effort"), { target: { value: "low" } });
+  it("New thread turns Send into Start thread, with a provider chip", async () => {
+    const { onSent } = setup(T3);
+    expect(screen.queryByRole("button", { name: /^Provider:/ })).toBeNull();
+    pick(/^Thread:/, "New thread");
+    expect(send().getAttribute("aria-label")).toBe("Start a new thread");
+    expect(box().getAttribute("aria-label")).toBe("Message to a new thread");
+    expect(chip("Provider: T3")).toBeTruthy();
+    pick("Provider: T3", "Claude Code");
+    await screen.findByRole("menuitemradio", { name: "claude-opus-5-5", hidden: true });
+    pick("Effort: default", "low");
     type("Start fresh");
-    fireEvent.click(screen.getByRole("button", { name: "New thread" }));
+    fireEvent.click(send());
     await waitFor(() => expect(onSent).toHaveBeenCalled());
-    expect(onClose).toHaveBeenCalled();
     expect(posts()).toEqual([
       {
         method: "POST",
@@ -181,37 +273,40 @@ describe("ReplyBox", () => {
 
   it("starts a new T3 thread without model or effort", async () => {
     setup(T3);
+    pick(/^Thread:/, "New thread");
+    expect(chip(/^Model:/).getAttribute("aria-disabled")).toBe("true");
+    expect(chip(/^Model:/).title).toMatch(/new T3 thread uses the project's default/);
     type("Hello");
-    fireEvent.click(screen.getByRole("button", { name: "New thread" }));
+    fireEvent.click(send());
     await waitFor(() => expect(posts()).toHaveLength(1));
     expect(posts()[0]?.body).toEqual({ text: "Hello", provider: "t3" });
   });
 
-  it("works with no thread: only New thread can send", () => {
+  it("works with no thread: it starts one, and the target chip says why it is fixed", () => {
     setup(null, []);
     type("x");
-    expect((screen.getByRole("button", { name: "Send" }) as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "New thread" }) as HTMLButtonElement).disabled).toBe(
-      false,
-    );
-    expect(screen.getByText(/no thread yet/)).toBeTruthy();
+    expect(send().getAttribute("aria-label")).toBe("Start a new thread");
+    expect(send().disabled).toBe(false);
+    expect(chip(/^Thread: new thread/).getAttribute("aria-disabled")).toBe("true");
+    expect(chip(/^Thread:/).title).toBe("This topic has no thread yet.");
+    expect(localStorage.getItem("axiom.reply-draft:demo:new")).toBe("x");
   });
 
   it("keeps the draft per topic and thread, across a remount", () => {
     setup(T3);
     type("draft one");
     expect(localStorage.getItem("axiom.reply-draft:demo:1")).toBe("draft one");
-    fireEvent.change(screen.getByLabelText("Thread"), { target: { value: "2" } });
+    pick(/^Thread:/, "Write the docs");
     expect(box().value).toBe("");
     type("draft two");
-    fireEvent.change(screen.getByLabelText("Thread"), { target: { value: "1" } });
+    pick(/^Thread:/, "Fix the importer");
     expect(box().value).toBe("draft one");
     cleanup();
     setup(CC);
     expect(box().value).toBe("draft two");
   });
 
-  it("keeps the draft when sending fails and shows the error", async () => {
+  it("keeps the draft when sending fails and shows the error inside the box", async () => {
     respond = (method, path) =>
       path === "/api/compose/options"
         ? json(OPTIONS)
@@ -221,12 +316,13 @@ describe("ReplyBox", () => {
               502,
             )
           : json({}, 404);
-    const { onSent, onClose } = setup();
+    const { onSent } = setup();
     type("keep me");
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("boom");
+    fireEvent.click(send());
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("boom");
+    expect(screen.getByRole("form", { name: "Reply" }).contains(alert)).toBe(true);
     expect(onSent).not.toHaveBeenCalled();
-    expect(onClose).not.toHaveBeenCalled();
     expect(box().value).toBe("keep me");
     expect(localStorage.getItem("axiom.reply-draft:demo:1")).toBe("keep me");
   });
@@ -249,7 +345,7 @@ describe("ReplyBox", () => {
           );
     setup(CC);
     type("hi");
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(send());
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toContain("open in a terminal");
     expect(screen.getByText("cd '/w' && claude --resume s-2")).toBeTruthy();
@@ -260,7 +356,7 @@ describe("ReplyBox", () => {
     expect(screen.getByRole("button", { name: "Copied" })).toBeTruthy();
   });
 
-  it("shows a sending state and disables the buttons meanwhile", async () => {
+  it("shows a sending state and disables Send meanwhile", async () => {
     let release: (r: Response) => void = () => {};
     respond = (method, path) => {
       if (path === "/api/compose/options") return json(OPTIONS);
@@ -270,12 +366,10 @@ describe("ReplyBox", () => {
     };
     setup();
     type("slow");
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(send());
     const busy = await screen.findByRole("button", { name: "Sending…" });
     expect((busy as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "New thread" }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    expect(busy.getAttribute("aria-busy")).toBe("true");
     await act(async () => release(json({ ok: true })));
   });
 
@@ -285,16 +379,39 @@ describe("ReplyBox", () => {
     });
     const { onSent } = setup();
     type("hello");
-    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+    fireEvent.click(send());
     await waitFor(() => expect(onSent).toHaveBeenCalled());
     spy.mockRestore();
   });
 
-  it("Close keeps the draft and calls onClose", () => {
-    const { onClose } = setup();
+  it("the Collapse button keeps the draft, which shows in the bar", () => {
+    setup();
     type("later");
-    fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(onClose).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Collapse" }));
+    expect(screen.queryByRole("textbox")).toBeNull();
     expect(localStorage.getItem("axiom.reply-draft:demo:1")).toBe("later");
+    expect(bar().textContent).toContain("later");
+    expect(document.activeElement).toBe(bar());
+  });
+
+  it("Escape collapses when empty, and with text it collapses but keeps the draft", () => {
+    setup();
+    fireEvent.keyDown(box(), { key: "Escape" });
+    expect(screen.queryByRole("textbox")).toBeNull();
+    fireEvent.click(bar());
+    type("half-written");
+    fireEvent.keyDown(box(), { key: "Escape" });
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(bar().textContent).toContain("half-written");
+    fireEvent.click(bar());
+    expect(box().value).toBe("half-written");
+  });
+
+  it("a draft survives a refresh: it is in the collapsed bar of a fresh mount", () => {
+    setup();
+    type("persist");
+    cleanup();
+    setup(T3, [T3, CC], false);
+    expect(bar().textContent).toContain("persist");
   });
 });

@@ -96,8 +96,8 @@
 .dk-md { max-height: 22rem; overflow: auto; padding: 0.5rem 0.625rem; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); overflow-wrap: anywhere; }
 .dk-md > :first-child { margin-top: 0; }
 .dk-md > :last-child { margin-bottom: 0; }
-.dk-foot { display: flex; gap: 0.5rem; }
-.dk-replybox { padding: 0.625rem; border: 1px dashed var(--line-strong); border-radius: var(--radius); display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; color: var(--text-2); }
+
+
 @media (forced-colors: active) {
   .dk-card, .dk-now, .dk-md { border: 1px solid CanvasText; }
   .dk-card.hl { border-width: 2px; }

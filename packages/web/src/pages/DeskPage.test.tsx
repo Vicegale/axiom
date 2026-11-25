@@ -296,16 +296,34 @@ describe("the Desk", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("the Reply button reveals the reply box, hidden until asked for", async () => {
+  it("the composer is a collapsed bar on every card until asked for", async () => {
     start();
     const alpha = within(await screen.findByRole("article", { name: "Alpha" }));
-    expect(alpha.queryByRole("textbox", { name: "Message" })).toBeNull();
-    const reply = alpha.getByRole("button", { name: "Reply" });
-    fireEvent.click(reply);
-    expect(await alpha.findByRole("textbox", { name: "Message" })).toBeTruthy();
-    expect(reply.getAttribute("aria-expanded")).toBe("true");
-    fireEvent.click(reply);
-    expect(alpha.queryByRole("textbox", { name: "Message" })).toBeNull();
+    expect(alpha.queryByRole("textbox")).toBeNull();
+    expect(alpha.queryByRole("button", { name: "Reply" })).toBeNull();
+    const bar = alpha.getByRole("button", { name: /^Reply to/ });
+    expect(bar.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(bar);
+    const box = await alpha.findByRole("textbox", { name: /^Message to/ });
+    expect(document.activeElement).toBe(box);
+    fireEvent.click(alpha.getByRole("button", { name: "Collapse" }));
+    expect(alpha.queryByRole("textbox")).toBeNull();
+    expect(alpha.getByRole("button", { name: /^Reply to/ })).toBeTruthy();
+  });
+
+  it("`r` on a focused card expands its composer, but not while typing in a field", async () => {
+    start();
+    const alpha = within(await screen.findByRole("article", { name: "Alpha" }));
+    const star = alpha.getByRole("button", { name: /^Favourite/ });
+    star.focus();
+    fireEvent.keyDown(star, { key: "r" });
+    const box = await alpha.findByRole("textbox", { name: /^Message to/ });
+    expect(document.activeElement).toBe(box);
+    fireEvent.change(box, { target: { value: "" } });
+    fireEvent.keyDown(box, { key: "r" });
+    expect(alpha.getByRole("textbox", { name: /^Message to/ })).toBe(box);
+    // another card is untouched
+    expect(within(card("Charlie")).queryByRole("textbox")).toBeNull();
   });
 
   it("shows Generating… with placeholder lines, or the previous summary dimmed with Updating…", async () => {
