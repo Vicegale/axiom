@@ -22,6 +22,13 @@
  * - `orchestration_v2_projection_turn_items`: `node_id`, `type`
  *   (`user_input_request|approval_request`), `ordinal`, `payload_json`
  *   (`$.questions[].question` for a question, `$.prompt` for an approval): the text of a request.
+ *   The same table holds a thread's step-by-step activity, read for the Desk card's live line:
+ *   the newest row of the thread (`thread_id = ?`, highest `ordinal`: a main-thread item's ordinal
+ *   is `run ordinal * 1000000 + n`, so it sorts across runs; index `..._thread_ordinal_idx`) whose
+ *   `type` is one of `reasoning` (`$.text`), `command_execution` (`$.input`, the command line),
+ *   `dynamic_tool` (`$.toolName`, `$.input` object, `$.title` e.g. `Read /path`), `file_change`
+ *   (`$.fileName`), `web_search` (`$.patterns[]`), `subagent` (`$.title`). `updated_at` is the
+ *   line's time. Other types (assistant text, checkpoints, todo lists, notices) are skipped.
  *
  * Everything else T3 stores is ignored. Any query error means the schema moved: the caller marks
  * the provider unavailable and tries again on the next tick.
@@ -30,6 +37,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { describeToolUse, oneLine } from "@axiom/core";
 
 export type T3SessionStatus =
   | "idle"
@@ -58,6 +66,8 @@ export interface T3ThreadState {
   removed: boolean;
   /** The newest run's id: a new id means the thread ran again, even if the run was too quick to see. */
   latestRunId: string | null;
+  /** The newest step the agent took, as one short line, or null when there is none. */
+  activity: { text: string; at: string } | null;
 }
 
 export interface T3ThreadSummary {
@@ -150,6 +160,51 @@ const PENDING_SQL = `SELECT runtime_request_id, node_id, kind
 const REQUEST_ITEM_SQL = `SELECT payload_json FROM orchestration_v2_projection_turn_items
   WHERE node_id = ? AND type IN ('user_input_request', 'approval_request') ORDER BY ordinal DESC`;
 
+const ACTIVITY_SQL = `SELECT type, updated_at, payload_json
+  FROM orchestration_v2_projection_turn_items
+  WHERE thread_id = ?
+    AND type IN ('reasoning', 'command_execution', 'dynamic_tool', 'file_change', 'web_search', 'subagent')
+  ORDER BY ordinal DESC LIMIT 1`;
+
+const THINKING_CHARS = 80;
+
+function fileBase(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+}
+
+/** The one-line wording of a turn item, or null when it has nothing to say. Exported for tests. */
+export function activityLine(type: string, payload: unknown): string | null {
+  const p = (typeof payload === "object" && payload !== null ? payload : {}) as Record<
+    string,
+    unknown
+  >;
+  const text = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+  switch (type) {
+    case "command_execution": {
+      const first = text(p.input)
+        .split("\n")
+        .find((l) => l.trim() !== "");
+      return first ? oneLine(`$ ${first}`, 200) : "Running a command";
+    }
+    case "dynamic_tool": {
+      if (text(p.toolName)) return describeToolUse(text(p.toolName), p.input);
+      return text(p.title) ? oneLine(text(p.title), 200) : null;
+    }
+    case "file_change":
+      return text(p.fileName) ? `Editing ${fileBase(text(p.fileName))}` : "Editing files";
+    case "web_search":
+      return "Searching the web";
+    case "subagent":
+      return text(p.title) ? oneLine(`Subagent: ${text(p.title)}`, 200) : "Subagent";
+    case "reasoning": {
+      const t = oneLine(text(p.text), THINKING_CHARS);
+      return t ? `Thinking: ${t}` : "Thinking";
+    }
+    default:
+      return null;
+  }
+}
+
 /** Maps T3's run and session statuses to the session statuses of the spec. */
 export function sessionStatus(
   runStatus: string | null,
@@ -230,6 +285,21 @@ export class T3Db {
     this.db.prepare(`${THREAD_SELECT} LIMIT 1`);
     this.db.prepare(PENDING_SQL);
     this.db.prepare(REQUEST_ITEM_SQL);
+    this.db.prepare(ACTIVITY_SQL);
+  }
+
+  /** The newest step of a thread as one line, with its time; null when it has taken none. */
+  activity(threadId: string): { text: string; at: string } | null {
+    const row = this.db.prepare(ACTIVITY_SQL).get(threadId) as
+      | { type: string; updated_at: string; payload_json: string }
+      | undefined;
+    if (!row) return null;
+    let payload: unknown;
+    try {
+      payload = JSON.parse(row.payload_json);
+    } catch {}
+    const text = activityLine(row.type, payload);
+    return text ? { text, at: row.updated_at } : null;
   }
 
   private pending(threadId: string): T3Request[] {
@@ -271,6 +341,7 @@ export class T3Db {
       pendingRequests: row.pending_count > 0 ? this.pending(row.thread_id) : [],
       removed,
       latestRunId: row.run_id ?? null,
+      activity: removed ? null : this.activity(row.thread_id),
     };
   }
 

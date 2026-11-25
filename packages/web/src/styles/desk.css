@@ -74,7 +74,14 @@
 }
 .dk-thread-one { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-run { display: flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; color: var(--text-2); }
-.dk-rundot { width: 0.4375rem; height: 0.4375rem; border-radius: 50%; background: var(--c, var(--text-3)); }
+.dk-run { min-height: 1.125rem; line-height: 1.125rem; min-width: 0; }
+.dk-rundot { flex: none; width: 0.4375rem; height: 0.4375rem; border-radius: 50%; background: var(--c, var(--text-3)); }
+/* A running thread: the dot pulses, and the newest step runs on one line (ellipsis, full text in the title). */
+.dk-run.live .dk-rundot { animation: dk-pulse 1.6s ease-in-out infinite; }
+.dk-runtext { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-act { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text); }
+.dk-actage { flex: none; color: var(--text-3); white-space: nowrap; }
+@keyframes dk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .dk-label { font: 500 0.625rem/1 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--meta); margin-bottom: 0.25rem; }
 .dk-now { padding: 0.5rem 0.625rem; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); }
 .dk-now-text { color: var(--text); overflow-wrap: anywhere; }
@@ -113,5 +120,6 @@
 @keyframes dk-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 @media (prefers-reduced-motion: reduce) {
   .dk-skel span { animation: none; }
+  .dk-run.live .dk-rundot { animation: none; }
   .dk-stale { transition: none; }
 }

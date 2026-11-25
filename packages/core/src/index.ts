@@ -5,6 +5,7 @@ const pkg = require("../package.json") as { version: string };
 
 export const AXIOM_VERSION: string = pkg.version;
 
+export { describeToolUse, oneLine } from "./activity.js";
 export type {
   AttachThreadInput,
   Clock,

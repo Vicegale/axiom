@@ -96,6 +96,7 @@ export function deskThread(over: Partial<DeskThread> & { id: number }): DeskThre
     lastReplyAt: null,
     summary: null,
     summaryError: null,
+    activity: null,
     hasReply: false,
     ...over,
   };

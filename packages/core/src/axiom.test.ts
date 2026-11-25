@@ -776,6 +776,30 @@ describe("the Desk: replies, summaries, arrangement", () => {
     expect(ax.listEntries("demo")).toHaveLength(before);
   });
 
+  it("stores the activity line: one line, capped at 300, no history, nothing else bumped", () => {
+    const { thread } = topicWithThread(ax);
+    const before = ax.listEntries("demo").length;
+    const status = ax.getThread(thread.id).status;
+    ax.setThreadActivity(thread.id, "  \n ");
+    expect(ax.getThread(thread.id).activityText).toBeNull();
+    ax.setThreadActivity(thread.id, "  $ npm\n  test  ", "2026-01-01T00:00:00.000Z");
+    expect(ax.getThread(thread.id)).toMatchObject({
+      activityText: "$ npm test",
+      activityAt: "2026-01-01T00:00:00.000Z",
+    });
+    ax.setThreadActivity(thread.id, "y".repeat(500));
+    const t = ax.getThread(thread.id);
+    expect(t.activityText).toHaveLength(300);
+    expect(t.activityText?.endsWith("…")).toBe(true);
+    expect(t.activityAt).toBe(clock.now().toISOString());
+    expect(t.status).toBe(status);
+    expect(ax.listEntries("demo")).toHaveLength(before);
+    // It survives the thread stopping.
+    ax.threadWorking(thread.id);
+    ax.threadStopped(thread.id);
+    expect(ax.getThread(thread.id).activityText).toHaveLength(300);
+  });
+
   it("lists threads whose reply has no summary, and overwrites the summary each time", () => {
     const { thread } = topicWithThread(ax);
     expect(ax.threadsNeedingSummary(10)).toEqual([]);

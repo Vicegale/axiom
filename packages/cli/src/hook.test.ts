@@ -397,6 +397,126 @@ describe("axiom hook", () => {
   });
 });
 
+describe("axiom hook pre-tool (the activity line)", () => {
+  const SID2 = "9a9a9a9a-0000-4000-8000-0123456789ab";
+  const pre = (tool_name: string, tool_input: unknown, sid = SID) =>
+    payload("PreToolUse", { tool_name, tool_input }, sid);
+  const activity = (db: string, id = 1) => {
+    const ax = openDatabase(db);
+    try {
+      const t = ax.getThread(id);
+      return { text: t.activityText, at: t.activityAt };
+    } finally {
+      ax.close();
+    }
+  };
+
+  const cases: [string, string, unknown, string][] = [
+    ["Bash", "Bash", { command: "npm test\nsecond line" }, "$ npm test"],
+    ["Read", "Read", { file_path: "/a/b/parser.ts" }, "Reading parser.ts"],
+    ["Edit", "Edit", { file_path: "/a/b/app.ts", old_string: "x" }, "Editing app.ts"],
+    ["Write", "Write", { file_path: "/a/b/new.md" }, "Editing new.md"],
+    ["MultiEdit", "MultiEdit", { file_path: "/a/b/m.ts" }, "Editing m.ts"],
+    ["Grep", "Grep", { pattern: "TODO|FIXME" }, "Searching TODO|FIXME"],
+    ["Glob", "Glob", { pattern: "**/*.ts" }, "Searching **/*.ts"],
+    ["WebFetch", "WebFetch", { url: "https://example.com/a/b?q=1" }, "Fetching example.com"],
+    ["WebSearch", "WebSearch", { query: "secret" }, "Searching the web"],
+    [
+      "Task",
+      "Task",
+      { description: "Check the schema", prompt: "p" },
+      "Subagent: Check the schema",
+    ],
+    ["Agent", "Agent", { description: "Review", prompt: "p" }, "Subagent: Review"],
+    ["mcp", "mcp__t3-code__t3_thread_read", {}, "t3-code: t3_thread_read"],
+    ["other", "TodoWrite", { todos: [] }, "TodoWrite"],
+    ["Bash without input", "Bash", undefined, "Bash"],
+  ];
+  it.each(cases)("maps %s", (_label, tool, input, want) => {
+    const s = session();
+    s.attach();
+    s.hook("pre-tool", pre(tool, input));
+    expect(activity(s.db).text).toBe(want);
+    expect(s.log()).toBe("");
+  });
+
+  it("stores a time, writes no history, no notification, and leaves the status alone", () => {
+    const s = session();
+    s.attach();
+    s.hook("prompt", PROMPT);
+    const before = s.topic().history.length;
+    s.hook("pre-tool", pre("Bash", { command: "ls" }));
+    const a = activity(s.db);
+    expect(a.text).toBe("$ ls");
+    expect(Date.now() - Date.parse(a.at as string)).toBeLessThan(60_000);
+    const t = s.topic();
+    expect(t.history).toHaveLength(before);
+    expect(t.status).toBe("wip");
+    expect(s.notifications()).toEqual([]);
+    // The newest step replaces the last one, and a stop keeps it.
+    s.hook("pre-tool", pre("Read", { file_path: "/x/y.ts" }));
+    s.hook("stop", STOP);
+    expect(activity(s.db).text).toBe("Reading y.ts");
+  });
+
+  it("caps a very long command at 200 characters on one line", () => {
+    const s = session();
+    s.attach();
+    s.hook("pre-tool", pre("Bash", { command: `echo ${"x".repeat(1000)}` }));
+    const text = activity(s.db).text as string;
+    expect(text).toHaveLength(200);
+    expect(text.endsWith("…")).toBe(true);
+    expect(text).not.toContain("\n");
+  });
+
+  it("is a no-op for Axiom's own runs (AXIOM_INTERNAL=1)", () => {
+    const s = session();
+    s.attach();
+    s.hook("pre-tool", pre("Bash", { command: "ls" }), { AXIOM_INTERNAL: "1" });
+    expect(activity(s.db).text).toBeNull();
+  });
+
+  it("ignores a session that is not attached, without creating anything", () => {
+    const s = session();
+    s.attach();
+    s.hook("pre-tool", pre("Bash", { command: "ls" }, SID2));
+    expect(activity(s.db).text).toBeNull();
+    expect(s.log()).toBe("");
+  });
+
+  it("ignores a payload without a tool name, and survives garbage", () => {
+    const s = session();
+    s.attach();
+    s.hook("pre-tool", payload("PreToolUse", {}));
+    expect(activity(s.db).text).toBeNull();
+    const r = s.exec(["hook", "pre-tool"], "not json");
+    expect(r.code).toBe(0);
+    expect(s.log()).toContain("pre-tool");
+  });
+
+  it("inside a T3 session it lands on the attached T3 thread, not on a Claude Code thread", () => {
+    const s = session();
+    s.exec(["topic", "new", "demo", "--title", "Demo"]);
+    s.exec(["thread", "attach", "demo", "--provider", "t3", "--id", "t3-thread-1"]);
+    s.hook("pre-tool", pre("Bash", { command: "make" }, SID2), { T3CODE_THREAD_ID: "t3-thread-1" });
+    expect(activity(s.db).text).toBe("$ make");
+    // An unattached T3 thread is ignored, and creates nothing.
+    s.hook("pre-tool", pre("Bash", { command: "other" }), { T3CODE_THREAD_ID: "unknown" });
+    expect(activity(s.db).text).toBe("$ make");
+  });
+
+  it("stays fast: a call takes well under half a second even through the slow tsx loader", () => {
+    const s = session();
+    s.attach();
+    s.exec(["hook", "pre-tool"], pre("Bash", { command: "warm" })); // warm the disk cache
+    const t0 = performance.now();
+    for (let i = 0; i < 3; i++) s.hook("pre-tool", pre("Bash", { command: `ls ${i}` }));
+    const each = (performance.now() - t0) / 3;
+    expect(each).toBeLessThan(1500);
+    expect(activity(s.db).text).toBe("$ ls 2");
+  });
+});
+
 describe("axiom hooks install / uninstall", () => {
   const CLI = "/opt/axiom/packages/cli/dist/index.js";
   const base = (s: string) => ["hooks", s, "--cli-entry", CLI];
@@ -423,7 +543,14 @@ describe("axiom hooks install / uninstall", () => {
         : [];
     return { ...s, settings, backups };
   }
-  const events = ["SessionStart", "UserPromptSubmit", "Notification", "Stop", "SessionEnd"];
+  const events = [
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "Notification",
+    "Stop",
+    "SessionEnd",
+  ];
   const axiomCmds = (h: any, name: string): string[] =>
     (h[name] ?? [])
       .flatMap((g: any) => g.hooks.map((x: any) => x.command))
@@ -438,6 +565,7 @@ describe("axiom hooks install / uninstall", () => {
     for (const [name, ev] of [
       ["SessionStart", "session-start"],
       ["UserPromptSubmit", "prompt"],
+      ["PreToolUse", "pre-tool"],
       ["Notification", "notification"],
       ["Stop", "stop"],
       ["SessionEnd", "session-end"],
@@ -456,7 +584,9 @@ describe("axiom hooks install / uninstall", () => {
     const cfg = read(s.settings);
     expect(cfg.model).toBe("opus");
     expect(cfg.permissions).toEqual(existing.permissions);
-    expect(cfg.hooks.PreToolUse).toEqual(existing.hooks.PreToolUse);
+    // The owner's own PreToolUse group stays first and untouched; Axiom's is added after it.
+    expect(cfg.hooks.PreToolUse[0]).toEqual(existing.hooks.PreToolUse[0]);
+    expect(cfg.hooks.PreToolUse).toHaveLength(2);
     expect(cfg.hooks.Stop[0]).toEqual(existing.hooks.Stop[0]);
     expect(cfg.hooks.Stop).toHaveLength(2);
     for (const e of events) expect(axiomCmds(cfg.hooks, e)).toHaveLength(1);

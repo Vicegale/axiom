@@ -1,5 +1,6 @@
 import type { DatabaseSync, SQLInputValue, StatementSync } from "node:sqlite";
 import type { z } from "zod";
+import { oneLine } from "./activity.js";
 import {
   type Actor,
   DEFAULT_STALE_AFTER_DAYS,
@@ -72,6 +73,9 @@ const BOOLEAN_COLUMNS = new Set([
 
 /** The longest reply kept on a thread, in characters. */
 export const MAX_REPLY_CHARS = 200_000;
+
+/** The longest activity line kept on a thread, in characters. */
+export const MAX_ACTIVITY_CHARS = 300;
 
 function camel<T>(row: Row | undefined): T {
   if (!row) throw new AxiomError("not-found", "row not found");
@@ -909,6 +913,23 @@ export class Axiom {
   setThreadSummaryError(threadId: number, message: string): void {
     this.threadRow(threadId);
     this.run("UPDATE thread SET summary_error = ? WHERE id = ?", message, threadId);
+  }
+
+  /**
+   * Stores the newest step the agent took, as one short line (trimmed, newlines folded, capped at
+   * `MAX_ACTIVITY_CHARS`). Ephemeral: overwrites the last one, never a history entry, touches
+   * nothing else. Blank text changes nothing.
+   */
+  setThreadActivity(threadId: number, text: string, at?: string): void {
+    const line = oneLine(text, MAX_ACTIVITY_CHARS);
+    if (!line) return;
+    this.threadRow(threadId);
+    this.run(
+      "UPDATE thread SET activity_text = ?, activity_at = ? WHERE id = ?",
+      line,
+      at ?? this.iso(),
+      threadId,
+    );
   }
 
   /** Threads whose latest reply has no summary yet (never summarised, or the reply is newer). */

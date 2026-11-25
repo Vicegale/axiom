@@ -1,11 +1,12 @@
 import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import { defaultDatabasePath, openDatabase } from "@axiom/core";
+import { defaultDatabasePath, describeToolUse, openDatabase } from "@axiom/core";
 
 export const HOOK_EVENTS = [
   "session-start",
   "prompt",
+  "pre-tool",
   "notification",
   "stop",
   "session-end",
@@ -22,6 +23,8 @@ interface HookPayload {
   cwd?: string;
   prompt?: string;
   last_assistant_message?: unknown;
+  tool_name?: string;
+  tool_input?: unknown;
 }
 
 /** The reply a Stop payload carries, when there is one. */
@@ -90,6 +93,25 @@ export function runHook(
     const payload = parsed as HookPayload;
     const subagents = runningSubagentCount(payload);
 
+    // Runs before every tool call: one short write, no history, no notification, no refresh.
+    if (event === "pre-tool") {
+      if (typeof payload.tool_name !== "string" || payload.tool_name === "") return 0;
+      const line = describeToolUse(payload.tool_name, payload.tool_input);
+      const t3Id = env.T3CODE_THREAD_ID;
+      const sessionId = payload.session_id || env.CLAUDE_CODE_SESSION_ID;
+      if (!t3Id && !sessionId) return 0;
+      const axiom = openDatabase(options.db ?? defaultDatabasePath(env));
+      try {
+        const thread = t3Id
+          ? axiom.findThread({ provider: "t3", providerThreadId: t3Id })
+          : axiom.findThread({ provider: "claude-code", providerThreadId: sessionId as string });
+        if (thread && thread.endedAt === null) axiom.setThreadActivity(thread.id, line);
+      } finally {
+        axiom.close();
+      }
+      return 0;
+    }
+
     const t3ThreadId = env.T3CODE_THREAD_ID;
     if (t3ThreadId) {
       const axiom = openDatabase(options.db ?? defaultDatabasePath(env));
@@ -131,6 +153,8 @@ export function runHook(
         axiom.setThreadCwd(thread.id, payload.cwd);
       }
       switch (event as HookEvent) {
+        case "pre-tool":
+          break; // handled above
         case "session-start":
           axiom.threadReopened(thread.id);
           break;

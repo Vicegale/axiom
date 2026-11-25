@@ -26,6 +26,7 @@ const mk = (over: Partial<DeskThread>): DeskThread => ({
   lastReplyAt: null,
   summary: null,
   summaryError: null,
+  activity: null,
   hasReply: false,
   ...over,
 });

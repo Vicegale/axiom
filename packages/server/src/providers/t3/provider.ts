@@ -188,6 +188,14 @@ export class T3Provider {
       for (const { th, state } of planned) {
         if (!th.title && state?.title) this.ax.fillThreadTitle(th.id, state.title);
       }
+      // The newest step, only when it is new: a different line, or a newer time than the stored one.
+      for (const { th, state } of planned) {
+        const a = state?.activity;
+        if (!a || state?.removed) continue;
+        if (a.text !== th.activityText && (th.activityAt === null || a.at > th.activityAt)) {
+          this.ax.setThreadActivity(th.id, a.text, a.at);
+        }
+      }
       for (const { th, action } of planned) {
         if (!action) continue;
         switch (action.kind) {

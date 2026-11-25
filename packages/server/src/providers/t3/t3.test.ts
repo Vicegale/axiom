@@ -392,3 +392,138 @@ describe("threadUrl", () => {
     }
   });
 });
+
+describe("the activity line", () => {
+  const line = (id: string) => {
+    const db = T3Db.open(t3.dir);
+    try {
+      return db.thread(id, null)?.activity ?? null;
+    } finally {
+      db.close();
+    }
+  };
+
+  it("says nothing for a thread without steps", () => {
+    t3.thread("a");
+    expect(line("a")).toBeNull();
+  });
+
+  it("words the newest step of each item type", () => {
+    t3.thread("a");
+    const cases: [string, Record<string, unknown>, string][] = [
+      ["command_execution", { input: "npm test -- --run\nsecond" }, "$ npm test -- --run"],
+      ["command_execution", { input: "" }, "Running a command"],
+      [
+        "dynamic_tool",
+        { toolName: "Read", title: "Read /x/y/parser.ts", input: { file_path: "/x/y/parser.ts" } },
+        "Reading parser.ts",
+      ],
+      ["dynamic_tool", { toolName: "Grep", input: { pattern: "TODO" } }, "Searching TODO"],
+      [
+        "dynamic_tool",
+        { toolName: "mcp__t3-code__t3_thread_read", input: {} },
+        "t3-code: t3_thread_read",
+      ],
+      ["dynamic_tool", { title: "Some tool" }, "Some tool"],
+      ["file_change", { fileName: "/p/q/app.ts", diffStr: "..." }, "Editing app.ts"],
+      ["web_search", { patterns: ["a query"] }, "Searching the web"],
+      ["subagent", { title: "Check the schema" }, "Subagent: Check the schema"],
+      [
+        "reasoning",
+        { text: "I need to look at the\nmigration tests first." },
+        "Thinking: I need to look at the migration tests first.",
+      ],
+      ["reasoning", { text: "" }, "Thinking"],
+    ];
+    cases.forEach(([type, payload, want], i) => {
+      t3.item("a", 10 + i, type, payload, `2026-11-25T10:00:${String(i).padStart(2, "0")}.000Z`);
+      expect(line("a"), type).toEqual({
+        text: want,
+        at: `2026-11-25T10:00:${String(i).padStart(2, "0")}.000Z`,
+      });
+    });
+  });
+
+  it("clips long thinking to about 80 characters and picks the highest ordinal across runs", () => {
+    t3.thread("a");
+    t3.item("a", 2_000_001, "reasoning", { text: "z".repeat(300) });
+    t3.item("a", 1_000_050, "command_execution", { input: "older" });
+    const text = line("a")?.text as string;
+    expect(text.startsWith("Thinking: zzz")).toBe(true);
+    expect(text.length).toBeLessThanOrEqual("Thinking: ".length + 80);
+    expect(text.endsWith("…")).toBe(true);
+  });
+
+  it("skips items that are not steps, and other threads' steps", () => {
+    t3.thread("a").thread("b");
+    t3.item("a", 5, "command_execution", { input: "ls" });
+    t3.item("a", 6, "assistant_message", { text: "All done." });
+    t3.item("a", 7, "checkpoint", {});
+    t3.item("b", 8, "command_execution", { input: "other thread" });
+    expect(line("a")?.text).toBe("$ ls");
+  });
+
+  it("survives a broken payload", () => {
+    t3.thread("a");
+    t3.db
+      .prepare(
+        `INSERT INTO orchestration_v2_projection_turn_items
+           (turn_item_id, thread_id, ordinal, type, status, updated_at, payload_json)
+         VALUES ('bad', 'a', 1, 'command_execution', 'running', '2026-11-25T09:00:00.000Z', '{oops')`,
+      )
+      .run();
+    expect(line("a")?.text).toBe("Running a command");
+  });
+
+  it("the sync stores a step only when it changed, and keeps the last one after the run", () => {
+    t3.thread("a");
+    const th = attach("a");
+    t3.run("a", 1, "running");
+    t3.item("a", 1_000_001, "command_execution", { input: "make" }, "2026-11-25T10:00:00.000Z");
+    provider.sync();
+    expect(thread("a")).toMatchObject({
+      activityText: "$ make",
+      activityAt: "2026-11-25T10:00:00.000Z",
+    });
+
+    // Nothing new: the stored row is not rewritten (a spy on the writer would see no call).
+    const calls: unknown[][] = [];
+    const real = ax.setThreadActivity.bind(ax);
+    ax.setThreadActivity = (...args) => {
+      calls.push(args);
+      real(...args);
+    };
+    provider.sync();
+    expect(calls).toHaveLength(0);
+
+    t3.item(
+      "a",
+      1_000_002,
+      "dynamic_tool",
+      { toolName: "Read", input: { file_path: "/a/b.ts" } },
+      "2026-11-25T10:00:05.000Z",
+    );
+    provider.sync();
+    expect(calls).toEqual([[th.id, "Reading b.ts", "2026-11-25T10:00:05.000Z"]]);
+
+    // A step older than the one a hook stored does not override it.
+    ax.setThreadActivity(th.id, "$ from the hook", "2026-11-25T10:00:09.000Z");
+    provider.sync();
+    expect(thread("a")?.activityText).toBe("$ from the hook");
+
+    // The run ends: the last step stays.
+    t3.run("a", 1, "completed");
+    provider.sync();
+    expect(topicStatus("a")).toBe("idle");
+    expect(thread("a")?.activityText).toBe("$ from the hook");
+  });
+
+  it("does not touch an ended thread", () => {
+    t3.thread("a");
+    const th = attach("a");
+    ax.threadEnded(th.id, "done");
+    t3.item("a", 1, "command_execution", { input: "late" });
+    provider.sync();
+    expect(thread("a")?.activityText).toBeNull();
+  });
+});

@@ -1,5 +1,6 @@
 -- Schema of the T3 tables Axiom reads, copied from T3 server 0.1.11-nightly.20261118.4890 (migration 98).
 -- Tables only (no indexes, no rows). Used to build synthetic fixture databases in tests.
+-- `orchestration_v2_projection_turn_items` also holds the steps behind the Desk card's activity line.
 CREATE TABLE "effect_sql_migrations" (
   migration_id integer PRIMARY KEY NOT NULL,
   created_at datetime NOT NULL DEFAULT current_timestamp,

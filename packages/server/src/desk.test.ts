@@ -191,6 +191,26 @@ if [ "$(wc -l < "$DIR/calls")" -lt 2 ]; then echo "I cannot do that"; else echo 
     expect(state(th.id).summaryNow).toBeNull();
   });
 
+  it("GET /api/desk carries the activity line, or null, and keeps it after the thread stops", async () => {
+    const a = thread("a", "s1");
+    const b = thread("b", "s2");
+    cli.setThreadActivity(a.id, "$ npm test", "2026-11-25T10:00:00.000Z");
+    await start({ claudeCli: claudeSaying(GOOD) });
+    const find = (body: Any, slug: string) =>
+      body.topics.find((t: Any) => t.slug === slug).threads[0];
+    let body = (await api("/api/desk")).body;
+    expect(find(body, "a").activity).toEqual({
+      text: "$ npm test",
+      at: "2026-11-25T10:00:00.000Z",
+    });
+    expect(find(body, "b").activity).toBeNull();
+    expect(b.id).not.toBe(a.id);
+    cli.threadWorking(a.id);
+    cli.threadStopped(a.id);
+    body = (await api("/api/desk")).body;
+    expect(find(body, "a").activity?.text).toBe("$ npm test");
+  });
+
   it("a missing binary is an error on the thread, not a crash", async () => {
     const th = thread();
     cli.setThreadReply(th.id, "reply");

@@ -6,6 +6,7 @@ import { HOOK_EVENTS, type HookEvent } from "./hook.js";
 export const CLAUDE_EVENT: Record<HookEvent, string> = {
   "session-start": "SessionStart",
   prompt: "UserPromptSubmit",
+  "pre-tool": "PreToolUse",
   notification: "Notification",
   stop: "Stop",
   "session-end": "SessionEnd",
