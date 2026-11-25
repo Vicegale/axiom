@@ -28,10 +28,21 @@ Topic           (the main item; what a work-log topic is today)
 - **Ticket** may belong to an epic. Tickets and epics generally have external (Jira) equivalents.
 - **Multiple parents** are allowed: a topic can sit under more than one ticket or epic, and a PR can belong to more than one topic. The hierarchy is a graph, not a tree.
 - **Thread**: a topic has many threads. A thread is a T3 thread or a Claude Code session.
-- **Spec**: agents working on a topic (inside a thread) can write specs. A spec contains **tasks**. Example: `~/projects/vr-test/docs/specs/station.md`, where each row of "8. Milestones" (KC0, KC1, ...) is a task. For now specs stay as files in the project repo and Axiom stores a link; the tasks live in the spec file, and Axiom does not model them yet.
+- **Spec**: agents working on a topic (inside a thread) can write specs. A spec contains **tasks**. Example: `~/projects/vr-test/docs/specs/station.md`, where each row of "8. Milestones" (KC0, KC1, ...) is a task. Specs stay as files in the project repo and Axiom stores a link. **Tasks are stored in Axiom** (amended 2026-11-25, see Tasks below); the spec file refers to them by key.
 - **Artifact**: anything an agent produces for the owner to look at, for example an .html report.
 - **PR**: pull requests created during a topic.
 - Specs, artifacts and PRs are tied to the topic, even when a particular thread produced them.
+
+## Tasks (added 2026-11-25)
+
+A **task** is a unit of work inside a topic, such as a row of a build plan (`S7`) or a spec milestone (`KC3`). Tasks are stored in Axiom; agents create and update them with the CLI as they write a spec, and the spec file refers to them by key.
+
+- **Belongs to** exactly one topic. It may name one of the topic's `spec` links, which groups it on screen (one Tasks block per spec, plus tasks with no spec).
+- **Fields:** key (unique within the topic, e.g. `S7`), title, done when, status, order, and **dependencies** (other tasks of the same topic it waits for).
+- **Statuses:** `to do`, `wip`, `blocked`, `done`.
+- **Dependencies:** a task can depend on several tasks of the same topic. Cycles are rejected. A task whose dependencies are not all `done` is shown as waiting on them.
+- **Threads:** a thread can say which task it works on (`axiom thread attach <topic> --task S7`, or later `axiom thread task S7`). While that thread is working, the task becomes `wip` automatically. Stopping does not change the task; the agent sets `done` or `blocked`.
+- **On screen:** the topic page has a Tasks section (per spec, with progress such as 5/8 done) and a separate **dependency graph** section, drawn on the dotted grid (09).
 
 ## Statuses
 
@@ -122,6 +133,7 @@ Everything else is an attached record: threads, specs, artifacts, PRs, links, an
 - 2026-11-25: `wip` is set automatically while an agent is running.
 - 2026-11-25: Specs stay in the project repo, with a link in Axiom, for now.
 - 2026-11-25: Multiple parents are allowed, and a topic can belong directly to an epic.
+- 2026-11-25 (amends the earlier "tasks not modelled"): tasks are stored in Axiom, belong to a topic, have dependencies, and use `to do` / `wip` / `blocked` / `done`. A thread may name its task, which goes `wip` while the thread works.
 - 2026-11-25: Unlinked tickets and epics use `to do` / `wip` / `done`. Linked ones show Jira's status names as-is.
 - 2026-11-25: When the agent stops, the topic becomes `idle` and a notification highlights it until the owner clicks it.
 - 2026-11-25: `wip` is the only automatic status. Opening a PR does not imply `review`.
@@ -166,8 +178,10 @@ Everything else is an attached record: threads, specs, artifacts, PRs, links, an
 13. Who sets `wip`?
     - Answered 2026-11-25: set automatically while an agent is running. Follow-up in Q19.
 14. Specs and tasks: file in the repo, or owned by Axiom?
+    - Amended 2026-11-25 (owner): specs stay files; tasks are owned by Axiom. See Tasks.
     - Answered 2026-11-25: in the project repo, with a link in Axiom, for now.
 15. What does a task carry?
+    - Answered 2026-11-25: key, title, done when, status (`to do` / `wip` / `blocked` / `done`), order, dependencies. See Tasks.
     - Deferred 2026-11-25: Axiom does not model tasks while specs are only linked (Q14).
 16. Can a topic exist without a ticket, and a ticket without an epic?
     - Answered 2026-11-25: yes. A topic can also belong directly to an epic.

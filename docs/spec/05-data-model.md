@@ -78,6 +78,25 @@ A PR that belongs to two topics is two link rows.
 
 The 01 stop table counts only `confirmed` targets.
 
+### Tasks (added 2026-11-25)
+
+**task**
+
+| Column | Notes |
+| --- | --- |
+| topic_id | Exactly one. |
+| key | Unique within the topic (for example `S7`). |
+| title | |
+| done_when | Optional. |
+| status | `to do`, `wip`, `blocked`, `done`. |
+| position | Order within the topic. |
+| spec_link_id | Optional: a `spec` link of the same topic, for grouping. |
+| created_at, updated_at | |
+
+**task_dependency** (task_id, depends_on_task_id): both tasks in the same topic; no cycles; no self-dependency.
+
+**thread.task_id**: optional; the task the thread works on (same topic). While the thread is working, the task is `wip`.
+
 ### History
 
 **entry**
