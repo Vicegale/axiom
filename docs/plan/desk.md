@@ -54,3 +54,11 @@ The owner asked for a current model / effort indicator with context usage, and t
 - **Sends:** a Claude Code reply or new thread, and a new T3 thread, record the chosen model and effort at once (the context is left alone).
 - **Desk API:** `threads[].runtime` (`{model, effort, contextUsed, contextMax, at}` or `null`) and `topics[].artifacts` (the artifact links only: `id, kind, target, label, description`).
 - **Card:** a runtime row under the thread selector (`Opus 5.5 · high`, a `role="meter"` bar with `190k / 1M`, or `190k ctx` without a bar; amber above 80 %, red above 95 %; nothing when unknown) and the tracker's `ArtifactsMenu` next to the link count when the topic has artifacts.
+
+## D11: working subagents on the card (2026-11-25)
+
+The owner asked for an indicator of working subagents, for both providers.
+
+| Slice | What | Done when |
+| --- | --- | --- |
+| D11 | **Working subagents.** Migration 0008: table `subagent` (thread, provider key, title, agent type, model, progress, started_at), holding only the ones running now (ephemeral, no history). **Claude Code** (hooks, direct sessions; T3-hosted sessions are left to the T3 sync): `PreToolUse` with `tool_name` `Agent`/`Task` queues the call's `description` / `subagent_type`; the new `SubagentStart` hook (`agent_id`, `agent_type`) adds a row, titled from the oldest queued call of that type; the new `SubagentStop` hook removes it; `Stop` keeps only the ids still listed as running `subagent` entries in `background_tasks`; `SessionEnd` clears the thread's rows. `axiom hooks install` adds the two new events. **T3**: `orchestration_v2_projection_subagents` rows of the thread with no `completed_at` and a status other than `completed`/`failed`/`cancelled`/`interrupted`; title, model and `progress` from `payload_json`. **Card**: the run line says `running · 2 subagents` (or `waiting on 1 subagent` when the thread itself is idle), with a button listing each one: title, type or model, time running, latest progress (T3). | Tests (fake hook payloads, synthetic T3 rows); pre-tool hook still fast; checked in the browser with a real subagent on each provider. |

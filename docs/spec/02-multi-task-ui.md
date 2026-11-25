@@ -43,6 +43,7 @@ The owner's reference for it is a screen called **Desk** ([docs/design/reference
 - 2026-11-25: The owner can approve or deny a thread's permission prompt from its card.
 - 2026-11-25: The composer always shows where the message goes: a `This thread | New thread` switch (no longer only an option of the thread chip); the thread chip remains for topics with several threads.
 - 2026-11-25: The card shows the selected thread's current model, effort and context usage, and the topic's Artifacts menu (plan D9, D10).
+- 2026-11-25: The card shows the selected thread's working subagents (count on the run line, a list on demand), for T3 and Claude Code threads (plan D11).
 - 2026-11-25: "Steward" is the proactive agent (03), shown on the Desk as an on/off toggle. It is built later; the toggle comes with it.
 
 ## Open questions
