@@ -19,9 +19,11 @@ import {
   ComposerNote,
   ComposerText,
   ComposerToolbar,
+  FOLDER,
   Glyph,
   SendButton,
 } from "./Composer";
+import { detectHome, folderGroups, PathPicker, projectGroups } from "./PathPicker";
 import "../../styles/newtopic.css";
 
 interface Props {
@@ -45,8 +47,6 @@ const T3_INSTANCE = "claudeAgent";
 const norm = (p: string) => p.trim().replace(/(.)\/+$/, "$1");
 
 /** The chip option that reveals the inline path input. */
-const FOLDER =
-  "M1.8 4.2c0-.6.4-1 1-1h2.6l1.2 1.4h4.6c.6 0 1 .4 1 1v4.8c0 .6-.4 1-1 1H2.8c-.6 0-1-.4-1-1z";
 const TYPE_PATH = "\u0000type-a-path";
 const baseName = (p: string) => norm(p).split("/").filter(Boolean).pop() ?? p;
 
@@ -127,11 +127,15 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
   const modelRequired = useSelect && project !== undefined && !project.hasDefaultModel;
   const folderMode =
     provider === "claude-code" || (provider === "t3" && t3Projects === null && t3Error !== null);
-  const suggestions: { path: string; label: string }[] = [
-    ...(t3Projects?.map((p) => ({ path: p.workspaceRoot, label: p.title })) ?? []),
+  const home = detectHome(
+    workspaces,
+    t3Projects?.map((p) => p.workspaceRoot),
+  );
+  const suggestions: { path: string; title: string; label: string }[] = [
+    ...(t3Projects?.map((p) => ({ path: p.workspaceRoot, title: p.title, label: p.title })) ?? []),
     ...workspaces
       .filter((w) => !t3Projects?.some((p) => p.workspaceRoot === w.path))
-      .map((w) => ({ path: w.path, label: w.label })),
+      .map((w) => ({ path: w.path, title: baseName(w.path), label: w.label })),
   ];
   const suggested = suggestions.find((x) => x.path === norm(folder));
   const pathOpen = folderMode && (typingPath || (folder.trim() !== "" && !suggested));
@@ -427,47 +431,41 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
                   onChange={(v) => pickProvider(v as Provider)}
                 />
                 {folderMode ? (
-                  <ChipMenu
+                  <PathPicker
                     name="Folder"
                     buttonRef={folderChip}
-                    display={folder.trim() ? (suggested?.label ?? baseName(folder)) : "Folder"}
+                    display={folder.trim() ? (suggested?.title ?? baseName(folder)) : "Folder"}
                     valueText={folder.trim() || "none"}
+                    tooltip={folder.trim() || undefined}
                     muted={!folder.trim()}
-                    value={suggested?.path ?? (pathOpen ? TYPE_PATH : "")}
+                    value={suggested?.path ?? ""}
                     icon={<Glyph d={FOLDER} />}
-                    options={[
-                      ...suggestions.map((x) => ({ value: x.path, label: x.label, hint: x.path })),
-                      {
-                        value: TYPE_PATH,
-                        label: "Type a path…",
-                        separated: suggestions.length > 0,
-                      },
-                    ]}
+                    groups={folderGroups(t3Projects, workspaces)}
+                    home={home}
+                    allowPath
+                    action={{ value: TYPE_PATH, label: "Type a path…" }}
+                    onAction={() => {
+                      setTypingPath(true);
+                      setTimeout(() => pathRef.current?.focus(), 0);
+                    }}
                     disabledReason={created !== null ? "The topic already exists." : undefined}
                     onChange={(v) => {
-                      if (v === TYPE_PATH) {
-                        setTypingPath(true);
-                        setTimeout(() => pathRef.current?.focus(), 0);
-                      } else {
-                        setTypingPath(false);
-                        setFolder(v);
-                      }
+                      setTypingPath(false);
+                      setFolder(v);
                     }}
                   />
                 ) : (
-                  <ChipMenu
+                  <PathPicker
                     name="Project"
                     buttonRef={projectChip}
                     display={project?.title ?? "Project"}
                     valueText={project?.title ?? "none"}
+                    tooltip={project?.workspaceRoot}
                     muted={!project}
                     value={project?.id ?? ""}
                     icon={<Glyph d={FOLDER} />}
-                    options={(t3Projects ?? []).map((p) => ({
-                      value: p.id,
-                      label: p.title,
-                      hint: p.workspaceRoot,
-                    }))}
+                    groups={projectGroups(t3Projects ?? [], workspaces)}
+                    home={home}
                     disabledReason={
                       created !== null
                         ? "The topic already exists."

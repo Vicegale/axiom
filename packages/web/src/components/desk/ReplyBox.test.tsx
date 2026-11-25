@@ -104,8 +104,10 @@ const posts = () => calls.filter((c) => c.method === "POST");
 const chip = (name: RegExp | string) => screen.getByRole("button", { name }) as HTMLButtonElement;
 const pick = (chipName: RegExp | string, option: string) => {
   fireEvent.click(chip(chipName));
+  const re = new RegExp(`^${option}`);
   fireEvent.click(
-    screen.getByRole("menuitemradio", { name: new RegExp(`^${option}`), hidden: true }),
+    screen.queryByRole("menuitemradio", { name: re, hidden: true }) ??
+      screen.getByRole("option", { name: re, hidden: true }),
   );
 };
 const menuOf = (name: string) => screen.getByRole("menu", { name, hidden: true });

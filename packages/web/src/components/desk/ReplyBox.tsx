@@ -6,6 +6,7 @@ import {
   type DeskThread,
   type Effort,
   type T3Project,
+  type Workspace,
 } from "../../api";
 import { readStored, removeStored, writeStored } from "../../lib/storage";
 import { ChipMenu, type ChipOption } from "./ChipMenu";
@@ -17,10 +18,12 @@ import {
   ComposerNote,
   ComposerText,
   ComposerToolbar,
+  FOLDER,
   Glyph,
   PLUS,
   SendButton,
 } from "./Composer";
+import { detectHome, PathPicker, projectGroups } from "./PathPicker";
 
 export interface ReplyBoxProps {
   topicSlug: string;
@@ -106,6 +109,7 @@ export function ReplyBox({
   const [projects, setProjects] = useState<T3Project[] | null>(null);
   const [projectsError, setProjectsError] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
+  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const projectsAsked = useRef(false);
   const [sending, setSending] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
@@ -140,6 +144,11 @@ export function ReplyBox({
       .t3Projects()
       .then(setProjects)
       .catch((e) => setProjectsError(e instanceof Error ? e.message : String(e)));
+    // Only for ordering and the home directory: a failure leaves the plain list.
+    api
+      .workspaces()
+      .then(setWorkspaces)
+      .catch(() => {});
   }, [open, newT3]);
 
   // Expanding focuses the text; collapsing animates out, then hands focus to the bar.
@@ -417,17 +426,19 @@ export function ReplyBox({
                 />
               )}
               {projectMode && (
-                <ChipMenu
+                <PathPicker
                   name="Project"
                   display={project?.title ?? "Project"}
                   valueText={project?.title ?? "none"}
+                  tooltip={project?.workspaceRoot}
+                  icon={<Glyph d={FOLDER} />}
                   muted={!project}
                   value={project?.id ?? ""}
-                  options={projects.map((p) => ({
-                    value: p.id,
-                    label: p.title,
-                    hint: p.workspaceRoot,
-                  }))}
+                  groups={projectGroups(projects, workspaces)}
+                  home={detectHome(
+                    workspaces,
+                    projects.map((p) => p.workspaceRoot),
+                  )}
                   disabledReason={projects.length === 0 ? "T3 has no projects." : undefined}
                   onChange={(v) => setProjectId(v)}
                 />

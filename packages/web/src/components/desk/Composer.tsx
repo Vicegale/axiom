@@ -30,6 +30,8 @@ export const Glyph = ({ d }: { d: string }) => (
 );
 export const ARROW_UP = "M7 11.5v-9M3 6.2 7 2.2l4 4";
 export const CHEVRON_DOWN = "m3 5 4 4 4-4";
+export const FOLDER =
+  "M1.8 4.2c0-.6.4-1 1-1h2.6l1.2 1.4h4.6c.6 0 1 .4 1 1v4.8c0 .6-.4 1-1 1H2.8c-.6 0-1-.4-1-1z";
 export const PLUS = "M7 2.8v8.4M2.8 7h8.4";
 
 type BoxProps = { children: ReactNode; ref?: Ref<HTMLFormElement> } & (
