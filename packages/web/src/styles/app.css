@@ -4,7 +4,7 @@
 :root { --meta: color-mix(in srgb, var(--text-2) 55%, var(--text-3)); }
 html, body { margin: 0; background: var(--bg); color: var(--text); }
 body { font: 13px/1.45 var(--font-sans); -webkit-font-smoothing: antialiased; }
-button, input { font: inherit; color: inherit; }
+button, input, select, textarea { font: inherit; color: inherit; }
 h1, h2, h3, p, dl, dd, ul, ol { margin: 0; padding: 0; }
 ul, ol { list-style: none; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -30,23 +30,36 @@ ul, ol { list-style: none; }
 .k-next { --c: var(--k-next); }
 .k-axiom { --c: var(--k-axiom); }
 
-/* Frame: fixed 900px, three columns under a thin bar and above a status bar. */
+/* Frame: three columns under a thin bar and above a status bar. The rail and list widths are
+   resizable (--pane-inbox-rail / --pane-inbox-list on <html>, see lib/panes.ts). */
 .app {
+  --rail-w: var(--pane-inbox-rail, 232px);
+  --list-w: var(--pane-inbox-list, 400px);
   display: grid;
-  grid-template-columns: 232px minmax(340px, 400px) minmax(0, 1fr);
+  grid-template-columns: var(--rail-w) var(--list-w) minmax(0, 1fr);
   grid-template-rows: 40px minmax(0, 1fr) 26px;
   height: 100vh;
   height: 100dvh;
-  min-width: 1100px;
   overflow: hidden;
   background: var(--bg);
 }
+.app[data-rail="closed"] { --rail-w: 0px; }
+.sp-rail, .sp-list { grid-row: 2; }
+.sp-rail { grid-column: 1; }
+.sp-list { grid-column: 2; }
+.app.has-banner .sp-rail, .app.has-banner .sp-list { grid-row: 3; }
 .bar {
   grid-column: 1 / -1; grid-row: 1;
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 10px 0 14px;
   background: var(--panel); border-bottom: 1px solid var(--line);
 }
+.bar-start { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.icon-btn {
+  display: inline-grid; place-items: center; width: 28px; height: 28px; flex: none; padding: 0;
+  border: 1px solid transparent; border-radius: 3px; background: none; color: var(--text-2); cursor: pointer;
+}
+.icon-btn:hover { border-color: var(--line-strong); color: var(--text); }
 .brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 13px; letter-spacing: -0.01em; }
 .brand-mark { width: 10px; height: 10px; border: 2px solid var(--focus); border-radius: 2px; transform: rotate(45deg); }
 .seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 3px; overflow: hidden; }
@@ -63,6 +76,7 @@ ul, ol { list-style: none; }
   font: 400 11px var(--font-mono); color: var(--meta);
 }
 .sb { display: inline-flex; align-items: center; gap: 6px; }
+.sb-keys kbd { font: inherit; padding: 0 4px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: 3px; }
 .sb-end { margin-left: auto; }
 .status .sdot { width: 6px; height: 6px; }
 
@@ -70,7 +84,7 @@ ul, ol { list-style: none; }
 .rail {
   grid-column: 1; grid-row: 2;
   display: flex; flex-direction: column; gap: 1px;
-  min-height: 0; overflow: auto; padding: 8px 8px 12px;
+  min-height: 0; min-width: 0; overflow: auto; padding: 8px 8px 12px; scrollbar-gutter: stable;
   background: var(--panel); border-right: 1px solid var(--line);
 }
 .rail-h { margin: 14px 8px 4px; font-size: 11px; font-weight: 500; color: var(--meta); }
@@ -137,7 +151,7 @@ ul, ol { list-style: none; }
 
 /* Middle column: list head, sections, rows. */
 .list {
-  grid-column: 2; grid-row: 2;
+  grid-column: 2; grid-row: 2; outline: none;
   display: flex; flex-direction: column; min-width: 0; min-height: 0;
   background: var(--panel); border-right: 1px solid var(--line);
 }
@@ -151,7 +165,7 @@ ul, ol { list-style: none; }
   font-size: 12px;
 }
 .filter input::placeholder { color: var(--meta); }
-.list-body { position: relative; flex: 1; min-height: 0; overflow: auto; outline: none; }
+.list-body { position: relative; flex: 1; min-height: 0; overflow: auto; outline: none; scrollbar-gutter: stable; }
 .sect-h {
   position: sticky; top: 0; z-index: 1;
   display: flex; align-items: center; gap: 8px;
@@ -250,8 +264,10 @@ ul, ol { list-style: none; }
   grid-column: 3; grid-row: 2;
   min-width: 0; min-height: 0; overflow: hidden; outline: none;
   background-color: var(--bg);
+  container: reader / inline-size;
 }
-.r-scroll { height: 100%; overflow: auto; padding: 22px 34px 44px; }
+.r-scroll { height: 100%; overflow: auto; padding: 22px 34px 44px; scrollbar-gutter: stable; }
+.back-link { display: none; margin: 14px 16px 0; font-size: 12px; color: var(--text-2); }
 .r-inner { max-width: 860px; }
 .r-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .slug { font: 400 11.5px var(--font-mono); color: var(--meta); }
@@ -362,8 +378,9 @@ ul, ol { list-style: none; }
 .refs { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 .refs li { padding: 1px 6px; border: 1px solid var(--line); border-radius: 3px; font: 400 11px var(--font-mono); color: var(--text-2); }
 
-/* Below 1320px the reader is narrow: stack links above monitors. */
-@media (max-width: 1320px) {
+/* The reader is a container: when its own pane is narrow (a wide list, a small window) stack
+   links above monitors. */
+@container reader (max-width: 720px) {
   .two { grid-template-columns: minmax(0, 1fr); }
   .r-scroll { padding: 22px 26px 44px; }
 }
@@ -407,8 +424,8 @@ a { color: inherit; text-decoration: none; }
 
 /* Settings page spans the list and reader columns. */
 .page {
-  grid-column: 2 / -1; grid-row: 2;
-  min-width: 0; min-height: 0; overflow: auto;
+  grid-column: 2 / -1; grid-row: 2; outline: none;
+  min-width: 0; min-height: 0; overflow: auto; scrollbar-gutter: stable;
   background-color: var(--bg);
 }
 .page-inner { max-width: 720px; padding: 24px 34px 56px; }
@@ -422,4 +439,39 @@ a { color: inherit; text-decoration: none; }
   width: 62px; height: 24px; padding: 0 6px;
   border: 1px solid var(--line-strong); border-radius: 3px; background: var(--bg);
   font: 500 12px var(--font-mono); color: var(--text);
+}
+
+/* ---- Web standards baseline (spec 09) ---- */
+.skip-link {
+  position: absolute; left: 8px; top: -100px; z-index: 100; padding: 6px 12px;
+  border: 2px solid var(--focus); border-radius: 3px; background: var(--raised); color: var(--text);
+  font-size: 13px; font-weight: 500;
+}
+.skip-link:focus { top: 8px; }
+.nav:focus-visible, .row:focus-visible { outline-offset: -2px; }
+
+/* One main column below ~900px; the rail becomes an overlay and the list and reader take turns. */
+@media (max-width: 900px) {
+  .app { grid-template-columns: minmax(0, 1fr); }
+  .list, .reader, .page { grid-column: 1; }
+  .app[data-topic="open"] .list { display: none; }
+  .app:not([data-topic]) .reader { display: none; }
+  .rail {
+    position: absolute; z-index: 30; grid-column: 1; inset: 0 auto 0 0;
+    width: min(var(--pane-inbox-rail, 232px), 85vw);
+    box-shadow: 24px 0 48px -24px rgba(0, 0, 0, 0.6);
+  }
+  .sp-rail, .sp-list { display: none; }
+  .back-link { display: inline-flex; }
+  .status .sb-keys { display: none; }
+}
+
+/* Forced colors (Windows high contrast): keep borders, focus and the status dots visible. */
+@media (forced-colors: active) {
+  .sdot, .pill::before, .udot, .tdots i, .health .hd, .brand-mark { forced-color-adjust: none; }
+  .pill, .chip, .btn, .seg, .row, .nav[aria-current], .list, .rail, .bar, .status, .skip-link {
+    border-color: CanvasText;
+  }
+  .nav[aria-current="page"], .row[aria-current="true"] { outline: 2px solid Highlight; outline-offset: -2px; }
+  :focus-visible { outline-color: Highlight; }
 }

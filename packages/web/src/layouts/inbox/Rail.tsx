@@ -22,7 +22,7 @@ function Nav({ href, label, count, dot, active, attn, extra }: NavProps) {
     <Link
       href={href}
       className={`nav${attn ? " has-attn" : ""}${extra ? ` ${extra}` : ""}`}
-      aria-current={active ? "true" : undefined}
+      aria-current={active ? "page" : undefined}
     >
       {dot ? <i className={`sdot ${dot}`} aria-hidden="true" /> : null}
       <span className="lbl">{label}</span>
@@ -37,12 +37,24 @@ interface Props {
   health: Health | undefined;
   active: Active;
   now: Date;
+  collapsed: boolean;
+  /** A link in the rail was followed (a narrow window closes the overlay). */
+  onNavigate: () => void;
 }
 
-export function Rail({ topics, notificationCount, health, active, now }: Props) {
+export function Rail({ topics, notificationCount, health, active, now, collapsed, onNavigate }: Props) {
   const count = (v: ViewId) => topics.filter((t) => inView(t, v)).length;
   return (
-    <nav className="rail" aria-label="Mailboxes">
+    // biome-ignore lint/a11y/noNoninteractiveElementInteractions: closes the overlay after a link click
+    <nav
+      className="rail"
+      id="rail"
+      aria-label="Mailboxes"
+      hidden={collapsed}
+      onClick={(e) => {
+        if ((e.target as Element).closest("a")) onNavigate();
+      }}
+    >
       <Nav
         href={hrefs.all}
         label={VIEW_LABEL.all}

@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useAxiom } from "../../data/DataProvider";
 import { useActions } from "../../data/useActions";
-import type { ViewId } from "../../lib/domain";
+import { VIEW_LABEL, type ViewId } from "../../lib/domain";
 import { useBrowserNotifications } from "../../lib/notify";
 import { useTheme } from "../../lib/theme";
+import { inView } from "../../lib/topics";
 import { useNow } from "../../lib/useNow";
 import { hrefs, useAppRoute } from "./routes";
 
@@ -19,6 +20,7 @@ export function useShell() {
   const [, navigate] = useLocation();
   const now = useNow();
   const [lastList, setLastList] = useState<"all" | ViewId>("all");
+  const [lastTopic, setLastTopic] = useState<string | undefined>();
 
   useTheme(data.settings?.theme);
 
@@ -30,12 +32,28 @@ export function useShell() {
   /** A topic route keeps the list you came from. */
   const list = listRoute ?? lastList;
   const selected = route.kind === "topic" ? route.slug : undefined;
+  useEffect(() => {
+    if (selected) setLastTopic(selected);
+  }, [selected]);
 
   const topics = useMemo(() => data.topics ?? [], [data.topics]);
   const titleOf = useMemo(() => {
     const m = new Map(topics.map((t) => [t.slug, t.title]));
     return (slug: string) => m.get(slug);
   }, [topics]);
+
+  const needYou = useMemo(() => topics.filter((t) => inView(t, "attention")).length, [topics]);
+  const heading =
+    route.kind === "topic"
+      ? (titleOf(route.slug) ?? route.slug)
+      : route.kind === "notifications"
+        ? "Notifications"
+        : route.kind === "settings"
+          ? "Settings"
+          : route.kind === "view"
+            ? VIEW_LABEL[route.view]
+            : VIEW_LABEL.all;
+  useDocumentTitle(heading, needYou);
 
   /** Marks the topic opened (clears its highlight and notifications) without navigating. */
   const openTopic = useCallback((slug: string) => void actions.open(slug), [actions]);
@@ -66,6 +84,8 @@ export function useShell() {
     now,
     list,
     selected,
+    lastTopic,
+    needYou,
     topics,
     notifications: data.notifications ?? [],
     titleOf,
@@ -79,4 +99,11 @@ export function useShell() {
 export function isTyping(e: KeyboardEvent): boolean {
   const el = e.target as HTMLElement | null;
   return !!el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+}
+
+/** `(2) Needs you · Axiom`: the route's name, with the count of things waiting on the owner. */
+export function useDocumentTitle(heading: string, needYou: number): void {
+  useEffect(() => {
+    document.title = `${needYou > 0 ? `(${needYou}) ` : ""}${heading} · Axiom`;
+  }, [heading, needYou]);
 }

@@ -33,7 +33,12 @@ export function StatusBar({
       <span className="sb sb-end">
         Now {dateShort(iso)} {hm(iso)}
       </span>
-      <span className="sb">↑ ↓ move between topics</span>
+      <span className="sb sb-keys">
+        <kbd>↑</kbd> <kbd>↓</kbd> move between topics
+      </span>
+      <span className="sb sb-keys">
+        <kbd>[</kbd> sidebar
+      </span>
     </footer>
   );
 }

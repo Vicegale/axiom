@@ -144,7 +144,7 @@ describe("Inbox shell", () => {
     seed();
     open("/view/ongoing");
     await screen.findByText("Running");
-    expect(screen.getByRole("heading", { level: 2, name: "Ongoing" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "Ongoing" })).toBeTruthy();
     expect(screen.queryByText("Needs me")).toBeNull();
     expect(screen.getByText("Two threads")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Filter topics in this list"), {

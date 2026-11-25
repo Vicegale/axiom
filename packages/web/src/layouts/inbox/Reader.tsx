@@ -1,15 +1,23 @@
+import { Link } from "wouter";
 import { TopicDetail } from "../../components";
 import { TopicLoader, useTopicActions } from "../shared/TopicPane";
 
 interface Props {
   slug: string | undefined;
   now: Date;
+  /** Where "Back to list" goes (shown only when the reader fills the window). */
+  backHref: string;
 }
 
 /** The right-hand reading pane: the selected topic, or a hint. */
-export function Reader({ slug, now }: Props) {
+export function Reader({ slug, now, backHref }: Props) {
   return (
-    <main className="reader" aria-label="Selected topic" tabIndex={-1}>
+    <main className="reader" id={slug ? "main" : undefined} aria-label="Selected topic" tabIndex={-1}>
+      {slug ? (
+        <Link href={backHref} className="back-link">
+          <span aria-hidden="true">←</span> Back to list
+        </Link>
+      ) : null}
       {slug ? (
         <TopicLoader slug={slug}>
           {({ topic, entries, tasks, ticketEpics }) => (

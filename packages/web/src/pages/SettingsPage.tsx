@@ -30,7 +30,7 @@ export function SettingsPage() {
 
   if (!settings) {
     return (
-      <div className="page">
+      <div className="settings-page">
         <div className="page-inner">
           <p className="empty">Loading.</p>
         </div>
@@ -45,7 +45,7 @@ export function SettingsPage() {
   const mutedTopics = (topics ?? []).filter((t) => t.muted);
 
   return (
-    <div className="page">
+    <div className="settings-page">
       <div className="page-inner">
         <h1>Settings</h1>
         <section className="settings" aria-label="Layout">
