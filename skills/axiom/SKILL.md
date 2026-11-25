@@ -15,6 +15,14 @@ Axiom tracks what you and the owner are working on. You write to it with the `ax
 
 ## 1. At the start of a task
 
+First check whether this session is already attached (threads started from Axiom are):
+
+```sh
+axiom thread show                           # attached? to which topic and task?
+```
+
+If it is, that's your topic: skip to section 2. Otherwise:
+
 ```sh
 axiom topic list --all                      # is there already a topic for this?
 axiom topic show <slug>                     # read it first: status note, goal, recent history
