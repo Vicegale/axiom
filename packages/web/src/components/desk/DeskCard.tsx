@@ -1,12 +1,6 @@
 import { type KeyboardEvent, type PointerEvent, useId, useState } from "react";
 import { Link } from "wouter";
-import {
-  api,
-  type DeskSubagent,
-  type DeskThread,
-  type DeskTopic,
-  type ThreadRuntime,
-} from "../../api";
+import { api, type DeskThread, type DeskTopic, type ThreadRuntime } from "../../api";
 import { useResource } from "../../data/useResource";
 import { hrefs } from "../../layouts/shared/routes";
 import { isPlainClick } from "../../lib/click";
@@ -17,9 +11,13 @@ import {
   modelName,
   runLine,
   runningActivity,
-  runningFor,
-  subagentCount,
+  runningSubagents,
+  SUBAGENT_STATUS_WORD,
+  type SubagentNode,
   subagentNames,
+  subagentSummary,
+  subagentTime,
+  subagentTree,
   threadLabel,
   threadsByActivity,
   tokenCount,
@@ -164,57 +162,82 @@ function Runtime({ runtime: r }: { runtime: ThreadRuntime | null }) {
   );
 }
 
-/** The subagents working now: name, type or model, how long, and (T3) the latest step. */
-function SubagentList({
-  id,
-  subagents,
-  now,
-}: {
-  id: string;
-  subagents: DeskSubagent[];
-  now: Date;
-}) {
+/** One subagent: status dot, name, type or model, time, the latest step while it runs, and its own. */
+function SubagentRow({ node, now }: { node: SubagentNode; now: Date }) {
+  const s = node.agent;
+  const { name, kind } = subagentNames(s);
   return (
-    <ul className="dk-agents" id={id} aria-label="Working subagents">
-      {subagents.map((s) => {
-        const { name, kind } = subagentNames(s);
-        return (
-          <li key={s.id} className="dk-agent">
-            <span className="dk-agent-head">
-              <span className="dk-agent-name" title={name}>
-                {name}
-              </span>
-              <span className="dk-agent-meta">
-                {kind ? `${kind} · ` : ""}
-                <time dateTime={s.startedAt}>{runningFor(s.startedAt, now)}</time>
-              </span>
-            </span>
-            {s.progress ? (
-              <span className="dk-agent-step" title={s.progress}>
-                {s.progress}
-              </span>
-            ) : null}
-          </li>
-        );
-      })}
-    </ul>
+    <li className="dk-tn">
+      <div className="dk-tr">
+        <span className="dk-tdot" data-s={s.status} aria-hidden="true" />
+        <span className="dk-tname" title={name}>
+          <span className="sr-only">{SUBAGENT_STATUS_WORD[s.status]}: </span>
+          {name}
+        </span>
+        <span className="dk-tmeta">
+          {kind ? `${kind} · ` : ""}
+          <time dateTime={s.startedAt}>{subagentTime(s, now)}</time>
+        </span>
+      </div>
+      {s.status === "running" && s.progress ? (
+        <p className="dk-tstep" title={s.progress}>
+          {s.progress}
+        </p>
+      ) : null}
+      {node.children.length > 0 ? (
+        <ul className="dk-kids">
+          {node.children.map((c) => (
+            <SubagentRow key={c.agent.id} node={c} now={now} />
+          ))}
+        </ul>
+      ) : null}
+    </li>
   );
 }
 
 /**
- * One fixed-height line: the run state, and for a running thread its newest step. Working
- * subagents add a button with their count ("running · 2 subagents", "waiting on 1 subagent") that
- * opens the list under the line.
+ * A small tree under the run line: the thread at the top, the subagents it started below it (and
+ * theirs below them), each with a status dot (running, done, failed, cancelled).
+ */
+function SubagentTree({ id, thread, now }: { id: string; thread: DeskThread; now: Date }) {
+  const tree = subagentTree(thread.subagents);
+  return (
+    <div className="dk-agents" id={id}>
+      <ul className="dk-tlist" aria-label={`Agents of ${threadLabel(thread)}`}>
+        <li className="dk-tn">
+          <div className="dk-tr">
+            <span className={`dk-tdot s-${thread.status}`} aria-hidden="true" />
+            <span className="dk-tname dk-troot" title={threadLabel(thread)}>
+              {threadLabel(thread)}
+            </span>
+            <span className="dk-tmeta">{runLine(thread, now)}</span>
+          </div>
+          <ul className="dk-kids">
+            {tree.map((n) => (
+              <SubagentRow key={n.agent.id} node={n} now={now} />
+            ))}
+          </ul>
+        </li>
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * One fixed-height line: the run state, and for a running thread its newest step. Subagents add a
+ * button ("running · 2 subagents", "waiting on 1 subagent", "3 subagents · done") for the tree
+ * under the line: open while any subagent runs, folded once they have all finished.
  */
 function RunLine({ thread, now }: { thread: DeskThread; now: Date }) {
   const step = runningActivity(thread);
   const listId = useId();
-  const [open, setOpen] = useState(false);
+  // The owner's choice holds only while the state it was made in does (running or all finished).
+  const [choice, setChoice] = useState<{ whileRunning: boolean; open: boolean } | null>(null);
   const subs = thread.subagents;
-  const busy = subs.length > 0;
-  const shown = open && busy;
-  // An idle thread with subagents is waiting on them; a running one says "running ·" before the count.
-  const text = !busy
+  const running = runningSubagents(subs) > 0;
+  const shown = subs.length > 0 && (choice?.whileRunning === running ? choice.open : running);
+  // An idle thread with running subagents is waiting on them; a running one says "running ·" first.
+  const text = !running
     ? runLine(thread, now)
     : thread.status === "wip"
       ? "running ·"
@@ -235,19 +258,19 @@ function RunLine({ thread, now }: { thread: DeskThread; now: Date }) {
         ) : (
           <span className="dk-runtext">{text}</span>
         )}
-        {busy ? (
+        {subs.length > 0 ? (
           <button
             type="button"
             className="dk-agentsbtn"
             aria-expanded={shown}
             aria-controls={shown ? listId : undefined}
-            onClick={() => setOpen(!open)}
+            onClick={() => setChoice({ whileRunning: running, open: !shown })}
           >
-            {subagentCount(subs.length)}
+            {subagentSummary(subs)}
           </button>
         ) : null}
       </p>
-      {shown ? <SubagentList id={listId} subagents={subs} now={now} /> : null}
+      {shown ? <SubagentTree id={listId} thread={thread} now={now} /> : null}
     </>
   );
 }

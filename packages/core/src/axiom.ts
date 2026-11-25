@@ -58,6 +58,7 @@ import type {
   RuntimePatch,
   Subagent,
   SubagentSnapshot,
+  SubagentStatus,
   Task,
   TaskDetail,
   Thread,
@@ -1008,14 +1009,18 @@ export class Axiom {
     return true;
   }
 
-  // ---- working subagents (02, D11) -----------------------------------------
+  // ---- the subagent tree of the current turn (02, D11, D12) ------------------
 
   /**
    * Claude Code announced an Agent/Task tool call (PreToolUse). `SubagentStart` has no description,
-   * so the call waits here until the subagent of its type starts and takes its title. Calls older
-   * than `QUEUED_CALL_TTL_MS` (denied, never started) are dropped.
+   * so the call waits here until the subagent of its type starts and takes its title. `parentKey`
+   * is the subagent that made the call (the hook payload's `agent_id` inside a subagent), absent
+   * when the thread did. Calls older than `QUEUED_CALL_TTL_MS` (denied, never started) are dropped.
    */
-  queueSubagentCall(threadId: number, call: { title?: string | null; agentType: string }): void {
+  queueSubagentCall(
+    threadId: number,
+    call: { title?: string | null; agentType: string; parentKey?: string | null },
+  ): void {
     const now = this.clock();
     this.run(
       "DELETE FROM subagent_call WHERE thread_id = ? AND created_at < ?",
@@ -1023,17 +1028,20 @@ export class Axiom {
       new Date(now.getTime() - QUEUED_CALL_TTL_MS).toISOString(),
     );
     this.run(
-      "INSERT INTO subagent_call (thread_id, title, agent_type, created_at) VALUES (?, ?, ?, ?)",
+      `INSERT INTO subagent_call (thread_id, title, agent_type, created_at, parent_key)
+       VALUES (?, ?, ?, ?, ?)`,
       threadId,
       call.title ? oneLine(call.title, MAX_SUBAGENT_TITLE_CHARS) || null : null,
       oneLine(call.agentType, MAX_SUBAGENT_TYPE_CHARS) || "general-purpose",
       now.toISOString(),
+      call.parentKey ? oneLine(call.parentKey, MAX_SUBAGENT_TYPE_CHARS) || null : null,
     );
   }
 
   /**
-   * A subagent started (`SubagentStart`). Titled from the oldest queued call of its type, which it
-   * uses up. Seeing the same `key` again changes nothing. Returns whether a row was added.
+   * A subagent started (`SubagentStart`). Titled, and placed under its parent, from the oldest
+   * queued call of its type, which it uses up. Seeing the same `key` again changes nothing.
+   * Returns whether a row was added.
    */
   subagentStarted(threadId: number, key: string, agentType?: string | null): boolean {
     return this.tx(() => {
@@ -1041,65 +1049,110 @@ export class Axiom {
         return false;
       }
       const type = agentType ? oneLine(agentType, MAX_SUBAGENT_TYPE_CHARS) || null : null;
-      const call = this.get<{ id: number; title: string | null }>(
-        `SELECT id, title FROM subagent_call WHERE thread_id = ? AND agent_type = ?
-         ORDER BY id LIMIT 1`,
+      const call = this.get<{ id: number; title: string | null; parentKey: string | null }>(
+        `SELECT id, title, parent_key AS parentKey FROM subagent_call
+         WHERE thread_id = ? AND agent_type = ? ORDER BY id LIMIT 1`,
         threadId,
         type ?? "general-purpose",
       );
       if (call) this.run("DELETE FROM subagent_call WHERE id = ?", call.id);
       this.run(
-        "INSERT INTO subagent (thread_id, key, title, agent_type, started_at) VALUES (?, ?, ?, ?, ?)",
+        `INSERT INTO subagent (thread_id, key, title, agent_type, started_at, parent_key)
+         VALUES (?, ?, ?, ?, ?, ?)`,
         threadId,
         key,
         call?.title ?? null,
         type,
         this.iso(),
+        call?.parentKey && call.parentKey !== key ? call.parentKey : null,
       );
       return true;
     });
   }
 
-  /** A subagent stopped (`SubagentStop`). Returns whether it was listed. */
+  /** A running subagent stopped (`SubagentStop`): it is done, and stays listed. Returns whether it was running. */
   subagentStopped(threadId: number, key: string): boolean {
-    return this.change("DELETE FROM subagent WHERE thread_id = ? AND key = ?", threadId, key) > 0;
+    return this.finishSubagents(threadId, "done", (k) => k === key) > 0;
   }
 
-  /**
-   * The parent's Stop says which subagents still run (`background_tasks` ids). With none left,
-   * every row goes. Otherwise rows whose id is not listed go, but only when the list names at least
-   * one of ours: when the ids are another kind altogether the rows are left alone. Queued calls
-   * that never started are dropped. Returns whether a row went.
-   */
-  keepSubagents(threadId: number, runningKeys: readonly string[]): boolean {
+  /** Marks the thread's running subagents `status` when `pick` takes their key. Returns how many. */
+  private finishSubagents(
+    threadId: number,
+    status: Exclude<SubagentStatus, "running">,
+    pick: (key: string) => boolean,
+  ): number {
     return this.tx(() => {
-      this.run("DELETE FROM subagent_call WHERE thread_id = ?", threadId);
-      const rows = this.all<{ key: string }>(
-        "SELECT key FROM subagent WHERE thread_id = ?",
+      let n = 0;
+      const at = this.iso();
+      for (const r of this.all<{ key: string }>(
+        "SELECT key FROM subagent WHERE thread_id = ? AND status = 'running'",
         threadId,
-      );
-      const known = rows.some((r) => runningKeys.includes(r.key));
-      if (runningKeys.length > 0 && !known) return false;
-      let removed = 0;
-      for (const r of rows) {
-        if (runningKeys.includes(r.key)) continue;
-        removed += this.change(
-          "DELETE FROM subagent WHERE thread_id = ? AND key = ?",
+      )) {
+        if (!pick(r.key)) continue;
+        n += this.change(
+          "UPDATE subagent SET status = ?, ended_at = ? WHERE thread_id = ? AND key = ?",
+          status,
+          at,
           threadId,
           r.key,
         );
       }
-      return removed > 0;
+      return n;
     });
   }
 
-  /** Forgets the thread's subagents and queued calls (session ended). Returns whether a row went. */
+  /**
+   * The parent's Stop lists the subagents still running (`background_tasks`: the ids are the
+   * subagents' `agent_id`s, and `description` names one that has no title yet). Running rows not
+   * listed are done. Queued calls that never started are dropped. Returns whether a row changed.
+   */
+  keepSubagents(
+    threadId: number,
+    running: readonly { key: string; title?: string | null }[],
+  ): boolean {
+    return this.tx(() => {
+      this.run("DELETE FROM subagent_call WHERE thread_id = ?", threadId);
+      const keys = new Set(running.map((r) => r.key));
+      let changed = this.finishSubagents(threadId, "done", (k) => !keys.has(k)) > 0;
+      for (const r of running) {
+        const title = r.title ? oneLine(r.title, MAX_SUBAGENT_TITLE_CHARS) || null : null;
+        if (!title) continue;
+        changed =
+          this.change(
+            "UPDATE subagent SET title = ? WHERE thread_id = ? AND key = ? AND title IS NULL",
+            title,
+            threadId,
+            r.key,
+          ) > 0 || changed;
+      }
+      return changed;
+    });
+  }
+
+  /**
+   * A new turn starts: the finished subagents of the last one go. Running ones stay (a background
+   * subagent outlives the turn that started it). Returns whether a row went.
+   */
+  startSubagentTurn(threadId: number): boolean {
+    this.run("DELETE FROM subagent_call WHERE thread_id = ?", threadId);
+    return (
+      this.change("DELETE FROM subagent WHERE thread_id = ? AND status <> 'running'", threadId) > 0
+    );
+  }
+
+  /** The session ended: whatever still ran is cancelled, and queued calls are dropped. */
+  cancelSubagents(threadId: number): boolean {
+    this.run("DELETE FROM subagent_call WHERE thread_id = ?", threadId);
+    return this.finishSubagents(threadId, "cancelled", () => true) > 0;
+  }
+
+  /** Forgets the thread's subagents and queued calls (a new session). Returns whether a row went. */
   clearSubagents(threadId: number): boolean {
     this.run("DELETE FROM subagent_call WHERE thread_id = ?", threadId);
     return this.change("DELETE FROM subagent WHERE thread_id = ?", threadId) > 0;
   }
 
-  /** The running subagents of every thread, oldest first, by thread id (for the Desk). */
+  /** The subagents of every thread's current turn, oldest first, by thread id (for the Desk). */
   listSubagents(): Map<number, Subagent[]> {
     const out = new Map<number, Subagent[]>();
     for (const r of this.all<Row>("SELECT * FROM subagent ORDER BY started_at, id")) {
@@ -1112,8 +1165,8 @@ export class Axiom {
   }
 
   /**
-   * Makes the thread's subagent rows match what the provider reports now (T3 sync): adds, updates
-   * and removes, writing only differences. Returns whether anything changed.
+   * Makes the thread's subagent rows match what the provider reports now (T3 sync, the newest
+   * run's): adds, updates and removes, writing only differences. Returns whether anything changed.
    */
   setSubagents(threadId: number, now: readonly SubagentSnapshot[]): boolean {
     return this.tx(() => {
@@ -1134,20 +1187,27 @@ export class Axiom {
           agentType: text(n.agentType, MAX_SUBAGENT_TYPE_CHARS),
           model: text(n.model, MAX_SUBAGENT_TYPE_CHARS),
           progress: text(n.progress, MAX_ACTIVITY_CHARS),
+          status: n.status,
           startedAt: n.startedAt,
+          endedAt: n.status === "running" ? null : (n.endedAt ?? n.startedAt),
+          parentKey: n.parentKey && n.parentKey !== n.key ? n.parentKey : null,
         };
         const cur = have.get(n.key);
         if (!cur) {
           this.run(
-            `INSERT INTO subagent (thread_id, key, title, agent_type, model, progress, started_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO subagent
+               (thread_id, key, title, agent_type, model, progress, status, started_at, ended_at, parent_key)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             threadId,
             n.key,
             next.title,
             next.agentType,
             next.model,
             next.progress,
+            next.status,
             next.startedAt,
+            next.endedAt,
+            next.parentKey,
           );
           changed = true;
         } else if (
@@ -1155,16 +1215,23 @@ export class Axiom {
           cur.agentType !== next.agentType ||
           cur.model !== next.model ||
           cur.progress !== next.progress ||
-          cur.startedAt !== next.startedAt
+          cur.status !== next.status ||
+          cur.startedAt !== next.startedAt ||
+          cur.endedAt !== next.endedAt ||
+          cur.parentKey !== next.parentKey
         ) {
           this.run(
-            `UPDATE subagent SET title = ?, agent_type = ?, model = ?, progress = ?, started_at = ?
+            `UPDATE subagent SET title = ?, agent_type = ?, model = ?, progress = ?, status = ?,
+               started_at = ?, ended_at = ?, parent_key = ?
              WHERE id = ?`,
             next.title,
             next.agentType,
             next.model,
             next.progress,
+            next.status,
             next.startedAt,
+            next.endedAt,
+            next.parentKey,
             cur.id,
           );
           changed = true;
@@ -1397,7 +1464,7 @@ export class Axiom {
           reason ?? null,
           threadId,
         );
-        this.clearSubagents(threadId);
+        this.cancelSubagents(threadId);
         // A thread that ends while still running (killed, crashed session) is no longer working.
         if (th.status === "wip") {
           this.run(

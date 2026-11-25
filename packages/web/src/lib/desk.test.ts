@@ -11,9 +11,13 @@ import {
   runLine,
   runningActivity,
   runningFor,
+  runningSubagents,
   sortDesk,
   subagentCount,
   subagentNames,
+  subagentSummary,
+  subagentTime,
+  subagentTree,
   threadsByActivity,
   tokenCount,
 } from "./desk";
@@ -159,11 +163,14 @@ describe("token counts and the context meter", () => {
 describe("subagents", () => {
   const sub = (over: Partial<DeskSubagent> = {}): DeskSubagent => ({
     id: 1,
+    parentId: null,
     title: null,
     agentType: null,
     model: null,
     progress: null,
+    status: "running",
     startedAt: "2026-11-25T10:00:00Z",
+    endedAt: null,
     ...over,
   });
   it("counts them", () => {
@@ -176,6 +183,47 @@ describe("subagents", () => {
     expect(runningFor(at, new Date("2026-11-25T10:03:10Z"))).toBe("3 min");
     expect(runningFor(at, new Date("2026-11-25T12:00:00Z"))).toBe("2 h");
     expect(runningFor("nonsense", new Date())).toBe("<1 min");
+  });
+  it("times a running one by how long it has run and a finished one by how long it ran", () => {
+    const now = new Date("2026-11-25T10:30:00Z");
+    expect(subagentTime(sub(), now)).toBe("30 min");
+    expect(subagentTime(sub({ status: "done", endedAt: "2026-11-25T10:04:00Z" }), now)).toBe(
+      "4 min",
+    );
+    expect(subagentTime(sub({ status: "done", endedAt: "2026-11-25T10:00:20Z" }), now)).toBe(
+      "<1 min",
+    );
+  });
+  it("summarises: the running count while any runs, else how they ended", () => {
+    const list = (...st: DeskSubagent["status"][]) =>
+      st.map((status, i) => sub({ id: i + 1, status }));
+    expect(runningSubagents(list("running", "done", "running"))).toBe(2);
+    expect(subagentSummary(list("running", "done", "failed"))).toBe("1 subagent");
+    expect(subagentSummary(list("done", "done", "done"))).toBe("3 subagents · done");
+    expect(subagentSummary(list("done", "failed", "done"))).toBe("3 subagents · 1 failed");
+    expect(subagentSummary(list("failed", "cancelled", "failed"))).toBe(
+      "3 subagents · 2 failed, 1 cancelled",
+    );
+    expect(subagentSummary(list("cancelled"))).toBe("1 subagent · 1 cancelled");
+  });
+  it("builds the tree: children under their parent, strays and loops under the thread", () => {
+    const names = (nodes: ReturnType<typeof subagentTree>): unknown[] =>
+      nodes.map((n) => (n.children.length ? [n.agent.id, names(n.children)] : n.agent.id));
+    expect(subagentTree([])).toEqual([]);
+    const list = [
+      sub({ id: 1 }),
+      sub({ id: 2, parentId: 1 }),
+      sub({ id: 3, parentId: 2 }),
+      sub({ id: 4, parentId: 1 }),
+      sub({ id: 5, parentId: 99 }),
+      sub({ id: 6, parentId: 6 }),
+    ];
+    expect(names(subagentTree(list))).toEqual([[1, [[2, [3]], 4]], 5, 6]);
+    // 7 and 8 name each other: neither is lost, neither repeats.
+    const loop = [sub({ id: 7, parentId: 8 }), sub({ id: 8, parentId: 7 })];
+    const flat = (nodes: ReturnType<typeof subagentTree>): number[] =>
+      nodes.flatMap((n) => [n.agent.id, ...flat(n.children)]);
+    expect(flat(subagentTree(loop)).sort()).toEqual([7, 8]);
   });
   it("names by title, else type, else model, and adds the type or model when it adds something", () => {
     expect(subagentNames(sub({ title: "Check", agentType: "Explore" }))).toEqual({

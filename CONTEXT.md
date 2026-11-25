@@ -21,6 +21,7 @@ Working definitions. They change as the spec settles; `docs/spec/` wins where th
 | Suggestion | Work the agent did without overwriting anything (for example a new `axiom/...` branch) that the owner may adopt or discard. |
 | Multi-task UI | The web view that shows many pieces of work, and the agents on them, at once. |
 | Faux-always-on agent | An agent that seems continuously present and responsive, while actually waking on a schedule and running a cheap model. See `docs/spec/03-ambient-agent.md`. |
+| Steward | The faux-always-on agent itself: wakes on a schedule, watches topics and connectors, does non-overwriting work as suggestions. On the Desk as an on/off toggle. See `docs/spec/03-ambient-agent.md`. |
 | Provider | A source of threads Axiom watches: Claude Code directly or the T3 service (Codex later). See `docs/spec/04-agent-connectors.md`. |
 | Connector | How Axiom talks to an external agent (a service API or a CLI such as Claude Code or Codex). Third-party connectors like Slack come from the harness. |
 | Work log | The current Markdown system in GPT Command Center (`docs/work/`) that Axiom will replace. |

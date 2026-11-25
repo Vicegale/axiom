@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryLocation } from "wouter/memory-location";
 import { App } from "../App";
@@ -604,51 +604,98 @@ describe("model, effort and context", () => {
   });
 });
 
-describe("working subagents on the card", () => {
+describe("the subagent tree on the card", () => {
   const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
   const setSubagents = (list: DeskThread["subagents"], index = 1) => {
     const th = server.desk[0]?.threads[index];
     if (th) th.subagents = list;
   };
+  const sub = (
+    over: Partial<DeskThread["subagents"][number]>,
+  ): DeskThread["subagents"][number] => ({
+    id: 1,
+    parentId: null,
+    title: null,
+    agentType: null,
+    model: null,
+    progress: null,
+    status: "running",
+    startedAt: minutesAgo(3),
+    endedAt: null,
+    ...over,
+  });
+  // Two running, the second nested under the first (Claude Code and T3 style).
   const two = (): DeskThread["subagents"] => [
-    {
-      id: 1,
-      title: "Check the schema",
-      agentType: "Explore",
-      model: null,
-      progress: null,
-      startedAt: minutesAgo(3),
-    },
-    {
+    sub({ id: 1, title: "Check the schema", agentType: "Explore", startedAt: minutesAgo(12) }),
+    sub({
       id: 2,
+      parentId: 1,
       title: "Review the diff",
-      agentType: null,
       model: "claude-haiku-5",
       progress: "Reading reader.ts",
-      startedAt: minutesAgo(12),
-    },
+      startedAt: minutesAgo(3),
+    }),
   ];
-  const countButton = () =>
+  const mixed = (): DeskThread["subagents"] => [
+    sub({
+      id: 1,
+      title: "Explore the repo",
+      agentType: "Explore",
+      status: "done",
+      startedAt: minutesAgo(9),
+      endedAt: minutesAgo(5),
+    }),
+    sub({
+      id: 2,
+      title: "Run the checks",
+      status: "failed",
+      progress: "stale step",
+      startedAt: minutesAgo(8),
+      endedAt: minutesAgo(2),
+    }),
+    sub({
+      id: 3,
+      parentId: 2,
+      title: "Retry",
+      status: "cancelled",
+      startedAt: minutesAgo(4),
+      endedAt: minutesAgo(3),
+    }),
+  ];
+  const button = () =>
     within(card("Alpha")).queryByRole("button", { name: /\d+ subagents?/ }) as HTMLElement | null;
+  const tree = () => card("Alpha").querySelector(".dk-agents");
 
   it("shows nothing when there are none", async () => {
     start();
     await screen.findByRole("article", { name: "Alpha" });
-    expect(countButton()).toBeNull();
-    expect(card("Alpha").querySelector(".dk-agents")).toBeNull();
+    expect(button()).toBeNull();
+    expect(tree()).toBeNull();
     expect(card("Alpha").querySelector(".dk-run")?.textContent).toBe("running");
   });
 
-  it("says `running · 2 subagents` for a running thread, with the count as a button", async () => {
+  it("is open while a subagent runs: the thread on top, nested ones indented, with their dots", async () => {
     setSubagents(two());
     start();
     await screen.findByRole("article", { name: "Alpha" });
     const run = card("Alpha").querySelector(".dk-run") as HTMLElement;
     expect(run.textContent).toBe("running ·2 subagents");
-    const btn = countButton() as HTMLElement;
-    expect(btn.textContent).toBe("2 subagents");
-    expect(btn.getAttribute("aria-expanded")).toBe("false");
-    expect(card("Alpha").querySelector(".dk-agents")).toBeNull();
+    const btn = button() as HTMLElement;
+    expect(btn.getAttribute("aria-expanded")).toBe("true");
+    const list = within(card("Alpha")).getByRole("list", { name: /^Agents of / });
+    expect(btn.getAttribute("aria-controls")).toBe(tree()?.id);
+    // The root row is the thread, then each subagent; the nested one sits one list deeper.
+    const rows = [...list.querySelectorAll(".dk-tr")];
+    expect(rows.map((r) => r.textContent)).toEqual([
+      "Newer threadrunning",
+      "running: Check the schemaExplore · 12 min",
+      "running: Review the diffHaiku 5 · 3 min",
+    ]);
+    expect(rows[0]?.querySelector(".dk-tdot")?.className).toContain("s-wip");
+    expect(rows[1]?.querySelector(".dk-tdot")?.getAttribute("data-s")).toBe("running");
+    const nested = rows[2]?.closest("li");
+    expect(nested?.parentElement?.closest("li")).toBe(rows[1]?.closest("li"));
+    expect(card("Alpha").querySelector(".dk-tstep")?.textContent).toBe("Reading reader.ts");
   });
 
   it("keeps the newest step and puts the button after it", async () => {
@@ -659,58 +706,82 @@ describe("working subagents on the card", () => {
     await screen.findByRole("article", { name: "Alpha" });
     const run = card("Alpha").querySelector(".dk-run") as HTMLElement;
     expect(run.textContent).toContain("running · Reading app.ts");
-    expect(run.lastElementChild).toBe(countButton());
+    expect(run.lastElementChild).toBe(button());
   });
 
-  it("opens a list with name, type or model, time running and progress, and closes again", async () => {
+  it("can be folded while running, and stays folded", async () => {
     setSubagents(two());
     start();
     await screen.findByRole("article", { name: "Alpha" });
-    const btn = countButton() as HTMLElement;
+    fireEvent.click(button() as HTMLElement);
+    expect(button()?.getAttribute("aria-expanded")).toBe("false");
+    expect(tree()).toBeNull();
+    fireEvent.click(button() as HTMLElement);
+    expect(tree()).not.toBeNull();
+  });
+
+  it("folds to a one-line summary when all have finished, and opens on the button", async () => {
+    setSubagents(mixed().filter((s) => s.status === "done"));
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    const btn = button() as HTMLElement;
+    expect(btn.textContent).toBe("1 subagent · done");
+    expect(btn.getAttribute("aria-expanded")).toBe("false");
+    expect(tree()).toBeNull();
+    // The thread's own line says what the thread is doing, not what the subagents did.
+    expect(card("Alpha").querySelector(".dk-run")?.textContent).toMatch(/^running/);
     fireEvent.click(btn);
     expect(btn.getAttribute("aria-expanded")).toBe("true");
-    const list = within(card("Alpha")).getByRole("list", { name: "Working subagents" });
-    expect(btn.getAttribute("aria-controls")).toBe(list.id);
-    const items = within(list).getAllByRole("listitem");
-    expect(items.map((i) => i.textContent)).toEqual([
-      "Check the schemaExplore · 3 min",
-      "Review the diffHaiku 5 · 12 minReading reader.ts",
-    ]);
+    expect(tree()?.querySelectorAll(".dk-tr")).toHaveLength(2);
     fireEvent.click(btn);
-    expect(btn.getAttribute("aria-expanded")).toBe("false");
-    expect(card("Alpha").querySelector(".dk-agents")).toBeNull();
+    expect(tree()).toBeNull();
+  });
+
+  it("marks failed and cancelled ones in words and colour, times finished ones by their run, no step", async () => {
+    setSubagents(mixed());
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    expect(button()?.textContent).toBe("3 subagents · 1 failed, 1 cancelled");
+    fireEvent.click(button() as HTMLElement);
+    const rows = [...(tree()?.querySelectorAll(".dk-tr") ?? [])];
+    expect(rows.slice(1).map((r) => r.textContent)).toEqual([
+      "done: Explore the repoExplore · 4 min",
+      "failed: Run the checks6 min",
+      "cancelled: Retry1 min",
+    ]);
+    expect(rows.slice(1).map((r) => r.querySelector(".dk-tdot")?.getAttribute("data-s"))).toEqual([
+      "done",
+      "failed",
+      "cancelled",
+    ]);
+    // A finished subagent shows no latest step.
+    expect(tree()?.querySelector(".dk-tstep")).toBeNull();
   });
 
   it("names an untitled subagent by its type and says `waiting on` for an idle thread", async () => {
-    setSubagents(
-      [
-        {
-          id: 5,
-          title: null,
-          agentType: "Explore",
-          model: null,
-          progress: null,
-          startedAt: minutesAgo(0),
-        },
-      ],
-      0,
-    );
+    setSubagents([sub({ id: 5, agentType: "Explore", startedAt: minutesAgo(0) })], 0);
     start();
     await screen.findByRole("article", { name: "Alpha" });
     // The newest thread (the one shown) has none; pick the older one, which has one.
     fireEvent.change(within(card("Alpha")).getByRole("combobox"), { target: { value: "1" } });
     const run = card("Alpha").querySelector(".dk-run") as HTMLElement;
     expect(run.textContent).toBe("waiting on1 subagent");
-    fireEvent.click(countButton() as HTMLElement);
-    expect(card("Alpha").querySelector(".dk-agent")?.textContent).toBe("Explore<1 min");
+    expect(card("Alpha").querySelectorAll(".dk-tr")[1]?.textContent).toBe("running: Explore<1 min");
   });
 
-  it("is accessible, open and closed", async () => {
+  it("is accessible, open, folded and with every status", async () => {
     setSubagents(two());
     start();
     await screen.findByRole("article", { name: "Alpha" });
     await expectAccessible();
-    fireEvent.click(countButton() as HTMLElement);
+    fireEvent.click(button() as HTMLElement);
+    await expectAccessible();
+    cleanup();
+    setSubagents(mixed());
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    await expectAccessible();
+    fireEvent.click(button() as HTMLElement);
     await expectAccessible();
   });
 });

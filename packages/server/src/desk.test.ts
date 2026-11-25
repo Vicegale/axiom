@@ -254,39 +254,67 @@ if [ "$(wc -l < "$DIR/calls")" -lt 2 ]; then echo "I cannot do that"; else echo 
     expect(first("b").artifacts).toEqual([]);
   });
 
-  it("GET /api/desk lists a thread's running subagents, none for an ended thread", async () => {
+  it("GET /api/desk lists a thread's subagent tree with each row's parent", async () => {
     const a = thread("a", "s1");
     const b = thread("b", "s2");
     cli.subagentStarted(a.id, "x1", "Explore");
+    const snap = (over: Record<string, unknown>) => ({
+      title: null,
+      agentType: null,
+      model: null,
+      progress: null,
+      status: "running" as const,
+      startedAt: "2026-11-25T10:00:00.000Z",
+      endedAt: null,
+      parentKey: null,
+      ...over,
+    });
     cli.setSubagents(a.id, [
-      {
-        key: "t3-1",
-        title: "Review",
-        agentType: null,
-        model: "claude-haiku-5",
-        progress: "Reading",
-        startedAt: "2026-11-25T10:00:00.000Z",
-      },
+      snap({ key: "t3-1", title: "Review", model: "claude-haiku-5", progress: "Reading" }),
+      snap({
+        key: "t3-2",
+        title: "Nested",
+        parentKey: "t3-1",
+        status: "failed",
+        endedAt: "2026-11-25T10:03:00.000Z",
+      }),
+      snap({ key: "t3-3", title: "Orphan", parentKey: "not-listed" }),
     ]);
     await start({ claudeCli: claudeSaying(GOOD) });
     const find = (body: Any, slug: string) => body.topics.find((t: Any) => t.slug === slug);
     let body = (await api("/api/desk")).body;
-    // setSubagents made the list exactly the T3 one.
-    expect(find(body, "a").threads[0].subagents).toEqual([
+    // setSubagents made the list exactly the T3 one; the parent is a row id, null when not listed.
+    const subs = find(body, "a").threads[0].subagents;
+    expect(subs).toEqual([
       {
         id: expect.any(Number),
+        parentId: null,
         title: "Review",
         agentType: null,
         model: "claude-haiku-5",
         progress: "Reading",
+        status: "running",
         startedAt: "2026-11-25T10:00:00.000Z",
+        endedAt: null,
       },
+      {
+        id: expect.any(Number),
+        parentId: subs[0].id,
+        title: "Nested",
+        agentType: null,
+        model: null,
+        progress: null,
+        status: "failed",
+        startedAt: "2026-11-25T10:00:00.000Z",
+        endedAt: "2026-11-25T10:03:00.000Z",
+      },
+      expect.objectContaining({ title: "Orphan", parentId: null }),
     ]);
     expect(find(body, "b").threads[0].subagents).toEqual([]);
     cli.subagentStarted(b.id, "y1", "Explore");
     body = (await api("/api/desk")).body;
     expect(find(body, "b").threads[0].subagents).toMatchObject([
-      { title: null, agentType: "Explore" },
+      { title: null, agentType: "Explore", status: "running", parentId: null },
     ]);
   });
 

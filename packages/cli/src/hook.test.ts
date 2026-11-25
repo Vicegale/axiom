@@ -289,16 +289,17 @@ describe("axiom hook", () => {
         background_tasks: [],
         stop_hook_active: false,
       });
-    const rows = (db: string) => {
+    const full = (db: string) => {
       const ax = openDatabase(db);
       try {
-        return [...ax.listSubagents().values()].flat().map((r) => [r.key, r.title, r.agentType]);
+        return [...ax.listSubagents().values()].flat();
       } finally {
         ax.close();
       }
     };
+    const rows = (db: string) => full(db).map((r) => [r.key, r.title, r.agentType, r.status]);
 
-    it("lists a subagent from the Agent call and its start, and drops it at its own stop", () => {
+    it("lists a subagent from the Agent call and its start, and marks it done at its own stop", () => {
       const s = session();
       s.attach();
       s.hook("prompt", PROMPT);
@@ -306,12 +307,16 @@ describe("axiom hook", () => {
       s.hook("subagent-start", start("abde0fbea64120847"));
       s.hook("subagent-start", start("a2", "Explore"));
       expect(rows(s.db)).toEqual([
-        ["abde0fbea64120847", "Ping reply subagent", "general-purpose"],
-        ["a2", null, "Explore"],
+        ["abde0fbea64120847", "Ping reply subagent", "general-purpose", "running"],
+        ["a2", null, "Explore", "running"],
       ]);
-      // A subagent's stop is not the parent's: the thread keeps working.
+      // A subagent's stop is not the parent's: the thread keeps working, the row stays, done.
       s.hook("subagent-stop", stopOf("abde0fbea64120847"));
-      expect(rows(s.db)).toEqual([["a2", null, "Explore"]]);
+      expect(rows(s.db)).toEqual([
+        ["abde0fbea64120847", "Ping reply subagent", "general-purpose", "done"],
+        ["a2", null, "Explore", "running"],
+      ]);
+      expect(full(s.db)[0]?.endedAt).not.toBeNull();
       expect(s.topic().status).toBe("wip");
       expect(s.notifications()).toEqual([]);
       expect(s.log()).toBe("");
@@ -328,25 +333,76 @@ describe("axiom hook", () => {
         }),
       );
       s.hook("subagent-start", start("a1"));
-      expect(rows(s.db)).toEqual([["a1", "Old", "general-purpose"]]);
+      expect(rows(s.db)).toEqual([["a1", "Old", "general-purpose", "running"]]);
     });
 
-    it("the parent's stop keeps the subagents it still lists; none left clears them", () => {
+    it("an Agent call made inside a subagent (its agent_id) nests the new one under it", () => {
+      const s = session();
+      s.attach();
+      s.hook("prompt", PROMPT);
+      s.hook("pre-tool", AGENT);
+      s.hook("subagent-start", start("a1"));
+      // The payload of a hook fired inside subagent a1 carries its agent_id.
+      s.hook(
+        "pre-tool",
+        payload("PreToolUse", {
+          agent_id: "a1",
+          agent_type: "general-purpose",
+          tool_name: "Agent",
+          tool_input: { description: "Nested", subagent_type: "Explore" },
+        }),
+      );
+      s.hook("subagent-start", start("a2", "Explore"));
+      // A tool call inside a subagent that is not an Agent call queues nothing.
+      s.hook(
+        "pre-tool",
+        payload("PreToolUse", {
+          agent_id: "a1",
+          tool_name: "Read",
+          tool_input: { file_path: "x" },
+        }),
+      );
+      expect(full(s.db).map((r) => [r.key, r.title, r.parentKey])).toEqual([
+        ["a1", "Ping reply subagent", null],
+        ["a2", "Nested", "a1"],
+      ]);
+    });
+
+    it("the parent's stop keeps the subagents it lists running; the rest are done", () => {
       const s = session();
       s.attach();
       s.hook("prompt", PROMPT);
       for (const id of ["a1", "a2"]) s.hook("subagent-start", start(id));
       s.hook(
         "stop",
-        payload("Stop", { background_tasks: [{ id: "a2", type: "subagent", status: "running" }] }),
+        payload("Stop", {
+          background_tasks: [
+            { id: "a2", type: "subagent", status: "running", description: "Sleep then reply" },
+            { id: "bash1", type: "shell", status: "running" },
+          ],
+        }),
       );
-      expect(rows(s.db)).toEqual([["a2", null, "general-purpose"]]);
+      // The listed one is named by its description when nothing else named it.
+      expect(rows(s.db)).toEqual([
+        ["a1", null, "general-purpose", "done"],
+        ["a2", "Sleep then reply", "general-purpose", "running"],
+      ]);
       expect(s.topic().status).toBe("wip");
       s.hook("stop", STOP);
-      expect(rows(s.db)).toEqual([]);
+      expect(rows(s.db).map((r) => r[3])).toEqual(["done", "done"]);
     });
 
-    it("session-end and a fresh session-start clear them; a compaction does not", () => {
+    it("a new prompt clears the finished subagents of the last turn, not the running ones", () => {
+      const s = session();
+      s.attach();
+      s.hook("prompt", PROMPT);
+      for (const id of ["a1", "a2"]) s.hook("subagent-start", start(id));
+      s.hook("subagent-stop", stopOf("a1"));
+      s.hook("prompt", PROMPT);
+      expect(rows(s.db)).toEqual([["a2", null, "general-purpose", "running"]]);
+    });
+
+    it("session-end cancels what ran; a fresh session-start clears them, a compaction does not", () => {
       const s = session();
       s.attach();
       s.hook("subagent-start", start("a1"));
@@ -355,8 +411,13 @@ describe("axiom hook", () => {
       s.hook("session-start", payload("SessionStart", { source: "resume" }));
       expect(rows(s.db)).toEqual([]);
       s.hook("subagent-start", start("a1"));
+      s.hook("subagent-start", start("a2"));
+      s.hook("subagent-stop", stopOf("a2"));
       s.hook("session-end", SESSION_END);
-      expect(rows(s.db)).toEqual([]);
+      expect(rows(s.db).map((r) => [r[0], r[3]])).toEqual([
+        ["a1", "cancelled"],
+        ["a2", "done"],
+      ]);
     });
 
     it("does nothing for unattached sessions, AXIOM_INTERNAL runs, T3 sessions and bad payloads", () => {

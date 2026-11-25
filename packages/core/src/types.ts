@@ -98,7 +98,14 @@ export interface RuntimePatch {
   contextMax?: number | null;
 }
 
-/** A subagent working now (ephemeral: gone when it stops). `key` is the provider's own id. */
+/** Where a subagent stands: running, or finished (done, failed, or cancelled before it finished). */
+export type SubagentStatus = "running" | "done" | "failed" | "cancelled";
+
+/**
+ * A subagent of the thread's current turn (ephemeral: the rows go when the next turn starts).
+ * `key` is the provider's own id; `parentKey` is the subagent that started it, null when the
+ * thread did.
+ */
 export interface Subagent {
   id: number;
   threadId: number;
@@ -108,17 +115,24 @@ export interface Subagent {
   model: string | null;
   /** The latest step it reported (T3 only). */
   progress: string | null;
+  status: SubagentStatus;
   startedAt: string;
+  /** When it finished; null while it runs. */
+  endedAt: string | null;
+  parentKey: string | null;
 }
 
-/** What a provider says of a running subagent (T3 sync). */
+/** What a provider says of a subagent (T3 sync). */
 export interface SubagentSnapshot {
   key: string;
   title: string | null;
   agentType: string | null;
   model: string | null;
   progress: string | null;
+  status: SubagentStatus;
   startedAt: string;
+  endedAt: string | null;
+  parentKey: string | null;
 }
 
 export interface Link {

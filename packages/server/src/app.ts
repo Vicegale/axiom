@@ -385,6 +385,22 @@ export function createApp(ctx: AppContext): Hono {
 
   // ---- the Desk (02) ------------------------------------------------------
 
+  /** A thread's subagents for the card: the parent is the row id (null when unknown or itself). */
+  function deskSubagents(list: readonly Subagent[]) {
+    const byKey = new Map(list.map((s) => [s.key, s.id]));
+    return list.map((s) => ({
+      id: s.id,
+      parentId: (s.parentKey !== null ? byKey.get(s.parentKey) : undefined) ?? null,
+      title: s.title,
+      agentType: s.agentType,
+      model: s.model,
+      progress: s.progress,
+      status: s.status,
+      startedAt: s.startedAt,
+      endedAt: s.endedAt,
+    }));
+  }
+
   function deskThread(
     t: TopicDetail["threads"][number],
     subagents: ReadonlyMap<number, Subagent[]>,
@@ -418,15 +434,9 @@ export function createApp(ctx: AppContext): Hono {
               contextMax: t.contextMax,
               at: t.runtimeAt,
             },
-      // Subagents running now (the card says how many and lists them).
-      subagents: (t.endedAt === null ? (subagents.get(t.id) ?? []) : []).map((s) => ({
-        id: s.id,
-        title: s.title,
-        agentType: s.agentType,
-        model: s.model,
-        progress: s.progress,
-        startedAt: s.startedAt,
-      })),
+      // The subagent tree of the current turn, oldest first: running and finished ones, each with
+      // the id of the row it nests under (null: started by the thread itself).
+      subagents: deskSubagents(t.endedAt === null ? (subagents.get(t.id) ?? []) : []),
       // Questions and permission requests waiting on the owner (the card fetches them when > 0).
       pendingRequests: pendingRequestCount(t),
       hasReply: t.lastReply !== null,

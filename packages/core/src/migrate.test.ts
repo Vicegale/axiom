@@ -44,7 +44,7 @@ describe("opening", () => {
     expect(pragma("journal_mode")).toBe("wal");
     expect(pragma("foreign_keys")).toBe(1);
     expect(pragma("busy_timeout")).toBe(5000);
-    expect(pragma("user_version")).toBe(8);
+    expect(pragma("user_version")).toBe(9);
     const names = (
       ax.db
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
@@ -65,7 +65,7 @@ describe("opening", () => {
     a.close();
     const b = openDatabase(path);
     expect(b.getTopic("keep").title).toBe("keep");
-    expect(Object.values(b.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(8);
+    expect(Object.values(b.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(9);
     b.close();
   });
 
@@ -97,7 +97,7 @@ describe("opening", () => {
     );
     raw.close();
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(8);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(9);
     const links = ax.getTopic("t").links;
     expect(links).toHaveLength(1);
     expect(links[0]).toMatchObject({ label: "A", description: null });
@@ -126,7 +126,7 @@ describe("opening", () => {
     );
     raw.close();
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(8);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(9);
     const t = ax.getTopic("t");
     expect(t).toMatchObject({ title: "T", favorite: false, deskHidden: false, deskOrder: null });
     expect(t.threads[0]).toMatchObject({
@@ -154,6 +154,39 @@ describe("opening", () => {
     db.close();
   });
 
+  it("upgrades a version 8 database: a running subagent keeps its row, as running and unparented", () => {
+    const path = join(dir, "v8.db");
+    const raw = new DatabaseSync(path);
+    const migrations = [
+      "0001_init.sql",
+      "0002_tasks.sql",
+      "0003_link_description.sql",
+      "0004_desk.sql",
+      "0005_activity.sql",
+      "0006_approvals.sql",
+      "0007_runtime.sql",
+      "0008_subagents.sql",
+    ].map((f, i) => ({
+      version: i + 1,
+      sql: readFileSync(fileURLToPath(new URL(`../migrations/${f}`, import.meta.url)), "utf8"),
+    }));
+    migrate(raw, migrations);
+    raw.exec(
+      "INSERT INTO topic (slug, title, created_at, last_worked_at) VALUES ('t', 'T', 'x', 'x')",
+    );
+    raw.exec(
+      `INSERT INTO thread (topic_id, provider, provider_thread_id, status_changed_at, started_at)
+       VALUES (1, 'claude-code', 's1', 'x', 'x')`,
+    );
+    raw.exec("INSERT INTO subagent (thread_id, key, started_at) VALUES (1, 'a1', 'x')");
+    raw.close();
+    const ax = openDatabase(path);
+    expect(ax.listSubagents().get(1)).toMatchObject([
+      { key: "a1", status: "running", endedAt: null, parentKey: null },
+    ]);
+    ax.close();
+  });
+
   it("opens the same file from several processes at once and migrates once", async () => {
     const path = join(dir, "race.db");
     const script = fileURLToPath(new URL("./test-open-child.ts", import.meta.url));
@@ -175,9 +208,9 @@ describe("opening", () => {
         );
       });
     const results = await Promise.all(Array.from({ length: 6 }, run));
-    expect(results).toEqual(Array(6).fill("8 wal"));
+    expect(results).toEqual(Array(6).fill("9 wal"));
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(8);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(9);
     ax.close();
   }, 60_000);
 });

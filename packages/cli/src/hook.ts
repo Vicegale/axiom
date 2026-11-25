@@ -75,21 +75,24 @@ export function logFailure(env: NodeJS.ProcessEnv, event: string, error: unknown
 }
 
 /** The running subagents a Stop payload lists in `background_tasks` (background shells don't count). */
-function runningSubagentIds(p: HookPayload): string[] {
+function runningSubagents(p: HookPayload): { key: string; title?: string }[] {
   const tasks = (p as { background_tasks?: unknown }).background_tasks;
   if (!Array.isArray(tasks)) return [];
-  const out: string[] = [];
+  const out: { key: string; title?: string }[] = [];
   for (const t of tasks) {
     if (typeof t !== "object" || t === null) continue;
-    const { type, status, id } = t as { type?: unknown; status?: unknown; id?: unknown };
-    if (type === "subagent" && status === "running") out.push(typeof id === "string" ? id : "");
+    const { type, status } = t as { type?: unknown; status?: unknown };
+    // The task's id is the subagent's `agent_id`; its description names it when no call did.
+    if (type === "subagent" && status === "running") {
+      out.push({ key: field(t, "id") ?? "", title: field(t, "description") });
+    }
   }
   return out;
 }
 
 /** Running subagents listed in a Stop payload's `background_tasks` (background shells don't count). */
 export function runningSubagentCount(p: HookPayload): number {
-  return runningSubagentIds(p).length;
+  return runningSubagents(p).length;
 }
 
 /** The Agent (called Task in older versions) tool: the one that starts a subagent. */
@@ -178,6 +181,8 @@ export function runHook(
             axiom.queueSubagentCall(thread.id, {
               title: field(payload.tool_input, "description"),
               agentType: field(payload.tool_input, "subagent_type") ?? "general-purpose",
+              // Inside a subagent the payload carries its `agent_id`: it is this one's parent.
+              parentKey: field(payload, "agent_id") ?? null,
             });
           }
         }
@@ -240,6 +245,8 @@ export function runHook(
           if (!thread.title && payload.prompt) {
             axiom.fillThreadTitle(thread.id, payload.prompt.split("\n")[0] ?? "");
           }
+          // A new turn: the last one's finished subagents leave the tree.
+          axiom.startSubagentTurn(thread.id);
           axiom.threadWorking(thread.id);
           break;
         case "notification":
@@ -253,7 +260,7 @@ export function runHook(
           // Waiting on running subagents is not stopping: the thread stays wip until it is
           // re-invoked and stops again with none left.
           axiom.setRunningSubagents(thread.id, subagents);
-          axiom.keepSubagents(thread.id, runningSubagentIds(payload));
+          axiom.keepSubagents(thread.id, runningSubagents(payload));
           if (subagents === 0) axiom.threadStopped(thread.id);
           recordRuntime(axiom, thread.id, payload);
           break;

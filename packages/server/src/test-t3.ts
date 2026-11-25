@@ -274,7 +274,11 @@ export class T3Fixture {
     return this;
   }
 
-  /** A subagent of a thread (synthetic); running unless `status` is terminal or `completedAt` is set. */
+  /**
+   * A subagent of a thread (synthetic); running unless `status` is terminal or `completedAt` is set.
+   * `runId` is its run (`run-<thread>-<ordinal>`, see `run()`), `parent` the subagent it nests
+   * under (its `parent_node_id`; otherwise a run node).
+   */
   subagent(
     threadId: string,
     id: string,
@@ -285,6 +289,8 @@ export class T3Fixture {
       progress?: string;
       startedAt?: string;
       completedAt?: string | null;
+      runId?: string | null;
+      parent?: string;
     } = {},
   ): this {
     const status = over.status ?? "running";
@@ -292,9 +298,9 @@ export class T3Fixture {
     this.db
       .prepare(
         `INSERT INTO orchestration_v2_projection_subagents
-           (subagent_id, thread_id, parent_node_id, provider, origin, status, started_at,
+           (subagent_id, thread_id, run_id, parent_node_id, provider, origin, status, started_at,
             completed_at, updated_at, payload_json)
-         VALUES (?, ?, 'node-sub', 'claude', 'provider_native', ?, ?, ?, ?, ?)
+         VALUES (?, ?, ?, ?, 'claude', 'provider_native', ?, ?, ?, ?, ?)
          ON CONFLICT (subagent_id) DO UPDATE SET status = excluded.status,
            completed_at = excluded.completed_at, updated_at = excluded.updated_at,
            payload_json = excluded.payload_json`,
@@ -302,6 +308,8 @@ export class T3Fixture {
       .run(
         id,
         threadId,
+        over.runId ?? null,
+        over.parent ?? "node-sub",
         status,
         startedAt,
         over.completedAt ?? null,

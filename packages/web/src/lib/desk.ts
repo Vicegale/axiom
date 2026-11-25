@@ -1,4 +1,4 @@
-import type { DeskSubagent, DeskThread, DeskTopic } from "../api";
+import type { DeskSubagent, DeskSubagentStatus, DeskThread, DeskTopic } from "../api";
 import { ago } from "./time";
 
 export type DeskSort = "ready" | "fixed";
@@ -139,6 +139,72 @@ export function subagentCount(n: number): string {
 export function runningFor(startedAt: string, now: Date): string {
   const ms = now.getTime() - new Date(startedAt).getTime();
   return !Number.isFinite(ms) || ms < 60_000 ? "<1 min" : ago(startedAt, now, true);
+}
+
+/** A subagent's time: how long it has run, or for a finished one how long it ran. */
+export function subagentTime(s: DeskSubagent, now: Date): string {
+  return runningFor(s.startedAt, s.endedAt ? new Date(s.endedAt) : now);
+}
+
+/** What the status dot says in words (the dot's colour is not the only signal). */
+export const SUBAGENT_STATUS_WORD: Record<DeskSubagentStatus, string> = {
+  running: "running",
+  done: "done",
+  failed: "failed",
+  cancelled: "cancelled",
+};
+
+/** How many subagents still run. */
+export function runningSubagents(list: readonly DeskSubagent[]): number {
+  return list.filter((s) => s.status === "running").length;
+}
+
+/**
+ * The fold button's text: "2 subagents" while any runs (the count of those running), otherwise
+ * "3 subagents · done", "3 subagents · 1 failed", "3 subagents · 1 failed, 1 cancelled".
+ */
+export function subagentSummary(list: readonly DeskSubagent[]): string {
+  const running = runningSubagents(list);
+  if (running > 0) return subagentCount(running);
+  const failed = list.filter((s) => s.status === "failed").length;
+  const cancelled = list.filter((s) => s.status === "cancelled").length;
+  const bad = [failed ? `${failed} failed` : "", cancelled ? `${cancelled} cancelled` : ""]
+    .filter(Boolean)
+    .join(", ");
+  return `${subagentCount(list.length)} · ${bad || "done"}`;
+}
+
+/** A subagent and the ones it started. */
+export interface SubagentNode {
+  agent: DeskSubagent;
+  children: SubagentNode[];
+}
+
+/**
+ * The subagents as a tree under the thread: a subagent whose parent is not listed (or that would
+ * loop back on itself) hangs directly under the thread. Order is kept (oldest first).
+ */
+export function subagentTree(list: readonly DeskSubagent[]): SubagentNode[] {
+  const byId = new Map(list.map((s) => [s.id, s]));
+  const kids = new Map<number, DeskSubagent[]>();
+  const roots: DeskSubagent[] = [];
+  for (const s of list) {
+    const parent = s.parentId !== null && s.parentId !== s.id ? byId.get(s.parentId) : undefined;
+    if (!parent) roots.push(s);
+    else kids.set(parent.id, [...(kids.get(parent.id) ?? []), s]);
+  }
+  const seen = new Set<number>();
+  const build = (s: DeskSubagent): SubagentNode => {
+    seen.add(s.id);
+    return {
+      agent: s,
+      children: (kids.get(s.id) ?? []).filter((c) => !seen.has(c.id)).map(build),
+    };
+  };
+  const tree = roots.map(build);
+  // Rows left over sit in a parent loop: hang them under the thread too.
+  for (const s of list) if (!seen.has(s.id)) tree.push(build(s));
+  return tree;
 }
 
 /**

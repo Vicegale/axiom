@@ -740,11 +740,11 @@ describe("model, effort and context", () => {
   });
 });
 
-describe("working subagents", () => {
+describe("the subagent tree", () => {
   const read = (id: string) => {
     const db = T3Db.open(t3.dir);
     try {
-      return db.subagents(id);
+      return db.thread(id, null)?.subagents ?? [];
     } finally {
       db.close();
     }
@@ -752,10 +752,10 @@ describe("working subagents", () => {
   const stored = (id: string) => {
     const th = thread(id);
     const list = (th && ax.listSubagents().get(th.id)) ?? [];
-    return list.map((s) => [s.key, s.title, s.model, s.progress]);
+    return list.map((s) => [s.key, s.status, s.title, s.model, s.progress]);
   };
 
-  it("lists only running subagents of the thread, oldest first, with title, model and progress", () => {
+  it("lists the thread's subagents oldest first, finished ones too, with their status", () => {
     t3.thread("a");
     t3.thread("b");
     t3.subagent("a", "s2", {
@@ -769,18 +769,94 @@ describe("working subagents", () => {
       progress: "Reading reader.ts",
       startedAt: "2026-11-25T09:01:00.000Z",
     });
-    for (const status of ["completed", "failed", "cancelled", "interrupted"]) {
-      t3.subagent("a", `done-${status}`, { status });
-    }
-    t3.subagent("a", "stamped", { status: "running", completedAt: "2026-11-25T09:10:00.000Z" });
     t3.subagent("b", "other", { title: "Not ours" });
-    expect(read("a").map((s) => [s.key, s.title, s.model, s.progress])).toEqual([
-      ["s1", "Explore", "claude-haiku-5", "Reading reader.ts"],
-      ["s2", "Review", "claude-opus-5-5", null],
+    expect(read("a").map((s) => [s.key, s.status, s.title, s.model, s.progress])).toEqual([
+      ["s1", "running", "Explore", "claude-haiku-5", "Reading reader.ts"],
+      ["s2", "running", "Review", "claude-opus-5-5", null],
     ]);
     // Any other status without a completion time is still running.
     t3.subagent("b", "queued", { status: "starting", title: "Warm up" });
-    expect(read("b").map((s) => s.key)).toEqual(["other", "queued"]);
+    expect(read("b").map((s) => [s.key, s.status])).toEqual([
+      ["other", "running"],
+      ["queued", "running"],
+    ]);
+  });
+
+  it("maps T3's statuses, stamps the end, and keeps the latest step of a running one only", () => {
+    t3.thread("a");
+    const done = (status: string, key: string) =>
+      t3.subagent("a", key, {
+        status,
+        progress: "Last step",
+        startedAt: "2026-11-25T09:00:00.000Z",
+        completedAt: "2026-11-25T09:04:00.000Z",
+      });
+    done("completed", "c");
+    done("failed", "f");
+    done("cancelled", "x");
+    done("interrupted", "i");
+    // A completion time without a terminal status is done as well.
+    t3.subagent("a", "stamped", { status: "running", completedAt: "2026-11-25T09:10:00.000Z" });
+    t3.subagent("a", "live", { progress: "Working" });
+    const by = Object.fromEntries(read("a").map((s) => [s.key, s]));
+    expect(
+      Object.entries(by)
+        .map(([k, s]) => [k, s.status])
+        .sort(),
+    ).toEqual([
+      ["c", "done"],
+      ["f", "failed"],
+      ["i", "cancelled"],
+      ["live", "running"],
+      ["stamped", "done"],
+      ["x", "cancelled"],
+    ]);
+    expect(by.c).toMatchObject({ endedAt: "2026-11-25T09:04:00.000Z", progress: null });
+    expect(by.live).toMatchObject({ endedAt: null, progress: "Working" });
+  });
+
+  it("nests a subagent under the subagent its parent_node_id names, else under the thread", () => {
+    t3.thread("a");
+    t3.subagent("a", "root", { title: "Root", startedAt: "2026-11-25T09:00:00.000Z" });
+    t3.subagent("a", "child", {
+      title: "Child",
+      parent: "root",
+      startedAt: "2026-11-25T09:01:00.000Z",
+    });
+    t3.subagent("a", "stray", {
+      title: "Stray",
+      parent: "gone",
+      startedAt: "2026-11-25T09:02:00.000Z",
+    });
+    t3.subagent("a", "self", {
+      title: "Self",
+      parent: "self",
+      startedAt: "2026-11-25T09:03:00.000Z",
+    });
+    expect(read("a").map((s) => [s.key, s.parentKey])).toEqual([
+      ["root", null],
+      ["child", "root"],
+      ["stray", null],
+      ["self", null],
+    ]);
+  });
+
+  it("shows the newest run's subagents, plus any still running from an earlier one", () => {
+    t3.thread("a");
+    t3.run("a", 1, "completed");
+    t3.subagent("a", "old-done", { status: "completed", runId: "run-a-1", completedAt: "x" });
+    t3.subagent("a", "old-live", { runId: "run-a-1" });
+    t3.subagent("a", "unattached-done", { status: "failed", runId: null, completedAt: "x" });
+    // A finished one with no run is not the newest run's: it is left out.
+    expect(read("a").map((s) => s.key)).toEqual(["old-done", "old-live"]);
+    t3.run("a", 2, "running");
+    t3.subagent("a", "new-done", { status: "completed", runId: "run-a-2", completedAt: "y" });
+    t3.subagent("a", "new-live", { runId: "run-a-2" });
+    expect(
+      read("a")
+        .map((s) => s.key)
+        .sort(),
+    ).toEqual(["new-done", "new-live", "old-live"]);
   });
 
   it("survives broken payloads", () => {
@@ -796,33 +872,54 @@ describe("working subagents", () => {
     ]);
   });
 
-  it("the sync follows them: progress updates, a finished one goes, no history", () => {
+  it("the sync follows them: progress updates, a finished one stays, the next run clears the tree", () => {
     t3.thread("a");
     attach("a");
-    const before = ax.listEntries("topic-a").length;
-    t3.subagent("a", "s1", { title: "Explore", progress: "one" });
-    t3.subagent("a", "s2", { title: "Review", startedAt: "2026-11-25T09:02:00.000Z" });
+    t3.run("a", 1, "running");
+    t3.subagent("a", "s1", { title: "Explore", progress: "one", runId: "run-a-1" });
+    t3.subagent("a", "s2", {
+      title: "Review",
+      startedAt: "2026-11-25T09:02:00.000Z",
+      runId: "run-a-1",
+    });
     provider.sync();
     expect(stored("a")).toEqual([
-      ["s1", "Explore", null, "one"],
-      ["s2", "Review", null, null],
+      ["s1", "running", "Explore", null, "one"],
+      ["s2", "running", "Review", null, null],
     ]);
     expect(provider.takeRuntimeChanged()).toBe(true);
     provider.sync();
     expect(provider.takeRuntimeChanged()).toBe(false);
+    const before = ax.listEntries("topic-a").length;
 
-    t3.subagent("a", "s1", { title: "Explore", progress: "two" });
+    t3.subagent("a", "s1", { title: "Explore", progress: "two", runId: "run-a-1" });
     provider.sync();
-    expect(stored("a")[0]).toEqual(["s1", "Explore", null, "two"]);
+    expect(stored("a")[0]).toEqual(["s1", "running", "Explore", null, "two"]);
     expect(provider.takeRuntimeChanged()).toBe(true);
 
-    t3.subagent("a", "s2", { status: "completed", completedAt: "2026-11-25T09:20:00.000Z" });
+    t3.subagent("a", "s2", {
+      status: "completed",
+      completedAt: "2026-11-25T09:20:00.000Z",
+      startedAt: "2026-11-25T09:02:00.000Z",
+      title: "Review",
+      runId: "run-a-1",
+    });
+    provider.sync();
+    expect(stored("a").map((r) => [r[0], r[1]])).toEqual([
+      ["s1", "running"],
+      ["s2", "done"],
+    ]);
+    const ended = ax.listSubagents().get(thread("a")?.id ?? 0)?.[1];
+    expect(ended?.endedAt).toBe("2026-11-25T09:20:00.000Z");
+    expect(ax.listEntries("topic-a")).toHaveLength(before);
+
+    // The next run: the finished one leaves, the one still running stays.
+    t3.run("a", 2, "running");
     provider.sync();
     expect(stored("a").map((r) => r[0])).toEqual(["s1"]);
-    expect(ax.listEntries("topic-a")).toHaveLength(before);
   });
 
-  it("a removed thread's subagents are dropped when it ends", () => {
+  it("a removed thread's running subagents are cancelled when it ends", () => {
     t3.thread("a");
     attach("a");
     t3.subagent("a", "s1");
@@ -830,6 +927,6 @@ describe("working subagents", () => {
     expect(stored("a")).toHaveLength(1);
     t3.remove("a");
     provider.sync();
-    expect(ax.listSubagents().size).toBe(0);
+    expect(stored("a").map((r) => r[1])).toEqual(["cancelled"]);
   });
 });

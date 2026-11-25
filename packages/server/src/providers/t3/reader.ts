@@ -39,10 +39,11 @@
  *   `$.tokenUsage.usedTokens` (with `$.tokenUsage.maxTokens` when known; `$.model` is the model the
  *   turn ran on, used when the thread names none).
  *
- * - `orchestration_v2_projection_subagents`: `subagent_id`, `thread_id`, `status`, `started_at`,
- *   `completed_at`, `updated_at`, `payload_json` (`$.title`, `$.model`, `$.progress` the latest
- *   step). Running = no `completed_at` and a status other than `completed`, `failed`, `cancelled`,
- *   `interrupted`.
+ * - `orchestration_v2_projection_subagents`: `subagent_id`, `thread_id`, `run_id`, `parent_node_id`
+ *   (a nested subagent's is its parent's `subagent_id`, otherwise a run node), `status`,
+ *   `started_at`, `completed_at`, `updated_at`, `payload_json` (`$.title`, `$.model`, `$.progress`
+ *   the latest step). Running = no `completed_at` and a status other than `completed`, `failed`,
+ *   `cancelled`, `interrupted`; the tree shows the newest run's rows (and any still running).
  *
  * - `projection_projects`: `project_id`, `title`, `workspace_root`, `default_model_selection_json`
  *   (null or `null` when the project has no default model), `pinned_at`, `archived_at`,
@@ -104,8 +105,23 @@ export interface T3ThreadState {
   activity: { text: string; at: string } | null;
   /** Model, effort and context use, or null when T3 says nothing of them. */
   runtime: T3Runtime | null;
-  /** The subagents running now (none once they complete, fail, are cancelled or interrupted). */
+  /** The subagents of the newest run: running, done, failed or cancelled. */
   subagents: SubagentSnapshot[];
+}
+
+/** A T3 subagent's status as the tree shows it. */
+function subagentStatus(status: string, completedAt: string | null): SubagentSnapshot["status"] {
+  switch (status) {
+    case "completed":
+      return "done";
+    case "failed":
+      return "failed";
+    case "cancelled":
+    case "interrupted":
+      return "cancelled";
+    default:
+      return completedAt === null ? "running" : "done";
+  }
 }
 
 /** What a T3 thread runs on; a field is null when T3 does not say. */
@@ -231,12 +247,16 @@ const CONTEXT_SQL = `SELECT json_extract(payload_json, '$.model') AS model,
     AND json_extract(payload_json, '$.tokenUsage.usedTokens') IS NOT NULL
   ORDER BY started_at DESC, ordinal DESC LIMIT 1`;
 
-// A subagent is running until T3 gives it a completion time or a terminal status; any other status
-// (`running` is the one seen) counts, so a new in-flight status is not missed.
-const SUBAGENTS_SQL = `SELECT subagent_id, started_at, updated_at, payload_json
+// The subagents of the thread's newest run, finished or not, and any still running from an earlier
+// one. A subagent is running until T3 gives it a completion time or a terminal status; any other
+// status (`running` is the one seen) counts, so a new in-flight status is not missed. Without a
+// known run (`?1` null) every row counts.
+const SUBAGENTS_SQL = `SELECT subagent_id, parent_node_id, status, started_at, completed_at, updated_at,
+    payload_json
   FROM orchestration_v2_projection_subagents
-  WHERE thread_id = ? AND completed_at IS NULL
-    AND status NOT IN ('completed', 'failed', 'cancelled', 'interrupted')
+  WHERE thread_id = ?2
+    AND (?1 IS NULL OR run_id = ?1
+         OR (completed_at IS NULL AND status NOT IN ('completed', 'failed', 'cancelled', 'interrupted')))
   ORDER BY started_at, subagent_id`;
 
 const PROJECTS_SQL = `SELECT project_id, title, workspace_root, default_model_selection_json, pinned_at
@@ -493,14 +513,23 @@ export class T3Db {
     return Object.values(runtime).some((v) => v !== null) ? runtime : null;
   }
 
-  /** The thread's subagents that are running now, oldest first. */
-  subagents(threadId: string): SubagentSnapshot[] {
-    const rows = this.db.prepare(SUBAGENTS_SQL).all(threadId) as {
+  /**
+   * The thread's subagents of its newest run (`runId`; every row when unknown), oldest first: how
+   * each stands (`completed` is done, `failed`, `cancelled` and `interrupted` stopped early, the
+   * rest run) and under which subagent it nests (`parent_node_id` is its parent's `subagent_id`;
+   * otherwise it belongs to a run node, i.e. the thread).
+   */
+  subagents(threadId: string, runId: string | null = null): SubagentSnapshot[] {
+    const rows = this.db.prepare(SUBAGENTS_SQL).all(runId, threadId) as {
       subagent_id: string;
+      parent_node_id: string | null;
+      status: string;
       started_at: string | null;
+      completed_at: string | null;
       updated_at: string;
       payload_json: string;
     }[];
+    const ids = new Set(rows.map((r) => r.subagent_id));
     return rows.map((r) => {
       let p: Record<string, unknown> = {};
       try {
@@ -508,13 +537,21 @@ export class T3Db {
         if (typeof v === "object" && v !== null) p = v as Record<string, unknown>;
       } catch {}
       const text = (v: unknown) => (typeof v === "string" && v.trim() !== "" ? v.trim() : null);
+      const status = subagentStatus(r.status, r.completed_at);
       return {
         key: r.subagent_id,
         title: text(p.title),
         agentType: null,
         model: text(p.model) ?? text((p.modelSelection as { model?: unknown } | null)?.model),
-        progress: text(p.progress),
+        // Only a running one shows its latest step.
+        progress: status === "running" ? text(p.progress) : null,
+        status,
         startedAt: r.started_at ?? text(p.startedAt) ?? r.updated_at,
+        endedAt: status === "running" ? null : (r.completed_at ?? r.updated_at),
+        parentKey:
+          r.parent_node_id && r.parent_node_id !== r.subagent_id && ids.has(r.parent_node_id)
+            ? r.parent_node_id
+            : null,
       };
     });
   }
@@ -572,7 +609,7 @@ export class T3Db {
       latestRunId: row.run_id ?? null,
       activity: removed ? null : this.activity(row.thread_id),
       runtime: removed ? null : this.runtime(row.thread_id),
-      subagents: removed ? [] : this.subagents(row.thread_id),
+      subagents: removed ? [] : this.subagents(row.thread_id, row.run_id ?? null),
     };
   }
 

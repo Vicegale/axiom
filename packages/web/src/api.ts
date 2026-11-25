@@ -96,17 +96,25 @@ export interface ThreadRuntime {
   at: string | null;
 }
 
-/** A subagent running now, as GET /api/desk lists it. */
+/** Where a subagent stands: running, or finished (done, failed, cancelled). */
+export type DeskSubagentStatus = "running" | "done" | "failed" | "cancelled";
+
+/** A subagent of the thread's current turn, as GET /api/desk lists it. */
 export interface DeskSubagent {
   id: number;
+  /** The subagent that started this one (its `id`); null when the thread did. */
+  parentId: number | null;
   title: string | null;
   /** Claude Code's subagent type (`Explore`, `general-purpose`). */
   agentType: string | null;
   /** The model it runs on (T3). */
   model: string | null;
-  /** The latest step it reported (T3). */
+  /** The latest step it reported while running (T3). */
   progress: string | null;
+  status: DeskSubagentStatus;
   startedAt: string;
+  /** When it finished; null while it runs. */
+  endedAt: string | null;
 }
 
 /** A thread as GET /api/desk returns it (the full reply is fetched on its own). */
@@ -127,7 +135,7 @@ export interface DeskThread {
   activity: { text: string; at: string } | null;
   /** What it runs on: model, effort and context use (the latest only); null until known. */
   runtime: ThreadRuntime | null;
-  /** The subagents working now, oldest first; empty when there are none. */
+  /** The subagents of the current turn, running and finished, oldest first; empty when there are none. */
   subagents: DeskSubagent[];
   hasReply: boolean;
   /** Questions and permission requests waiting on the owner; the card fetches them when above 0. */

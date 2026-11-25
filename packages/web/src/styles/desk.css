@@ -93,7 +93,7 @@
 .dk-runtext { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-act { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text); }
 .dk-actage { flex: none; color: var(--text-3); white-space: nowrap; }
-/* Working subagents (D11): a count button on the run line, and the list it opens under it. */
+/* Subagents (D11, D12): a summary button on the run line, and the tree it opens under it. */
 .dk-agentsbtn {
   flex: none; display: inline-flex; align-items: center; gap: 0.25rem; height: 1.125rem; padding: 0 0.375rem;
   background: var(--raised); border: 1px solid var(--control); border-radius: 0.1875rem;
@@ -105,17 +105,34 @@
   border: solid currentColor; border-width: 0 1px 1px 0; transform: rotate(45deg);
 }
 .dk-agentsbtn[aria-expanded="true"]::after { margin-top: 0.125rem; transform: rotate(225deg); }
+/* The subagent tree (D12): the thread on top, its subagents below, joined by thin CSS lines. */
 .dk-agents {
-  display: grid; gap: 0.375rem; margin: 0; padding: 0.375rem 0.625rem; list-style: none;
-  background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); font-size: 0.75rem;
+  padding: 0.375rem 0.625rem; background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: var(--radius); font-size: 0.75rem;
 }
-.dk-agent { display: grid; gap: 0.125rem; min-width: 0; }
-.dk-agent-head { display: flex; align-items: baseline; gap: 0.5rem; min-width: 0; }
-.dk-agent-name { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-.dk-agent-meta { flex: none; color: var(--meta); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.dk-agent-step {
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2);
-  font-family: var(--font-mono); font-size: 0.6875rem;
+.dk-tlist, .dk-kids { margin: 0; padding: 0; list-style: none; }
+.dk-kids { margin-left: 0.21875rem; padding-left: 0.9375rem; }
+.dk-tn { position: relative; min-width: 0; }
+.dk-tr { display: flex; align-items: center; gap: 0.375rem; min-height: 1.125rem; min-width: 0; }
+.dk-tdot { flex: none; width: 0.4375rem; height: 0.4375rem; border-radius: 50%; background: var(--c, var(--text-3)); }
+.dk-tdot[data-s="running"] { --c: var(--st-wip); animation: dk-pulse 1.6s ease-in-out infinite; }
+.dk-tdot[data-s="done"] { --c: var(--st-done); }
+.dk-tdot[data-s="failed"] { --c: var(--st-error); }
+.dk-tdot[data-s="cancelled"] { --c: var(--st-idle); }
+.dk-tname { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.dk-troot { font-weight: 600; }
+.dk-tmeta { flex: none; color: var(--meta); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dk-tstep {
+  margin: 0 0 0 0.8125rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text-2); font-family: var(--font-mono); font-size: 0.6875rem;
+}
+.dk-kids > .dk-tn::before, .dk-kids > .dk-tn::after { content: ""; position: absolute; left: -0.9375rem; }
+.dk-kids > .dk-tn::before { top: 0; bottom: 0; border-left: 1px solid var(--line-strong); }
+.dk-kids > .dk-tn:last-child::before { bottom: auto; height: 0.5625rem; }
+.dk-kids > .dk-tn::after { top: 0.5625rem; width: 0.6875rem; border-top: 1px solid var(--line-strong); }
+@media (forced-colors: active) {
+  .dk-tdot { background: CanvasText; forced-color-adjust: none; }
+  .dk-kids > .dk-tn::before, .dk-kids > .dk-tn::after { border-color: CanvasText; }
 }
 @keyframes dk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .dk-label { font: 500 0.625rem/1 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--meta); margin-bottom: 0.25rem; }
@@ -157,5 +174,6 @@
 @media (prefers-reduced-motion: reduce) {
   .dk-skel span { animation: none; }
   .dk-run.live .dk-rundot { animation: none; }
+  .dk-tdot[data-s="running"] { animation: none; }
   .dk-stale { transition: none; }
 }
