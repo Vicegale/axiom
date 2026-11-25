@@ -1,5 +1,5 @@
 /**
- * `axiom server [start] [--port N]` and `axiom server install [--dry-run] [--port N]` hand off to
+ * `axiom server [start] [--port N]`, `axiom server restart` and `axiom server install [--dry-run] [--port N]` hand off to
  * @axiom/server's own CLI. It is dispatched before commander and imported lazily, so other
  * commands (and the hooks, which must stay fast) never load the server.
  *

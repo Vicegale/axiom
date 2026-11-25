@@ -64,6 +64,8 @@ Run `scripts/install.sh --help` for the options: `--yes` answers yes to every qu
 
 **Without the service:** run `axiom server` (add `--port N` to change the port) whenever you want Axiom up.
 
+**Restarting:** `axiom server restart` restarts the service (systemd or launchd) and waits until it answers again. A server you started by hand is left alone: stop it and run `axiom server` again.
+
 ## Using it with your agents
 
 Axiom only tracks projects that opt in. Add this line to a project's `AGENTS.md` or `CLAUDE.md`:

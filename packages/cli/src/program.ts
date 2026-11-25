@@ -712,7 +712,7 @@ export function buildProgram(env: NodeJS.ProcessEnv, write: (s: string) => void)
   sub(
     program,
     "server",
-    "run the local server: `axiom server [start] [--port N]`, `axiom server install [--dry-run]`",
+    "run the local server: `axiom server [start] [--port N]`, `axiom server restart`, `axiom server install [--dry-run]`",
   )
     .argument("[args...]")
     .allowUnknownOption()
