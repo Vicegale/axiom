@@ -652,6 +652,22 @@ describe("tasks", () => {
     expect(ax.getTask("demo", "A").specLinkId).toBeNull();
   });
 
+  it("pointing an already-working thread at a task makes the task wip at once", () => {
+    const { thread } = topicWithThread(ax, "work");
+    ax.createTask("work", { key: "S1", title: "one" }, owner);
+    ax.createTask("work", { key: "S2", title: "two" }, owner);
+    ax.setTaskStatus("work", "S2", "done", owner);
+    ax.threadWorking(thread.id);
+    ax.setThreadTask(thread.id, "S1", owner);
+    expect(ax.getTask("work", "S1").status).toBe("wip");
+    ax.setThreadTask(thread.id, "S2", owner); // done stays done
+    expect(ax.getTask("work", "S2").status).toBe("done");
+    ax.threadStopped(thread.id);
+    ax.createTask("work", { key: "S3", title: "three" }, owner);
+    ax.setThreadTask(thread.id, "S3", owner); // a stopped thread does not start it
+    expect(ax.getTask("work", "S3").status).toBe("to do");
+  });
+
   it("sets the thread's task to wip when it works, and leaves it alone on stop and end", () => {
     const { thread } = topicWithThread(ax, "work");
     ax.createTask("work", { key: "S1", title: "one" }, owner);
