@@ -37,6 +37,8 @@ export interface StartServerOptions {
   /** Summary run timeout (default 60 s) and the wait before retrying a failure (default 10 min). */
   summaryTimeoutMs?: number;
   summaryRetryMs?: number;
+  /** How long a detached `claude -p` reply is watched for an early failure (default 1.5 s). */
+  sendGraceMs?: number;
 }
 
 export interface RunningServer {
@@ -62,6 +64,9 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
     webDist: options.webDist ?? fileURLToPath(new URL("../../web/dist", import.meta.url)),
     startedAt: now().toISOString(),
     streams,
+    t3Cli: options.t3Cli,
+    claudeCli: options.claudeCli ?? findClaude(),
+    sendGraceMs: options.sendGraceMs,
   };
   const app = createApp(ctx);
 

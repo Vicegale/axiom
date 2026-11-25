@@ -23,6 +23,7 @@ import { backupDir, newestBackupMs } from "./backup.js";
 import { artifactMeta, DocsError, readDoc, readImage, resolveArtifact } from "./docs.js";
 import type { ChangeBus } from "./events.js";
 import type { T3Provider } from "./providers/t3/provider.js";
+import { registerSendRoutes } from "./sending.js";
 import { serveWeb } from "./static.js";
 
 const owner: Actor = { kind: "owner" };
@@ -38,6 +39,10 @@ export interface AppContext {
   /** Closes open SSE streams on shutdown. */
   streams: Set<() => void>;
   pingMs?: number;
+  /** Sending (D3): binaries when the `t3Cli` / `claudeCli` settings are not set. */
+  t3Cli?: string;
+  claudeCli?: string;
+  sendGraceMs?: number;
 }
 
 const STATUS_CODES = { "not-found": 404, permission: 403, validation: 400, conflict: 409 } as const;
@@ -643,6 +648,14 @@ export function createApp(ctx: AppContext): Hono {
       ctx.streams.delete(done);
     }),
   );
+
+  registerSendRoutes(app, {
+    ax,
+    bus,
+    t3Cli: ctx.t3Cli,
+    claudeCli: ctx.claudeCli ?? "claude",
+    graceMs: ctx.sendGraceMs,
+  });
 
   app.all("/api/*", (c) => c.json(err("not-found", "no such endpoint"), 404));
 
