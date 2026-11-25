@@ -102,6 +102,8 @@ export interface DeskThread {
   summary: { now: string; next: string; at: string | null } | null;
   summaryError: string | null;
   hasReply: boolean;
+  /** A newer reply is being summarised (the shown summary, if any, is the previous one). */
+  summaryPending?: boolean;
 }
 
 /** A topic card as GET /api/desk returns it. */

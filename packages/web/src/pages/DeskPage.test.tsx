@@ -306,6 +306,35 @@ describe("the Desk", () => {
     expect(alpha.queryByRole("textbox", { name: "Message" })).toBeNull();
   });
 
+  it("shows Generating… with placeholder lines, or the previous summary dimmed with Updating…", async () => {
+    server.desk = [
+      deskTopic({
+        slug: "gen",
+        title: "Gen",
+        threads: [deskThread({ id: 7, hasReply: true, summaryPending: true })],
+      }),
+      deskTopic({
+        slug: "upd",
+        title: "Upd",
+        threads: [
+          deskThread({
+            id: 8,
+            hasReply: true,
+            summaryPending: true,
+            summary: { now: "Old summary", next: "Nothing", at: null },
+          }),
+        ],
+      }),
+    ];
+    start();
+    const gen = await screen.findByRole("article", { name: "Gen" });
+    expect(within(gen).getByText("Generating…")).toBeTruthy();
+    expect(gen.querySelector(".dk-skel")).not.toBeNull();
+    const upd = within(card("Upd"));
+    expect(upd.getByText("Updating…")).toBeTruthy();
+    expect(upd.getByText("Old summary").closest(".dk-stale")).not.toBeNull();
+  });
+
   it("highlights a card like the tracker, and opening its topic marks it opened", async () => {
     start();
     const charlie = await screen.findByRole("article", { name: "Charlie" });
