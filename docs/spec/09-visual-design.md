@@ -81,6 +81,16 @@ Where they would collide:
 - 2026-11-25: The first graph is the task dependency graph, in its own section of the topic page (all three layouts), drawn on the dotted grid. Nodes are tasks coloured by status, laid out left to right in dependency order; an arrow runs from a prerequisite to the task that waits on it.
 - 2026-11-25: The settings page has a Notifications section: one toggle per notification kind, all on by default (turning one off mutes that kind), plus muted topics and browser notifications. The stale threshold has its own section.
 
+## Document viewer (2026-11-25)
+
+Clicking a `spec` link (or an `artifact` link to a `.md` file) opens the file rendered in the app (owner request).
+
+- **Rendering:** GitHub-flavoured Markdown (tables, task lists, footnotes, autolinks), syntax-highlighted code, heading anchors, and Mermaid diagrams (` ```mermaid ` blocks) themed to match light/dark. Raw HTML in the file is sanitised.
+- **Navigation:** a table of contents from the headings; relative links to other Markdown files in the same repository open in the viewer; relative images display; external links open in a new tab.
+- **Where:** it replaces the topic detail in each layout (Inbox reader, Board sheet, Console panel) with a back control and a "wide" toggle that hides the list/sidebars; the route is `/topic/<slug>/doc/<linkId>[?path=<relative>]`, so it is linkable and Back works.
+- **Freshness:** the viewer re-reads the file when it changes on disk.
+- **Which files the server will read:** only files inside a directory the topic links to (`repository` or `worktree` links), plus the exact files its `spec`/`artifact` links name; Markdown and common image types only; size-capped; no path traversal. The server stays loopback-only.
+
 ## Web standards baseline (2026-11-25)
 
 The owner asked that the UI follow modern web standards (for example, resizable sidebars). Every layout meets this baseline:
