@@ -313,8 +313,7 @@ describe("layouts", () => {
 
   it("opens in the Board sheet, and wide fills the window", async () => {
     open("/topic/t/doc/7", "board");
-    await screen.findByRole("button", { name: "Wide" });
-    await article();
+    await waitFor(() => expect(document.querySelector(".dv-prose")).toBeTruthy());
     const sheet = screen.getByRole("dialog", { name: "Document" });
     expect(sheet.querySelector(".dv")).toBeTruthy();
     expect(sheet.hasAttribute("data-wide")).toBe(false);
