@@ -1,6 +1,6 @@
 # Build plan: first tracker version
 
-- Status: S0–S6 and S5b done (2026-11-25); S7 in progress
+- Status: S0–S6, S5b, S8, S9 done (2026-11-25); S7 in progress
 - Created: 2026-11-25
 - Builds: 01 Tracker, 08 History, 05 Data model, 04 Providers, 06 Architecture, ADRs 0001–0005.
 - Out of scope: the proactive agent (03), Jira, the multi-task UI beyond the tracker views, Codex, export.
@@ -20,6 +20,10 @@ Each slice is one local branch (no remote for now), reviewed by the orchestratin
 | S5b | **Board and Console layouts.** Reuse S5's shared components in the Board and Console shells (`board.html`, `console.html`); enable them on the settings page. | Switching layout keeps the open topic; each layout passes the same browser checks as S5. |
 | S6 | **T3 provider.** Read `~/.t3/userdata/statev2.sqlite` read-only; check the pinned version (server `0.1.11-nightly.20261118.4890`, migration 98) and warn on a mismatch; poll, plus an immediate re-read when a hook asks; map T3 statuses and runtime requests onto the common events; `error` status; a T3 thread picker in the UI. | Tests against a copy of a real T3 database; a live T3 thread attached to a topic shows `wip` while running and the stop-table result after. |
 | S7 | **Agent instructions and first use.** A short instructions file or skill telling agents how to use the CLI. Axiom tracks its own development as its first topic. | One real topic run end to end with agents writing entries; findings fed back into the spec. |
+| S8 | **Tasks with dependencies and the dependency graph** (added 2026-11-25, owner). Tasks stored in Axiom per topic, with dependencies; Tasks section and dependency graph (dotted grid) in all three layouts; CLI `axiom task …`. | Done: merged c5d9834. |
+| S9 | **Subagent-aware stops** (added 2026-11-25, owner). A thread waiting on running subagents stays `wip` (hooks read `background_tasks`; T3 sync honours it). | Done: merged 263229b. |
+
+Tasks for this plan are tracked in Axiom itself: topic `axiom-v1`, `axiom task list --topic axiom-v1`.
 
 ## Open questions
 
