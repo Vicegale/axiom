@@ -175,7 +175,7 @@ describe("Console shell", () => {
     await waitFor(() => expect(loc.history?.at(-1)).toBe("/topic/watch"));
   });
 
-  it("filters history by kind with chips, and has the seven panel tabs", async () => {
+  it("filters history by kind with chips, and has the five panel tabs", async () => {
     open("/topic/ask");
     const panel = within(await screen.findByRole("region", { name: "Selected topic" }));
     expect(panel.getAllByRole("tab").map((t) => t.textContent)).toEqual([
@@ -183,8 +183,6 @@ describe("Console shell", () => {
       "Threads",
       "Tasks",
       "Graph",
-      "Links",
-      "Monitors",
       "Overview",
     ]);
     await panel.findByText("A plain note");
@@ -218,8 +216,6 @@ describe("Console shell", () => {
       ["Threads", "threads"],
       ["Tasks", "tasks"],
       ["Graph", "graph"],
-      ["Links", "links"],
-      ["Monitors", "monitors"],
       ["Overview", "top"],
       ["History", ""],
     ] as const) {
@@ -227,6 +223,9 @@ describe("Console shell", () => {
       expect(panel.getByRole("tab", { name: tab }).getAttribute("aria-selected")).toBe("true");
       expect(shown()).toBe(parts);
     }
+    expect(panel.queryByRole("tab", { name: "Links" })).toBeNull();
+    expect(panel.queryByRole("tab", { name: "Monitors" })).toBeNull();
+    expect(panel.getByText("/home/x/axiom")).toBeTruthy();
   });
 
   it("shows notifications in a right drawer, toggled with n", async () => {

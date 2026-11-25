@@ -111,10 +111,9 @@ describe("Board shell", () => {
       "Threads",
       "Tasks",
       "Graph",
-      "Links",
     ]);
     const shown = () => sheet.querySelector(".tt")?.getAttribute("data-show");
-    await waitFor(() => expect(shown()).toBe("top monitors"));
+    await waitFor(() => expect(shown()).toBe("top"));
     expect(within(sheet).getByRole("tab", { name: "Overview" }).getAttribute("aria-selected")).toBe(
       "true",
     );
@@ -131,8 +130,8 @@ describe("Board shell", () => {
     expect(shown()).toBe("tasks");
     fireEvent.click(within(sheet).getByRole("tab", { name: "Graph" }));
     expect(shown()).toBe("graph");
-    fireEvent.click(within(sheet).getByRole("tab", { name: "Links" }));
-    expect(shown()).toBe("links");
+    expect(within(sheet).queryByRole("tab", { name: "Links" })).toBeNull();
+    fireEvent.click(within(sheet).getByRole("tab", { name: "Overview" }));
     expect(within(sheet).getByText("/home/x/axiom")).toBeTruthy();
   });
 

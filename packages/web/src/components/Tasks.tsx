@@ -204,8 +204,8 @@ export function GraphSection({ tasks, onPick }: GraphProps) {
           {/* biome-ignore lint/a11y/useSemanticElements: an SVG cannot be a <fieldset> */}
           <svg
             className="graph"
-            // Fits the container down to 80% of its natural size, then the wrapper scrolls.
-            style={{ width: layout.width, minWidth: layout.width * 0.8 }}
+            // Fits the container down to 60% of its natural size, then the wrapper scrolls.
+            style={{ width: layout.width, minWidth: layout.width * 0.6 }}
             viewBox={`0 0 ${layout.width} ${layout.height}`}
             role="group"
             aria-label="Task dependency graph"

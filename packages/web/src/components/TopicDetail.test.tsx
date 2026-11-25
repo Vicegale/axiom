@@ -127,12 +127,40 @@ describe("TopicDetail", () => {
       />,
     );
     expect(screen.getByText("MTG-214 In Progress")).toBeTruthy();
+    // Jira owns the first parent's status; the epic has a manual status of wip, shown in its chip.
+    expect(document.querySelector(".parents .cs:not(:has(+ .lock))")?.textContent).toBe("wip");
+    expect(screen.getByText("Wave I")).toBeTruthy();
     expect(screen.getByLabelText("Status owned by Jira")).toBeTruthy();
     expect(screen.getByText("in MTG next phase 2")).toBeTruthy();
     expect(screen.getAllByLabelText("Status owned by Jira")).toHaveLength(1);
   });
 
-  it("shows threads, links grouped by kind, and monitor targets with Confirm only when suggested", () => {
+  it("hides the manual parent status when it is to do", () => {
+    render(
+      <TopicDetail
+        now={NOW}
+        topic={detail({
+          parents: [
+            {
+              kind: "epic",
+              slug: "e",
+              title: "Axiom",
+              status: "to do",
+              jiraKey: null,
+              jiraStatus: null,
+              locked: false,
+            },
+          ],
+        })}
+        entries={[]}
+        actions={actions()}
+      />,
+    );
+    expect(screen.getByText("Axiom")).toBeTruthy();
+    expect(screen.queryByText("to do")).toBeNull();
+  });
+
+  it("shows threads, a links row of chips, and a watching row with Confirm only when suggested", () => {
     const a = actions();
     render(
       <TopicDetail
@@ -142,6 +170,7 @@ describe("TopicDetail", () => {
           links: [
             { id: 10, kind: "pr", target: "o/r#1", label: "First PR" },
             { id: 11, kind: "repository", target: "~/projects/x", label: null },
+            { id: 12, kind: "artifact", target: "https://example.com/a", label: null },
           ],
           monitorTargets: [
             { id: 5, linkId: 10, kind: "pr-checks", state: "suggested" },
@@ -154,13 +183,35 @@ describe("TopicDetail", () => {
     );
     expect(screen.getByText("Claude Code")).toBeTruthy();
     expect(screen.getByText("Main")).toBeTruthy();
-    expect(screen.getByText("Pull requests")).toBeTruthy();
-    expect(screen.getByText("Repository")).toBeTruthy();
-    expect(screen.getByText("First PR")).toBeTruthy();
-    const confirms = screen.getAllByRole("button", { name: "Confirm" });
+    expect(screen.getByText("Links")).toBeTruthy();
+    expect(screen.getByText("Watching")).toBeTruthy();
+    const pr = screen.getByText("First PR");
+    expect(pr.getAttribute("href")).toBe("https://github.com/o/r/pull/1");
+    expect(pr.getAttribute("target")).toBe("_blank");
+    expect(pr.getAttribute("rel")).toBe("noreferrer");
+    expect(pr.getAttribute("title")).toBe("First PR: o/r#1");
+    const repo = screen.getByText("~/projects/x");
+    expect(repo.getAttribute("href")).toBeNull();
+    expect(repo.getAttribute("title")).toBe("~/projects/x");
+    expect(screen.getByText("https://example.com/a").getAttribute("href")).toBe(
+      "https://example.com/a",
+    );
+    expect(screen.getByText(/deploy-health ~\/projects\/x ✓/)).toBeTruthy();
+    expect(screen.getByText("pr-checks o/r#1").className).toContain("suggested");
+    const confirms = screen.getAllByRole("button", { name: /^Confirm/ });
     expect(confirms).toHaveLength(1);
     fireEvent.click(confirms[0] as HTMLElement);
     expect(a.onConfirmMonitor).toHaveBeenCalledWith(5);
+  });
+
+  it("shows no links or watching row, and no empty block, without links and targets", () => {
+    const { container } = render(
+      <TopicDetail now={NOW} topic={detail()} entries={[]} actions={actions()} />,
+    );
+    expect(screen.queryByText("Links")).toBeNull();
+    expect(screen.queryByText("Watching")).toBeNull();
+    expect(screen.queryByText(/None yet/)).toBeNull();
+    expect(container.querySelector(".two")).toBeNull();
   });
 
   it("passes the density to the history and wires delete", () => {

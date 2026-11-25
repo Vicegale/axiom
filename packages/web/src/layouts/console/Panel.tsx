@@ -13,8 +13,6 @@ export const PANEL_TABS = [
   { id: "threads", label: "Threads", show: ["threads"] },
   { id: "tasks", label: "Tasks", show: ["tasks"] },
   { id: "graph", label: "Graph", show: ["graph"] },
-  { id: "links", label: "Links", show: ["links"] },
-  { id: "monitors", label: "Monitors", show: ["monitors"] },
   { id: "overview", label: "Overview", show: ["top"] },
 ] as const satisfies readonly { id: string; label: string; show: readonly DetailPart[] }[];
 

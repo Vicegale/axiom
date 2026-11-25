@@ -7,12 +7,11 @@ import { spineStatus } from "../../lib/topics";
 import { type DetailPart, TopicLoader, TopicSlice } from "../shared/TopicPane";
 
 export const SHEET_TABS = [
-  { id: "overview", label: "Overview", show: ["top", "monitors"] },
+  { id: "overview", label: "Overview", show: ["top"] },
   { id: "history", label: "History", show: ["history"] },
   { id: "threads", label: "Threads", show: ["threads"] },
   { id: "tasks", label: "Tasks", show: ["tasks"] },
   { id: "graph", label: "Graph", show: ["graph"] },
-  { id: "links", label: "Links", show: ["links"] },
 ] as const satisfies readonly { id: string; label: string; show: readonly DetailPart[] }[];
 
 type TabId = (typeof SHEET_TABS)[number]["id"];
