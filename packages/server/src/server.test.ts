@@ -390,6 +390,7 @@ describe("settings", () => {
       staleAfterDays: 14,
       layout: "inbox",
       theme: "system",
+      summaries: { enabled: true },
     });
     const put = await api("/api/settings", {
       method: "PUT",
@@ -401,6 +402,7 @@ describe("settings", () => {
       staleAfterDays: 30,
       layout: "inbox",
       theme: "dark",
+      summaries: { enabled: true },
     });
     expect(cli.getSetting("theme")).toBe("dark");
   });
