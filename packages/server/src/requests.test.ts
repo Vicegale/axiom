@@ -220,7 +220,7 @@ describe("GET /api/threads/:id/requests (T3)", () => {
       provider: "t3",
       kind: "question",
       decidable: false,
-      openUrl: null,
+      openUrl: expect.stringMatching(/^t3code:\/\/threads\//),
       questions: QUESTIONS,
     });
     expect(r.body.requests[1]).toMatchObject({
@@ -365,6 +365,36 @@ describe("POST /api/threads/:id/requests/:requestId/answer", () => {
     });
     expect(cli.listEntries("demo").filter((e) => e.kind === "owner input")).toEqual([]);
     expect(t3cli.calls().at(-1)).toBe("auth session revoke sess-1"); // revoked even on failure
+  });
+
+  it("409s with a plain message when T3 only lets its own app act on the thread", async () => {
+    const { question, th } = await setup();
+    (mcp as FakeMcp).toolReply = () => ({
+      body: {
+        jsonrpc: "2.0",
+        id: 2,
+        result: {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                code: "forbidden",
+                message:
+                  'Thread "x" runs in full-access/default, above this caller\'s approval-required/default limit. Have the user act directly in the target thread through an authorized client.',
+              }),
+            },
+          ],
+        },
+      },
+    });
+    const r = await api(`/api/threads/${th.id}/requests/${encodeURIComponent(question)}/answer`, {
+      method: "POST",
+      body: { answers: { "Which windows?": "All" } },
+    });
+    expect(r.status).toBe(409);
+    expect(r.body.error.code).toBe("t3-limit");
+    expect(r.body.error.message).toMatch(/Open it in T3/);
   });
 
   it("502s when T3 rejects the credential, without echoing the token", async () => {

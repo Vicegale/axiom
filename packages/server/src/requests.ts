@@ -237,7 +237,8 @@ export function registerRequestRoutes(app: Hono, o: RequestsOptions): void {
       requestKind: r.requestKind,
       createdAt: null,
       decidable: false,
-      openUrl: isQuestion ? null : t3.threadUrl(th.providerThreadId, th.environmentId),
+      // Always offered: T3 may refuse answers from outside its own app (see the answer route).
+      openUrl: t3.threadUrl(th.providerThreadId, th.environmentId),
     };
   };
 
@@ -388,6 +389,20 @@ export function registerRequestRoutes(app: Hono, o: RequestsOptions): void {
       );
     } catch (e) {
       if (!(e instanceof ProviderError)) throw e;
+      // T3 refuses outside answers for threads running above the caller's access (a full-access
+      // thread): only its own app may act there. Say that plainly; the card offers Open in T3.
+      if (/act directly in the target thread|above this caller/i.test(e.message)) {
+        return c.json(
+          {
+            error: {
+              code: "t3-limit",
+              message:
+                "T3 only lets its own app answer this thread (it runs with full access). Open it in T3 to answer.",
+            },
+          },
+          409,
+        );
+      }
       return c.json({ error: { code: "provider", message: e.message } }, 502);
     } finally {
       await revoke(minted?.sessionId ?? null);

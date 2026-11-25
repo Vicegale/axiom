@@ -405,6 +405,14 @@ export function RequestsPanel({ thread }: { thread: DeskThread }) {
             {failed[r.id] ? (
               <p className="rq-error" role="alert">
                 {failed[r.id]}
+                {r.provider === "t3" && r.openUrl ? (
+                  <>
+                    {" "}
+                    <a className="btn sm" href={r.openUrl} title={OPEN_IN_T3}>
+                      Open in T3
+                    </a>
+                  </>
+                ) : null}
               </p>
             ) : null}
           </section>
