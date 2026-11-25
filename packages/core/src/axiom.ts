@@ -755,6 +755,27 @@ export class Axiom {
     });
   }
 
+  /**
+   * A session that had ended was resumed: the thread counts as open again. Status is unchanged;
+   * the next prompt moves it. Does nothing (and writes no entry) when the thread is already open.
+   */
+  threadReopened(threadId: number): Thread {
+    return this.tx(() => {
+      const th = this.threadRow(threadId);
+      if (th.endedAt === null) return th;
+      this.run("UPDATE thread SET ended_at = NULL, end_reason = NULL WHERE id = ?", threadId);
+      this.insertEntry({
+        topicId: th.topicId,
+        author: "axiom",
+        threadId,
+        kind: "thread event",
+        body: "Thread resumed",
+        data: { event: "resumed", provider: th.provider, providerThreadId: th.providerThreadId },
+      });
+      return this.threadRow(threadId);
+    });
+  }
+
   private threadEvent(
     threadId: number,
     ev: {
