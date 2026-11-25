@@ -126,7 +126,7 @@ function Runtime({ runtime: r }: { runtime: ThreadRuntime | null }) {
         >
           {/* biome-ignore lint/a11y/useSemanticElements: a native <meter> cannot be styled alike in every browser */}
           <span
-            className="dk-bar"
+            className="dk-meter"
             role="meter"
             aria-label="Context used"
             aria-valuemin={0}
@@ -135,7 +135,7 @@ function Runtime({ runtime: r }: { runtime: ThreadRuntime | null }) {
             aria-valuetext={`${tokenCount(used)} of ${tokenCount(max)}`}
             data-level={contextLevel(ratio)}
           >
-            <span className="dk-bar-fill" style={{ width: `${ratio * 100}%` }} />
+            <span className="dk-meter-fill" style={{ width: `${ratio * 100}%` }} />
           </span>
           <span aria-hidden="true">
             {tokenCount(used)} / {tokenCount(max)}
