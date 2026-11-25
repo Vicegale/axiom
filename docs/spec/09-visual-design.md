@@ -81,6 +81,23 @@ Where they would collide:
 - 2026-11-25: The first graph is the task dependency graph, in its own section of the topic page (all three layouts), drawn on the dotted grid. Nodes are tasks coloured by status, laid out left to right in dependency order; an arrow runs from a prerequisite to the task that waits on it.
 - 2026-11-25: The settings page has a Notifications section: one toggle per notification kind, all on by default (turning one off mutes that kind), plus muted topics and browser notifications. The stale threshold has its own section.
 
+## Web standards baseline (2026-11-25)
+
+The owner asked that the UI follow modern web standards (for example, resizable sidebars). Every layout meets this baseline:
+
+1. **Resizable panes.** Every sidebar and split is resizable by dragging a separator: Inbox rail and list columns; Console sidebar, notifications drawer and the bottom panel's height; Board topic sheet width and notifications tray height. Separators are real `role="separator"` elements with `aria-orientation`, `aria-valuenow/min/max`, keyboard resizing (arrow keys, Home/End), double-click to reset, and sensible minimums and maximums. Sizes persist per browser (localStorage, guarded with try/catch) and never cause horizontal page scroll.
+2. **Collapsible.** The Inbox rail and the Console sidebar can collapse to icons/zero and back (button plus keyboard shortcut), remembered per browser.
+3. **Responsive.** Usable down to 1024 px wide without overlap; below ~900 px the layouts fall back to one main column with the other panes as overlays. Use container queries where a component depends on its pane's width, not the viewport.
+4. **Links are links.** Anything that navigates (topics, views, notifications, settings) is an `<a href>` so middle-click and "open in new tab" work; buttons only perform actions. Back and forward restore the open topic, view and open sheet or drawer (the sheet/drawer state is in the URL).
+5. **Keyboard and focus.** Visible focus (`:focus-visible`) everywhere; a "skip to content" link; Escape closes sheets, drawers, menus and pickers and returns focus to what opened them; modal surfaces trap focus (native `<dialog>` or `inert` on the background); menus and pickers use the native popover API or `<dialog>` where it fits.
+6. **Semantics and ARIA.** Landmarks (`header`, `nav`, `main`, `aside`, `footer`), one `h1` per page and ordered headings, `aria-current` on the active nav item, lists as lists, tables as tables with header cells and `aria-sort` on sortable columns.
+7. **Live updates are announced politely.** Changes arriving over SSE (new notifications, a topic needing attention) go to an `aria-live="polite"` region; nothing steals focus.
+8. **Document title** reflects the route and the count of things needing the owner, e.g. `(2) Axiom: spec phase · Axiom`.
+9. **User preferences.** `prefers-color-scheme` (with the theme setting), `prefers-reduced-motion` (no slide or glow animations), `forced-colors` (borders and focus still visible), and `color-scheme` set so native controls and scrollbars match the theme.
+10. **Scaling.** Sizes in `rem`, so browser zoom and font-size settings work; usable at 200% zoom.
+11. **Contrast.** WCAG 2.2 AA for text and meaningful non-text (status dots, focus rings) in both themes.
+12. **Scroll.** Each pane scrolls on its own and keeps its position when data refreshes; `scrollbar-gutter: stable` so refreshes don't shift layout.
+
 ## Open questions
 
 1. References: which apps does it feel closest to (T3 Code itself, Linear, GitHub Projects, a terminal dashboard, something else)? Anything to avoid?
