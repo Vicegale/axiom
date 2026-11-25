@@ -732,6 +732,21 @@ export class Axiom {
     );
   }
 
+  /** Records that a Claude Code hook ran (any session, attached or not): hooks are alive. */
+  recordHookEvent(): void {
+    this.run(
+      "INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+      "hooks:lastEventAt",
+      JSON.stringify(this.iso()),
+    );
+  }
+
+  /** When any Claude Code hook last ran (ISO), or null. */
+  lastHookEventAt(): string | null {
+    const v = this.getSetting("hooks:lastEventAt");
+    return typeof v === "string" ? v : null;
+  }
+
   /** When a refresh was last requested for the provider (epoch ms), or 0. */
   providerRefreshRequestedAt(provider: Provider): number {
     const v = this.getSetting(`providerRefresh:${provider}`);

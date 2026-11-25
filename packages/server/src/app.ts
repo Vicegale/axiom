@@ -438,6 +438,9 @@ export function createApp(ctx: AppContext): Hono {
 
   // ---- health -------------------------------------------------------------
 
+  const newestIso = (a: string | null, b: string | null) =>
+    a === null ? b : b === null ? a : a > b ? a : b;
+
   app.get("/api/health", (c) => {
     const last = newestBackupMs(backupDir(ctx.dbPath));
     const event = ax.db
@@ -453,7 +456,9 @@ export function createApp(ctx: AppContext): Hono {
         dbPath: ctx.dbPath,
         lastBackupAt: last === null ? null : new Date(last).toISOString(),
       },
-      claudeCode: { lastEventAt: event.at },
+      // Any hook run counts (T3-run and unattached sessions too); thread events are the fallback
+      // for databases written before hooks recorded this.
+      claudeCode: { lastEventAt: newestIso(ax.lastHookEventAt(), event.at) },
       t3: ctx.t3.health(),
     });
   });

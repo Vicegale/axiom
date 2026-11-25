@@ -387,6 +387,12 @@ describe("health", () => {
     const after = (await api("/api/health")).body;
     expect(after.claudeCode.lastEventAt).toBeTypeOf("string");
   });
+
+  it("counts any hook run, even with no attached thread", async () => {
+    expect((await api("/api/health")).body.claudeCode.lastEventAt).toBeNull();
+    cli.recordHookEvent();
+    expect((await api("/api/health")).body.claudeCode.lastEventAt).toBeTypeOf("string");
+  });
 });
 
 describe("unknown routes and guards", () => {
