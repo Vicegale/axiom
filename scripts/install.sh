@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
-# Installs Axiom from this checkout, on Linux or macOS. Safe to re-run: it is also the update step
-# (after `git pull`). Written for bash 3.2, the version macOS ships.
+# Installs Axiom on Linux or macOS from a release copy of this checkout. Safe to re-run: it is also
+# the update step. Written for bash 3.2, the version macOS ships.
 #
-#   scripts/install.sh [--yes] [--no-hooks] [--no-allow-agents] [--no-service] [--no-skill] [--bin-dir DIR]
+#   scripts/install.sh [--ref COMMIT] [--app-dir DIR] [--yes] [--no-hooks] [--no-allow-agents]
+#                      [--no-service] [--no-skill] [--bin-dir DIR]
 #
+#   --ref         the commit, branch or tag of this repository to install (default: main)
+#   --app-dir     where the release copy lives (default: ~/.local/share/axiom/app, or $AXIOM_APP_DIR)
 #   --yes         answer yes to every question: hooks, agent access, service
 #   --hooks       add Axiom's hooks to ~/.claude/settings.json without asking (a backup is made)
 #   --no-hooks    leave ~/.claude/settings.json alone
@@ -14,12 +17,20 @@
 #   --no-skill    don't install the axiom skill (~/.claude/skills, and ~/.codex or ~/.agents if present)
 #   --bin-dir     where the `axiom` and `axiom-server` links go (default: ~/.local/bin)
 #
+# The live Axiom (the `axiom` command, the hooks, the service) runs from the release copy: a detached
+# git worktree of this repository at --ref, with its own node_modules and build. Working in this
+# checkout (builds, new migrations, uncommitted or untracked files) never reaches it; only
+# committed work does, when you run this script again. The script refuses to move a release copy
+# that has local changes.
+#
 # Without a terminal to ask in, the questions default to no. A service set up before is restarted
 # on every run, so it serves the new build. Never touches ~/.t3.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_DIR="$HOME/.local/bin"
+APP="${AXIOM_APP_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/axiom/app}"
+REF="main"
 HOOKS="ask"
 ACCESS="ask"
 SKILL=1
@@ -36,13 +47,23 @@ while [ $# -gt 0 ]; do
     --service) SERVICE="yes" ;;
     --no-service) SERVICE="no" ;;
     --no-skill) SKILL=0 ;;
+    --ref)
+      [ $# -ge 2 ] || { echo "--ref needs a commit, branch or tag" >&2; exit 2; }
+      REF="$2"
+      shift
+      ;;
+    --app-dir)
+      [ $# -ge 2 ] || { echo "--app-dir needs a folder" >&2; exit 2; }
+      APP="$2"
+      shift
+      ;;
     --bin-dir)
       [ $# -ge 2 ] || { echo "--bin-dir needs a folder" >&2; exit 2; }
       BIN_DIR="$2"
       shift
       ;;
     -h | --help)
-      sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
@@ -100,9 +121,41 @@ else
   warn "no T3 Code CLI at ~/.t3/bin/t3: the T3 provider stays off (set the t3Cli setting if it lives elsewhere)"
 fi
 
+# ---- release copy ---------------------------------------------------------------------------
+step "Preparing the release copy"
+command -v git >/dev/null 2>&1 || die "git not found (the release copy is a git worktree of this checkout)"
+git -C "$REPO" rev-parse --git-dir >/dev/null 2>&1 || die "$REPO is not a git checkout; clone Axiom with git to install it"
+SHA="$(git -C "$REPO" rev-parse --verify --quiet "$REF^{commit}")" || die "no commit '$REF' in $REPO (try --ref <commit-ish>)"
+case "$APP" in /*) ;; *) APP="$PWD/$APP" ;; esac
+mkdir -p "$(dirname "$APP")"
+APP="$(cd "$(dirname "$APP")" && pwd -P)/$(basename "$APP")"
+[ "$APP" != "$REPO" ] || die "the release copy can't be the checkout itself ($APP); run this from your development checkout"
+case "$APP" in "$REPO"/*) die "the release copy ($APP) is inside the checkout; pick another --app-dir" ;; esac
+
+git -C "$REPO" worktree prune
+is_worktree() { git -C "$REPO" worktree list --porcelain | grep -Fxq "worktree $1"; }
+if is_worktree "$APP"; then
+  if [ -n "$(git -C "$APP" status --porcelain)" ]; then
+    git -C "$APP" status --short >&2
+    die "the release copy $APP has local changes (above); commit or discard them there, or remove it with: git -C $REPO worktree remove --force $APP"
+  fi
+  if [ "$(git -C "$APP" rev-parse HEAD)" = "$SHA" ]; then
+    ok "release copy at $APP is already at $(git -C "$REPO" rev-parse --short "$SHA")"
+  else
+    git -C "$APP" checkout --quiet --detach "$SHA"
+    ok "release copy at $APP moved to $(git -C "$REPO" rev-parse --short "$SHA")"
+  fi
+elif [ -e "$APP" ] && [ -n "$(ls -A "$APP" 2>/dev/null)" ]; then
+  die "$APP exists but is not a release copy of this checkout; move it away or pick another --app-dir"
+else
+  git -C "$REPO" worktree add --quiet --detach "$APP" "$SHA"
+  ok "release copy created at $APP ($(git -C "$REPO" rev-parse --short "$SHA"))"
+fi
+warn "only commits are installed: uncommitted and untracked work in $REPO is not in the release copy"
+
 # ---- build ----------------------------------------------------------------------------------
 step "Installing dependencies and building"
-cd "$REPO"
+cd "$APP"
 npm ci --no-audit --no-fund --loglevel=error
 LOG="$(mktemp)"
 if ! npm run build >"$LOG" 2>&1; then
@@ -110,10 +163,10 @@ if ! npm run build >"$LOG" 2>&1; then
   die "build failed (full log: $LOG)"
 fi
 rm -f "$LOG"
-CLI="$REPO/packages/cli/dist/index.js"
-SERVER="$REPO/packages/server/dist/cli.js"
+CLI="$APP/packages/cli/dist/index.js"
+SERVER="$APP/packages/server/dist/cli.js"
 [ -f "$CLI" ] && [ -f "$SERVER" ] || die "build finished without $CLI or $SERVER"
-ok "built $(git -C "$REPO" rev-parse --short HEAD 2>/dev/null || echo "(not a git checkout)")"
+ok "built $(git -C "$APP" rev-parse --short HEAD)"
 
 # ---- commands on PATH -----------------------------------------------------------------------
 step "Linking commands into $BIN_DIR"
@@ -157,7 +210,7 @@ if [ "$SKILL" = 1 ]; then
     if [ -e "$dest" ] && [ ! -L "$dest" ]; then
       warn "$shown exists and is not a link; left alone ($2)"
     else
-      ln -sfn "$REPO/skills/axiom" "$dest"
+      ln -sfn "$APP/skills/axiom" "$dest"
       ok "$shown ($2)"
     fi
   }
@@ -297,9 +350,9 @@ if [ "$SERVICE_RUNNING" = 1 ]; then
   else
     echo "  Stop the service:  systemctl --user disable --now axiom.service"
   fi
-  echo "  Update later:  git pull && scripts/install.sh   (restarts the service)"
+  echo "  Update later:  scripts/install.sh [--ref <commit>]   (from this checkout; restarts the service)"
 else
   echo "  Start the server:  axiom server        (then open $URL)"
   echo "  Or as a service:   scripts/install.sh --service"
-  echo "  Update later:  git pull && scripts/install.sh   (then restart the server)"
+  echo "  Update later:  scripts/install.sh [--ref <commit>]   (from this checkout; then restart the server)"
 fi

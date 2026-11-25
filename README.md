@@ -50,7 +50,7 @@ cd axiom
 scripts/install.sh
 ```
 
-The installer checks the requirements, builds Axiom, puts `axiom` and `axiom-server` on your PATH (in `~/.local/bin`; it tells you if that folder isn't on PATH yet), and installs the `axiom` skill for your agents: in `~/.claude/skills` for Claude Code (and T3 Code's Claude threads), and in `~/.codex/skills` and `~/.agents/skills` when those tools' folders exist. It then asks three questions:
+The installer checks the requirements, makes a **release copy** of Axiom (a detached git worktree of `main` at `~/.local/share/axiom/app`, with its own `npm ci` and build), puts `axiom` and `axiom-server` on your PATH (in `~/.local/bin`; it tells you if that folder isn't on PATH yet), and installs the `axiom` skill for your agents: in `~/.claude/skills` for Claude Code (and T3 Code's Claude threads), and in `~/.codex/skills` and `~/.agents/skills` when those tools' folders exist. It then asks three questions:
 
 1. **Add Axiom's hooks to Claude Code?** They let Axiom see your Claude Code sessions, show their live step, and route their permission prompts to the Desk. Your settings file is backed up first.
 2. **Let agents run `axiom` without asking?** Agents call the CLI many times per task. This adds a `Bash(axiom *)` allow rule to Claude Code, and lets Codex's sandbox write Axiom's data folder (`writable_roots` in `~/.codex/config.toml`). Both files are backed up first; `axiom agents disallow` undoes it. Skipped when it's already in place.
@@ -58,9 +58,11 @@ The installer checks the requirements, builds Axiom, puts `axiom` and `axiom-ser
 
 Then open **http://127.0.0.1:4477**.
 
-Run `scripts/install.sh --help` for the options: `--yes` answers yes to every question; `--hooks` / `--no-hooks`, `--allow-agents` / `--no-allow-agents` and `--service` / `--no-service` answer one of them, and `--bin-dir` changes where the commands go.
+Run `scripts/install.sh --help` for the options: `--yes` answers yes to every question; `--hooks` / `--no-hooks`, `--allow-agents` / `--no-allow-agents` and `--service` / `--no-service` answer one of them, and `--bin-dir` changes where the commands go, `--ref <commit-ish>` picks what to install (default `main`) and `--app-dir` (or `AXIOM_APP_DIR`) moves the release copy.
 
-**Updating:** `git pull && scripts/install.sh`. The service restarts on the new build; restart a server you started by hand. The app shows a banner when the server is older than the build.
+The live `axiom` command, the Claude Code hooks, the skill and the service all run from the release copy, so builds, new migrations and uncommitted or untracked files in your checkout never reach the real database or your agents' hooks. Only committed work does, when you update.
+
+**Updating:** from your checkout, `scripts/install.sh` (add `--ref <commit-ish>` for something other than `main`). It moves the release copy to that commit, rebuilds, re-points the commands, hooks and service, and restarts the service on the new build; it refuses if the release copy has local changes; restart a server you started by hand. The app shows a banner when the server is older than the build.
 
 **Without the service:** run `axiom server` (add `--port N` to change the port) whenever you want Axiom up.
 
@@ -99,6 +101,7 @@ axiom agents disallow
 systemctl --user disable --now axiom.service                 # Linux, if you set up the service
 launchctl bootout gui/$(id -u)/local.axiom.server             # macOS, if you set up the service
 rm ~/.local/bin/axiom ~/.local/bin/axiom-server
+git -C <your checkout> worktree remove --force ~/.local/share/axiom/app   # the release copy
 rm -f ~/.claude/skills/axiom ~/.codex/skills/axiom ~/.agents/skills/axiom
 ```
 

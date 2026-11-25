@@ -28,6 +28,7 @@ Scope of the first build: topics, tickets and epics (set by hand; Jira later), s
 - 2026-11-25: System notifications come from the browser (T7), so they need an open Axiom tab.
 - 2026-11-25: T1–T6 and T8–T10 agreed as proposed. Recorded in ADRs [0001](../adr/0001-local-server-and-browser.md)–[0005](../adr/0005-providers-claude-code-and-t3.md).
 - 2026-11-25: Steward, the proactive agent (03), is now in scope, after the Desk. It runs inside the existing server process as headless Claude Code calls ([ADR 0006](../adr/0006-steward-headless-claude.md)); build plan [docs/plan/steward.md](../plan/steward.md).
+- 2026-11-25: The live app (the `axiom` command, the Claude Code hooks, the skill and the service) runs from a release copy at `~/.local/share/axiom/app` (`AXIOM_APP_DIR`, `--app-dir`): a detached git worktree of a chosen commit with its own `npm ci` and build, so development builds and migrations in the checkout never reach the real database. Updating it is re-running `scripts/install.sh [--ref <commit-ish>]` from the checkout (plan slice ST0).
 
 ## Open questions
 
