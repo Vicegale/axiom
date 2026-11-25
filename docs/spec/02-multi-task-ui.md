@@ -41,6 +41,7 @@ The owner's reference for it is a screen called **Desk** ([docs/design/reference
 - 2026-11-25: Sort orders: "Ready first" puts topics where the owner is next on top (waiting for them, stopped with a question, in review); "Fixed" is the owner's drag order. Favourites are always first in both.
 - 2026-11-25: Hiding a topic hides it from the Desk only; it stays in the tracker.
 - 2026-11-25: The owner can approve or deny a thread's permission prompt from its card.
+- 2026-11-25: The card shows the selected thread's current model, effort and context usage, and the topic's Artifacts menu (plan D9, D10).
 - 2026-11-25: "Steward" is the proactive agent (03), shown on the Desk as an on/off toggle. It is built later; the toggle comes with it.
 
 ## Open questions
@@ -69,6 +70,7 @@ The owner's reference for it is a screen called **Desk** ([docs/design/reference
    - Answered 2026-11-25: yes.
 13. **New topic:** does `+ New topic` create a topic and start its first thread with a first message (provider, project folder, model, effort)?
 14. **The ctx meter:** context-window usage of the selected thread; where does it come from (T3 has it; Claude Code transcripts have token counts)?
+   - Answered 2026-11-25 (owner asked for it): T3's provider turns carry `tokenUsage` (used, max); Claude Code's transcript carries `usage` per reply, with a 1M window for Claude 5 models. Shown with the model and effort on the thread row (plan D9).
 15. **"Steward":** is that the proactive agent of 03, shown as an on/off toggle on the Desk?
    - Answered 2026-11-25: yes; implemented later with 03.
 16. Reply box: hidden behind a "Reply" button on the card. Does it close again after sending, and do drafts survive a refresh?
