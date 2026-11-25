@@ -29,6 +29,7 @@ const mk = (over: Partial<DeskThread>): DeskThread => ({
   summaryError: null,
   activity: null,
   hasReply: false,
+  pendingRequests: 0,
   ...over,
 });
 const T3 = mk({});

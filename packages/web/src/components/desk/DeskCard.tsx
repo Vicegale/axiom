@@ -16,6 +16,7 @@ import { useNow } from "../../lib/useNow";
 import { StatusPill } from "../StatusPill";
 import { ReplyMarkdown } from "./LazyReply";
 import { ReplyBox } from "./ReplyBox";
+import { RequestsPanel } from "./RequestsPanel";
 
 export interface MoveHandle {
   moving: boolean;
@@ -242,6 +243,7 @@ export function DeskCard({ topic, now, theme, move, onFavorite, onHide, onOpen, 
       {thread ? (
         <>
           <RunLine thread={thread} now={now} />
+          <RequestsPanel thread={thread} />
           <div className="dk-now" aria-busy={thread.summaryPending ? true : undefined}>
             <p className="dk-label">
               Now
