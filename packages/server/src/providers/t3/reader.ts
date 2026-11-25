@@ -56,6 +56,8 @@ export interface T3ThreadState {
   pendingRequests: T3Request[];
   /** Deleted or archived in T3. */
   removed: boolean;
+  /** The newest run's id: a new id means the thread ran again, even if the run was too quick to see. */
+  latestRunId: string | null;
 }
 
 export interface T3ThreadSummary {
@@ -116,6 +118,7 @@ interface ThreadRow {
   session_status: string | null;
   last_error: string | null;
   pending_count: number;
+  run_id: string | null;
 }
 
 /** Thread columns plus its newest run, newest bound session and pending-request count. */
@@ -123,6 +126,8 @@ const THREAD_SELECT = `
   SELECT t.thread_id, t.title, t.updated_at, t.archived_at, t.deleted_at,
     (SELECT r.status FROM orchestration_v2_projection_runs r
        WHERE r.thread_id = t.thread_id ORDER BY r.ordinal DESC, r.run_id DESC LIMIT 1) AS run_status,
+    (SELECT r.run_id FROM orchestration_v2_projection_runs r
+       WHERE r.thread_id = t.thread_id ORDER BY r.ordinal DESC, r.run_id DESC LIMIT 1) AS run_id,
     (SELECT s.status FROM orchestration_v2_projection_provider_sessions s
        JOIN orchestration_v2_projection_provider_session_bindings b
          ON b.provider_session_id = s.provider_session_id
@@ -265,6 +270,7 @@ export class T3Db {
       updatedAt: row.updated_at,
       pendingRequests: row.pending_count > 0 ? this.pending(row.thread_id) : [],
       removed,
+      latestRunId: row.run_id ?? null,
     };
   }
 

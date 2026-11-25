@@ -20,6 +20,7 @@ export type T3Action =
   | { kind: "working" }
   | { kind: "waiting"; text: string }
   | { kind: "stopped" }
+  | { kind: "missed-run" }
   | { kind: "error"; message: string }
   | { kind: "ended" };
 
@@ -157,8 +158,31 @@ export class T3Provider {
       // Read everything first: a failing query leaves the Axiom threads untouched.
       const planned = threads.map((th) => {
         const state = db.thread(th.providerThreadId, environmentId);
-        return { th, state, action: decide(th, state, this.ax.runningSubagents(th.id)) };
+        let action = decide(th, state, this.ax.runningSubagents(th.id));
+        // A whole run can start and finish between two polls. If the newest run is one we haven't
+        // seen and it already finished, replay it as working → stopped so the stop rules, the reply
+        // fetch and the summary all happen. The first sighting after attaching only records it.
+        const seen = this.ax.getSetting(`t3run:${th.id}`);
+        const finished = state && !state.removed && !["starting", "running"].includes(state.status);
+        if (
+          !action &&
+          state?.latestRunId &&
+          typeof seen === "string" &&
+          seen !== state.latestRunId &&
+          finished &&
+          state.pendingRequests.length === 0 &&
+          th.status !== "wip" &&
+          this.ax.runningSubagents(th.id) === 0
+        ) {
+          action = { kind: "missed-run" };
+        }
+        return { th, state, action };
       });
+      for (const { th, state } of planned) {
+        if (state?.latestRunId && this.ax.getSetting(`t3run:${th.id}`) !== state.latestRunId) {
+          this.ax.setInternalSetting(`t3run:${th.id}`, state.latestRunId);
+        }
+      }
       let applied = 0;
       // T3 names its threads; use that name when the Axiom thread has none.
       for (const { th, state } of planned) {
@@ -174,6 +198,10 @@ export class T3Provider {
             this.ax.threadWaitingOnOwner(th.id, action.text);
             break;
           case "stopped":
+            this.ax.threadStopped(th.id);
+            break;
+          case "missed-run":
+            this.ax.threadWorking(th.id);
             this.ax.threadStopped(th.id);
             break;
           case "error":

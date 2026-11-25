@@ -206,6 +206,17 @@ describe("sync transitions", () => {
     expect(thread("b")?.title).toBe("Mine");
   });
 
+  it("a run that starts and finishes between two polls still counts as working then stopped", () => {
+    t3.thread("a").run("a", 1, "completed");
+    attach("a");
+    expect(provider.sync()).toBe(0); // first sighting: just recorded
+    expect(provider.sync()).toBe(0); // nothing new
+    t3.run("a", 2, "completed"); // ran and finished unseen
+    expect(provider.sync()).toBe(1);
+    expect(ax.listNotifications().some((n) => n.kind === "agent stopped")).toBe(true);
+    expect(provider.sync()).toBe(0); // not replayed
+  });
+
   it("a failed run becomes an error with the last error", () => {
     t3.thread("a").run("a", 1, "running");
     attach("a");

@@ -811,6 +811,15 @@ export class Axiom {
     return typeof v === "string" ? v : null;
   }
 
+  /** Bookkeeping that providers keep in the setting table (not owner settings; no actor check). */
+  setInternalSetting(key: string, value: unknown): void {
+    this.run(
+      "INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+      key,
+      JSON.stringify(value),
+    );
+  }
+
   /** Records that a Claude Code hook ran (any session, attached or not): hooks are alive. */
   recordHookEvent(): void {
     this.run(
