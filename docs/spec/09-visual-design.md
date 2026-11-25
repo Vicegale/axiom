@@ -78,7 +78,7 @@ Where they would collide:
 - 2026-11-25: Expected outcome: the owner settles into one layout and pulls ideas from the others into it; the three may converge into one experience over time.
 - 2026-11-25: The multi-task view is a separate vertical of the application, not a tracker layout (see 02).
 - 2026-11-25: No dotted-grid background in the tracker. It is reserved for when Axiom shows graphs.
-- 2026-11-25: The first graph is the task dependency graph, in its own section of the topic page (all three layouts), drawn on the dotted grid. Nodes are tasks coloured by status; edges point from a task to what it waits on.
+- 2026-11-25: The first graph is the task dependency graph, in its own section of the topic page (all three layouts), drawn on the dotted grid. Nodes are tasks coloured by status, laid out left to right in dependency order; an arrow runs from a prerequisite to the task that waits on it.
 - 2026-11-25: The settings page has a Notifications section: one toggle per notification kind, all on by default (turning one off mutes that kind), plus muted topics and browser notifications. The stale threshold has its own section.
 
 ## Open questions
