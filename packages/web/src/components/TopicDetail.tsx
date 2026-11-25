@@ -278,7 +278,7 @@ function ThreadOpen({ thread: th }: { thread: Thread }) {
   if (!open) return <span className="th-open" />;
   if (open.kind === "url") {
     return (
-      <a className="btn sm th-open" href={open.url} target="_blank" rel="noreferrer">
+      <a className="btn sm th-open" href={open.url} title="Open this thread in the T3 app">
         Open in T3
       </a>
     );

@@ -366,16 +366,15 @@ describe("decide with running subagents", () => {
 });
 
 describe("threadUrl", () => {
-  it("links to T3's web UI when its port and environment are known", () => {
+  it("deep-links into the T3 desktop app when the environment is known", () => {
     const dir = mkdtempSync(join(tmpdir(), "axiom-t3url-"));
     try {
       const ax2 = openDatabase(join(dir, "a.db"));
       const p = new T3Provider({ ax: ax2, dir });
       expect(p.threadUrl("x", null)).toBeNull();
-      writeFileSync(join(dir, "server-runtime.json"), JSON.stringify({ port: 3773 }));
       writeFileSync(join(dir, "environment-id"), "env-1");
-      expect(p.threadUrl("th:1", null)).toBe("http://127.0.0.1:3773/env-1/th%3A1");
-      expect(p.threadUrl("th", "env-2")).toBe("http://127.0.0.1:3773/env-2/th");
+      expect(p.threadUrl("mcp:launch:1", null)).toBe("t3code://threads/env-1/mcp:launch:1");
+      expect(p.threadUrl("a b", "env-2")).toBe("t3code://threads/env-2/a%20b");
       ax2.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });

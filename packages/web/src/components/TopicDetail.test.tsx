@@ -170,7 +170,7 @@ describe("TopicDetail", () => {
               id: 1,
               title: "T",
               provider: "t3",
-              open: { kind: "url", url: "http://127.0.0.1:3773/e/t" },
+              open: { kind: "url", url: "t3code://threads/e/t" },
             }),
             thread({
               id: 2,
@@ -185,8 +185,7 @@ describe("TopicDetail", () => {
       />,
     );
     const link = screen.getByRole("link", { name: "Open in T3" });
-    expect(link.getAttribute("href")).toBe("http://127.0.0.1:3773/e/t");
-    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("href")).toBe("t3code://threads/e/t");
     expect(screen.getByRole("button", { name: "Copy resume command" }).getAttribute("title")).toBe(
       "claude --resume s",
     );
