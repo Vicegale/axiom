@@ -47,6 +47,8 @@ The owner's reference for it is a screen called **Desk** ([docs/design/reference
 - 2026-11-25 (amended, owner): the subagents show as a small tree: the thread at the top, its subagents (and theirs) under it, each with its status colour; finished ones of the current turn stay until the next turn (plan D12).
 - 2026-11-25: A thread started from Axiom (new topic or "New thread") gets an Axiom briefing before the owner's first message: that it is tracked and attached, the topic (slug, title, status, goal, status note), its open tasks, where the work lives, and the commands to use. History keeps only the owner's words.
 - 2026-11-25: "Steward" is the proactive agent (03), shown on the Desk as an on/off toggle. It is built later; the toggle comes with it.
+- 2026-11-25: Steward also gets a separate section in the UI, holding its questions to the owner and a view of its memory (03). Where it sits and what else it holds: 03 Q31.
+- 2026-11-25: That section is a third view, beside Tracker and Desk. It holds Steward's questions, its memory (viewable and editable) and a chat with Steward (03).
 
 ## Open questions
 
