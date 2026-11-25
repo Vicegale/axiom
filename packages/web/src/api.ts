@@ -243,6 +243,8 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** A 409 on a Claude Code reply: the command that resumes the open session in a terminal. */
+    readonly resumeCommand?: string,
   ) {
     super(message);
   }
@@ -271,6 +273,26 @@ export interface ArtifactData {
   size: number;
 }
 
+export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+
+export interface ComposeOptions {
+  source: string;
+  providers: Record<Provider, { models: string[]; efforts: Effort[] }>;
+}
+
+export interface SendBody {
+  text: string;
+  model?: string;
+  effort?: Effort;
+}
+
+export interface NewThreadBody extends SendBody {
+  provider: Provider;
+  providerInstance?: string;
+  project?: string;
+  cwd?: string;
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
@@ -279,11 +301,13 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   });
   if (!res.ok) {
     let message = `${method} ${path} failed (${res.status})`;
+    let resumeCommand: string | undefined;
     try {
-      const j = (await res.json()) as { error?: { message?: string } };
+      const j = (await res.json()) as { error?: { message?: string; resumeCommand?: string } };
       if (j.error?.message) message = j.error.message;
+      resumeCommand = j.error?.resumeCommand;
     } catch {}
-    throw new ApiError(res.status, message);
+    throw new ApiError(res.status, message, resumeCommand);
   }
   return (await res.json()) as T;
 }
@@ -338,4 +362,9 @@ export const api = {
   setDeskOrder: (slugs: string[]) =>
     request<{ slugs: string[] }>("PUT", "/api/desk/order", { slugs }),
   health: () => request<Health>("GET", "/api/health"),
+  composeOptions: () => request<ComposeOptions>("GET", "/api/compose/options"),
+  sendToThread: (id: number, body: SendBody) =>
+    request<{ ok: true }>("POST", `/api/threads/${id}/send`, body),
+  newThread: (slug: string, body: NewThreadBody) =>
+    request<Thread>("POST", `/api/topics/${enc(slug)}/threads/new`, body),
 };

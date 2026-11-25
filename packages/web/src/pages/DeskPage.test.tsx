@@ -293,16 +293,16 @@ describe("the Desk", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
   });
 
-  it("the Reply button toggles the reply region (the stub until D3)", async () => {
+  it("the Reply button reveals the reply box, hidden until asked for", async () => {
     start();
     const alpha = within(await screen.findByRole("article", { name: "Alpha" }));
-    expect(alpha.queryByText(/Replying arrives with D3/)).toBeNull();
+    expect(alpha.queryByRole("textbox", { name: "Message" })).toBeNull();
     const reply = alpha.getByRole("button", { name: "Reply" });
     fireEvent.click(reply);
-    expect(alpha.getByText(/Replying arrives with D3/)).toBeTruthy();
+    expect(await alpha.findByRole("textbox", { name: "Message" })).toBeTruthy();
     expect(reply.getAttribute("aria-expanded")).toBe("true");
     fireEvent.click(reply);
-    expect(alpha.queryByText(/Replying arrives with D3/)).toBeNull();
+    expect(alpha.queryByRole("textbox", { name: "Message" })).toBeNull();
   });
 
   it("highlights a card like the tracker, and opening its topic marks it opened", async () => {
