@@ -6,6 +6,10 @@ import type { Axiom, Link } from "@axiom/core";
 
 /** Largest file the viewer will read, for Markdown and images alike. */
 export const MAX_DOC_BYTES = 2 * 1024 * 1024;
+/** Largest artifact (HTML page or image) the raw route will stream. */
+export const MAX_ARTIFACT_BYTES = 10 * 1024 * 1024;
+
+const HTML_EXTS = new Set([".html", ".htm"]);
 
 const DOC_EXTS = new Set([".md", ".markdown"]);
 export const IMAGE_TYPES: Record<string, string> = {
@@ -115,7 +119,7 @@ function allowed(scope: Scope, realPath: string): string | null {
 }
 
 /** Resolves `abs` to a real path the topic may read, or throws 403 / 404. */
-function access(scope: Scope, abs: string, exts: ReadonlySet<string>) {
+function access(scope: Scope, abs: string, exts: ReadonlySet<string>, maxBytes = MAX_DOC_BYTES) {
   if (!exts.has(extname(abs).toLowerCase())) {
     throw new DocsError(403, "permission", "that file type cannot be shown");
   }
@@ -138,10 +142,10 @@ function access(scope: Scope, abs: string, exts: ReadonlySet<string>) {
     throw new DocsError(404, "not-found", "no such file");
   }
   if (!st.isFile()) throw new DocsError(404, "not-found", "not a file");
-  if (st.size > MAX_DOC_BYTES) {
-    throw new DocsError(413, "too-large", "file is larger than 2 MB");
+  if (st.size > maxBytes) {
+    throw new DocsError(413, "too-large", `file is larger than ${maxBytes / (1024 * 1024)} MB`);
   }
-  return { realPath, root, mtime: st.mtimeMs };
+  return { realPath, root, mtime: st.mtimeMs, size: st.size };
 }
 
 /** The title of a Markdown file: its first level-one heading outside code fences. */
@@ -205,4 +209,67 @@ export async function readImage(ax: Axiom, slug: string, path: string): Promise<
     bytes: await readFile(realPath),
     type: IMAGE_TYPES[extname(realPath).toLowerCase()] as string,
   };
+}
+
+export interface ArtifactMeta {
+  linkId: number;
+  kind: "html" | "image";
+  title: string;
+  path: string;
+  relPath: string;
+  mtime: number;
+  size: number;
+}
+
+export interface ArtifactFile extends ArtifactMeta {
+  /** The Content-Type to serve the file with. */
+  type: string;
+}
+
+const ARTIFACT_EXTS = new Set([...HTML_EXTS, ...Object.keys(IMAGE_TYPES)]);
+
+/** The file an `artifact` link names, when it is a local HTML page or image the topic may read.
+ *  Markdown artifacts are refused here: they open through the docs route. A relative target must
+ *  stay inside the topic's repository or worktree (after resolving symlinks and `..`); an absolute
+ *  or `~` target is the owner naming that exact file, as for spec links. */
+export function resolveArtifact(ax: Axiom, slug: string, linkId: number): ArtifactFile {
+  const scope = scopeOf(ax, slug);
+  const link = scope.links.find((l) => l.id === linkId);
+  if (!link) throw new DocsError(404, "not-found", `topic ${slug} has no link ${linkId}`);
+  if (link.kind !== "artifact") {
+    throw new DocsError(400, "validation", "only artifact links open as artifacts");
+  }
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(link.target)) {
+    throw new DocsError(400, "validation", "the link is not a local file");
+  }
+  if (!ARTIFACT_EXTS.has(extname(link.target).toLowerCase())) {
+    throw new DocsError(403, "permission", "that file type cannot be shown as an artifact");
+  }
+  const abs = expand(link.target, scope.base);
+  const { realPath, root, mtime, size } = access(scope, abs, ARTIFACT_EXTS, MAX_ARTIFACT_BYTES);
+  const isRelative =
+    !isAbsolute(link.target) && link.target !== "~" && !link.target.startsWith("~/");
+  if (isRelative && !scope.roots.some((r) => inside(r, realPath))) {
+    throw new DocsError(403, "permission", "that path is outside the topic's directories");
+  }
+  const rext = extname(realPath).toLowerCase();
+  const html = HTML_EXTS.has(rext);
+  if (!ARTIFACT_EXTS.has(rext)) {
+    throw new DocsError(403, "permission", "that file type cannot be shown as an artifact");
+  }
+  return {
+    linkId,
+    kind: html ? "html" : "image",
+    title: link.label ?? basename(realPath),
+    path: realPath,
+    relPath: relative(root, realPath) || basename(realPath),
+    mtime,
+    size,
+    type: html ? "text/html; charset=utf-8" : (IMAGE_TYPES[rext] as string),
+  };
+}
+
+export function artifactMeta(a: ArtifactFile): ArtifactMeta {
+  const { type: _type, ...meta } = a;
+  return meta;
 }

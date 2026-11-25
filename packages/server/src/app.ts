@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import {
   type Actor,
   AXIOM_VERSION,
@@ -18,7 +19,7 @@ import { type Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { backupDir, newestBackupMs } from "./backup.js";
-import { DocsError, readDoc, readImage } from "./docs.js";
+import { artifactMeta, DocsError, readDoc, readImage, resolveArtifact } from "./docs.js";
 import type { ChangeBus } from "./events.js";
 import type { T3Provider } from "./providers/t3/provider.js";
 import { serveWeb } from "./static.js";
@@ -362,6 +363,38 @@ export function createApp(ctx: AppContext): Hono {
     try {
       const linkId = intParam(c.req.param("linkId"), "link id");
       return c.json(await readDoc(ax, c.req.param("slug"), linkId, c.req.query("path")));
+    } catch (e) {
+      return docsFailure(c, e);
+    }
+  });
+
+  app.get("/api/topics/:slug/artifacts/:linkId", (c) => {
+    try {
+      const linkId = intParam(c.req.param("linkId"), "link id");
+      return c.json(artifactMeta(resolveArtifact(ax, c.req.param("slug"), linkId)));
+    } catch (e) {
+      return docsFailure(c, e);
+    }
+  });
+
+  app.get("/api/topics/:slug/artifacts/:linkId/raw", async (c) => {
+    try {
+      const linkId = intParam(c.req.param("linkId"), "link id");
+      const a = resolveArtifact(ax, c.req.param("slug"), linkId);
+      const headers: Record<string, string> = {
+        "content-type": a.type,
+        "x-content-type-options": "nosniff",
+        "cache-control": "no-store",
+      };
+      // HTML runs its own scripts in an opaque origin: no access to Axiom's origin, cookies or API.
+      // An SVG opened on its own must not run scripts at all.
+      if (a.kind === "html") {
+        headers["content-security-policy"] =
+          "sandbox allow-scripts allow-popups allow-forms allow-modals allow-downloads";
+      } else if (a.type === "image/svg+xml") {
+        headers["content-security-policy"] = "sandbox";
+      }
+      return new Response(new Uint8Array(await readFile(a.path)), { headers });
     } catch (e) {
       return docsFailure(c, e);
     }
