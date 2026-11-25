@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@axiom/core": "*",
-    "commander": "^15.1.0"
+    "commander": "^15.1.0",
+    "@axiom/server": "*"
   }
 }

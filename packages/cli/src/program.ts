@@ -485,6 +485,15 @@ export function buildProgram(env: NodeJS.ProcessEnv, write: (s: string) => void)
   // ---- Claude Code hooks -----------------------------------------------------------------
   // `axiom hook <event>` is handled in main() before commander runs (it must never fail); the
   // command is registered here only so it shows in --help.
+  // Dispatched in index.ts before commander (see server-command.ts); listed here for --help.
+  sub(
+    program,
+    "server",
+    "run the local server: `axiom server [start] [--port N]`, `axiom server install [--dry-run]`",
+  )
+    .argument("[args...]")
+    .allowUnknownOption()
+    .action(() => {});
   sub(program, "hook", "record a Claude Code hook event from stdin (used by installed hooks)")
     .addArgument(new Argument("<event>").choices(HOOK_EVENTS))
     .action(() => {});
