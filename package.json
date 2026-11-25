@@ -1,0 +1,26 @@
+{
+  "name": "axiom",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "tsc -b && npm -w @axiom/web run build",
+    "test": "vitest run",
+    "lint": "biome check",
+    "format": "biome format --write",
+    "typecheck": "tsc -b && npm -w @axiom/web run typecheck",
+    "dev": "npm -w @axiom/web run dev"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.9",
+    "@types/node": "^24.0.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.1"
+  }
+}

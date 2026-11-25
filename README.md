@@ -22,3 +22,17 @@ Spec phase, with the first build planned in [docs/plan/v1-tracker.md](docs/plan/
 | `docs/adr/` | Architecture Decision Records for decisions with real alternatives |
 | `CONTEXT.md` | Glossary: the words Axiom uses and what they mean |
 | `AGENTS.md` | Rules for agents working in this repo |
+
+## Development
+
+Requires Node 24 and npm (npm workspaces: `packages/core`, `cli`, `server`, `web`).
+
+```sh
+npm install        # install all workspace dependencies
+npm run build      # build every package (tsc -b, then vite build)
+npm test           # vitest over all packages
+npm run lint       # biome check
+npm run format     # biome format --write
+npm run typecheck  # type-check every package
+npm run dev        # start the web dev server
+```

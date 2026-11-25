@@ -17,3 +17,9 @@
 
 # Scratch
 /scratch/
+
+# Build and dependencies
+node_modules/
+dist/
+*.tsbuildinfo
+coverage/
