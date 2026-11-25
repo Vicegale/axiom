@@ -116,6 +116,9 @@ export function runHook(
       axiom.recordHookEvent();
       const thread = axiom.findThread({ provider: "claude-code", providerThreadId: sessionId });
       if (!thread) return 0; // not attached to a topic: ignored
+      if (payload.cwd && axiom.threadCwd(thread.id) !== payload.cwd) {
+        axiom.setThreadCwd(thread.id, payload.cwd);
+      }
       switch (event as HookEvent) {
         case "session-start":
           axiom.threadReopened(thread.id);

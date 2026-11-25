@@ -186,6 +186,19 @@ describe("axiom hook", () => {
     expect(last()).not.toBeNull();
   });
 
+  it("remembers the session's working directory for resuming", () => {
+    const s = session();
+    s.attach();
+    s.hook("prompt", payload("UserPromptSubmit", { prompt: "go", cwd: "/tmp/proj x" }));
+    const ax = openDatabase(s.db);
+    try {
+      const th = ax.findThread({ provider: "claude-code", providerThreadId: SID });
+      expect(th && ax.threadCwd(th.id)).toBe("/tmp/proj x");
+    } finally {
+      ax.close();
+    }
+  });
+
   it("names an untitled thread after its first prompt", () => {
     const s = session();
     s.attach();

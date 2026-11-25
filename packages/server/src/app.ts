@@ -193,9 +193,25 @@ export function createApp(ctx: AppContext): Hono {
     };
   }
 
+  /** How the owner opens a thread: T3's web UI, or the command that resumes a Claude Code session. */
+  function threadOpen(th: TopicDetail["threads"][number]) {
+    if (th.provider === "t3") {
+      const url = ctx.t3.threadUrl(th.providerThreadId, th.environmentId);
+      return url ? { kind: "url" as const, url } : null;
+    }
+    if (th.provider === "claude-code") {
+      const cwd = ax.threadCwd(th.id);
+      const resume = `claude --resume ${th.providerThreadId}`;
+      const q = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
+      return { kind: "command" as const, command: cwd ? `cd ${q(cwd)} && ${resume}` : resume };
+    }
+    return null;
+  }
+
   function detail(d: TopicDetail) {
     return {
       ...d,
+      threads: d.threads.map((th) => ({ ...th, open: threadOpen(th) })),
       stalePrompt: hasOpenStalePrompt(d.id),
       attention: attentionOf(ax, d),
       parents: [

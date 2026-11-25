@@ -312,7 +312,7 @@ ul, ol { list-style: none; }
 
 .threads { margin-top: 2px; }
 .thread {
-  display: grid; grid-template-columns: 4.875rem minmax(0, 1fr) auto auto;
+  display: grid; grid-template-columns: 4.875rem minmax(0, 1fr) auto auto auto;
   align-items: center; gap: 0.25rem 0.75rem;
   padding: 0.5625rem 0; border-bottom: 1px solid var(--line);
 }

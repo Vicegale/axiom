@@ -160,6 +160,38 @@ describe("TopicDetail", () => {
     expect(screen.queryByText("to do")).toBeNull();
   });
 
+  it("offers Open in T3 for T3 threads and a resume command for Claude Code threads", () => {
+    render(
+      <TopicDetail
+        now={NOW}
+        topic={detail({
+          threads: [
+            thread({
+              id: 1,
+              title: "T",
+              provider: "t3",
+              open: { kind: "url", url: "http://127.0.0.1:3773/e/t" },
+            }),
+            thread({
+              id: 2,
+              title: "C",
+              provider: "claude-code",
+              open: { kind: "command", command: "claude --resume s" },
+            }),
+          ],
+        })}
+        entries={[]}
+        actions={actions()}
+      />,
+    );
+    const link = screen.getByRole("link", { name: "Open in T3" });
+    expect(link.getAttribute("href")).toBe("http://127.0.0.1:3773/e/t");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(screen.getByRole("button", { name: "Copy resume command" }).getAttribute("title")).toBe(
+      "claude --resume s",
+    );
+  });
+
   it("shows threads, a links row of chips, and a watching row with Confirm only when suggested", () => {
     const a = actions();
     render(
