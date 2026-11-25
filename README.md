@@ -50,7 +50,7 @@ cd axiom
 scripts/install.sh
 ```
 
-The installer checks the requirements, builds Axiom, puts `axiom` and `axiom-server` on your PATH (in `~/.local/bin`; it tells you if that folder isn't on PATH yet), and installs the `axiom` skill for Claude Code. It then asks two questions:
+The installer checks the requirements, builds Axiom, puts `axiom` and `axiom-server` on your PATH (in `~/.local/bin`; it tells you if that folder isn't on PATH yet), and installs the `axiom` skill for your agents: in `~/.claude/skills` for Claude Code (and T3 Code's Claude threads), and in `~/.codex/skills` and `~/.agents/skills` when those tools' folders exist. It then asks two questions:
 
 1. **Add Axiom's hooks to Claude Code?** They let Axiom see your Claude Code sessions, show their live step, and route their permission prompts to the Desk. Your settings file is backed up first.
 2. **Start the server now and at every login?** This sets it up as a user service (systemd on Linux, launchd on macOS).
@@ -94,7 +94,8 @@ Axiom reads T3 Code's own database (`~/.t3/userdata`, or `AXIOM_T3_DIR`) but nev
 axiom hooks uninstall
 systemctl --user disable --now axiom.service                 # Linux, if you set up the service
 launchctl bootout gui/$(id -u)/local.axiom.server             # macOS, if you set up the service
-rm ~/.local/bin/axiom ~/.local/bin/axiom-server ~/.claude/skills/axiom
+rm ~/.local/bin/axiom ~/.local/bin/axiom-server
+rm -f ~/.claude/skills/axiom ~/.codex/skills/axiom ~/.agents/skills/axiom
 ```
 
 Then delete the service file (`~/.config/systemd/user/axiom.service` or `~/Library/LaunchAgents/local.axiom.server.plist`) and, if you no longer want your data, `~/.local/share/axiom`.

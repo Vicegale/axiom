@@ -11,7 +11,7 @@ description: Record your work in Axiom, the owner's local tracker. OPT-IN - use 
 
 or when the user asks. In a project without that line, follow its own rules (for example a Markdown work log) and leave Axiom alone.
 
-Axiom tracks what you and the owner are working on. You write to it with the `axiom` CLI (on PATH). Your identity is detected automatically: inside Claude Code or T3 you are an **agent**, and once your thread is attached, every entry you write is tagged with it.
+Axiom tracks what you and the owner are working on. You write to it with the `axiom` CLI (on PATH). Your identity is detected automatically: inside Claude Code or T3 you are an **agent**, and once your thread is attached, every entry you write is tagged with it. In any other agent tool (Codex on its own, for example), set `AXIOM_ACTOR=agent` on every command (or export it), or your entries are recorded as the owner's.
 
 ## 1. At the start of a task
 

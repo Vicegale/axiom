@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <title>Axiom</title>
+  <!-- The Board layout's brand mark: four status colours (hitl, wip, monitoring, done) on the app's panel colour. -->
+  <rect width="32" height="32" rx="7" fill="#111316"/>
+  <rect x="5.5" y="5.5" width="9.5" height="9.5" rx="2" fill="#ffb547"/>
+  <rect x="17" y="5.5" width="9.5" height="9.5" rx="2" fill="#5b9dff"/>
+  <rect x="5.5" y="17" width="9.5" height="9.5" rx="2" fill="#38c6b6"/>
+  <rect x="17" y="17" width="9.5" height="9.5" rx="2" fill="#4fbf74"/>
+</svg>

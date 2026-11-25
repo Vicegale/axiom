@@ -9,7 +9,7 @@
 #   --no-hooks    leave ~/.claude/settings.json alone
 #   --service     run the server now and at every login (systemd / launchd) without asking
 #   --no-service  don't set up the service (start it by hand: axiom server)
-#   --no-skill    don't link the axiom skill into ~/.claude/skills
+#   --no-skill    don't install the axiom skill (~/.claude/skills, and ~/.codex or ~/.agents if present)
 #   --bin-dir     where the `axiom` and `axiom-server` links go (default: ~/.local/bin)
 #
 # Without a terminal to ask in, the questions default to no. A service set up before is restarted
@@ -140,17 +140,25 @@ AXIOM="$BIN_DIR/axiom"
 ok "axiom $("$AXIOM" --version) runs; database ready"
 
 # ---- agent skill ----------------------------------------------------------------------------
+# The skill teaches agents to record their work with the `axiom` CLI. It goes where each agent tool
+# looks for user skills: Claude Code always (T3 Code's Claude threads read it too), Codex and the
+# shared ~/.agents folder when that tool's folder exists.
 if [ "$SKILL" = 1 ]; then
-  step "Linking the axiom skill for Claude Code"
-  SKILLS="$HOME/.claude/skills"
-  dest="$SKILLS/axiom"
-  mkdir -p "$SKILLS"
-  if [ -e "$dest" ] && [ ! -L "$dest" ]; then
-    warn "$dest exists and is not a link; left alone"
-  else
-    ln -sfn "$REPO/skills/axiom" "$dest"
-    ok "~/.claude/skills/axiom -> $REPO/skills/axiom"
-  fi
+  step "Installing the axiom skill for your agents"
+  link_skill() { # link_skill <skills folder> <tool name>
+    local dest="$1/axiom" shown="$1/axiom"
+    case "$1" in "$HOME"/*) shown="~${1#"$HOME"}/axiom" ;; esac
+    mkdir -p "$1"
+    if [ -e "$dest" ] && [ ! -L "$dest" ]; then
+      warn "$shown exists and is not a link; left alone ($2)"
+    else
+      ln -sfn "$REPO/skills/axiom" "$dest"
+      ok "$shown ($2)"
+    fi
+  }
+  link_skill "$HOME/.claude/skills" "Claude Code"
+  if [ -d "$HOME/.codex" ]; then link_skill "$HOME/.codex/skills" "Codex"; fi
+  if [ -d "$HOME/.agents" ]; then link_skill "$HOME/.agents/skills" "agents sharing ~/.agents"; fi
   printf '  %sThe skill is opt-in: a project uses it when its AGENTS.md says "Track work in Axiom (see the `axiom` skill)."%s\n' "$D" "$X"
 fi
 
