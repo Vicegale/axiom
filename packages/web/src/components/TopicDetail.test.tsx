@@ -187,7 +187,7 @@ describe("TopicDetail", () => {
     const link = screen.getByRole("link", { name: "Open in T3" });
     expect(link.getAttribute("href")).toBe("t3code://threads/e/t");
     expect(screen.getByRole("button", { name: "Copy resume command" }).getAttribute("title")).toBe(
-      "claude --resume s",
+      "Copy: claude --resume s",
     );
   });
 
