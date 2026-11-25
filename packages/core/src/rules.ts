@@ -90,8 +90,10 @@ export interface ThreadState {
 
 /**
  * PROVISIONAL (05 Q6, 01 "temporary ruling"): the topic's status is null only while MORE THAN ONE
- * OPEN thread is `wip` at once. Exactly one wip open thread makes the topic `wip`. Otherwise the
- * topic takes the status of the thread whose status changed most recently. Keep this the only
+ * OPEN thread is `wip` at once. Exactly one wip open thread makes the topic `wip`. Otherwise an
+ * open thread that needs the owner wins (`error` before `hitl`), so attention is never lost to
+ * another thread stopping later. Otherwise the topic takes the status of the thread whose status
+ * changed most recently. Keep this the only
  * place that encodes the rule, so it is cheap to change after real use.
  * Returns null when the topic has no threads at all (nothing to derive from).
  */
@@ -99,6 +101,8 @@ export function topicStatusFromThreads(threads: readonly ThreadState[]): TopicSt
   const wipOpen = threads.filter((t) => t.open && t.status === "wip").length;
   if (wipOpen > 1) return null;
   if (wipOpen === 1) return "wip";
+  if (threads.some((t) => t.open && t.status === "error")) return "error";
+  if (threads.some((t) => t.open && t.status === "hitl")) return "hitl";
   let latest: ThreadState | undefined;
   for (const t of threads) {
     if (

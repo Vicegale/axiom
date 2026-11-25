@@ -86,6 +86,24 @@ describe("thread events and status", () => {
     expect(ax.getTopic("demo").openThreadStatuses).toEqual([]);
   });
 
+  it("a thread that ends while still running goes idle and the topic follows", () => {
+    const { thread } = topicWithThread(ax);
+    ax.threadWorking(thread.id);
+    expect(ax.getTopic("demo").status).toBe("wip");
+    const ended = ax.threadEnded(thread.id, "killed");
+    expect(ended.status).toBe("idle");
+    expect(ax.getTopic("demo").status).toBe("idle");
+  });
+
+  it("ending a stopped thread keeps a status set by hand", () => {
+    const { thread } = topicWithThread(ax);
+    ax.threadWorking(thread.id);
+    ax.threadStopped(thread.id);
+    ax.setTopicStatus("demo", "done", { kind: "owner" });
+    ax.threadEnded(thread.id, "session end");
+    expect(ax.getTopic("demo").status).toBe("done");
+  });
+
   it("stop table through the database: declared statuses, links and monitor targets", () => {
     const { thread } = topicWithThread(ax);
     const stopWith = (declared: Parameters<Axiom["setTopicStatus"]>[1]) => {

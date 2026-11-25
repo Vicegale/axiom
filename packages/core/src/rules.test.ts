@@ -105,6 +105,13 @@ describe("topicStatusFromThreads (provisional)", () => {
     const later: ThreadState = { ...th("done", 1), statusChangedAt: "2026-01-02T00:00:00.000Z" };
     expect(topicStatusFromThreads([later, th("idle", 9)])).toBe("done");
   });
+  it("an open thread waiting on the owner beats a later idle stop", () => {
+    expect(topicStatusFromThreads([th("hitl", 1), th("idle", 9)])).toBe("hitl");
+  });
+  it("error beats hitl; ended threads needing attention do not count", () => {
+    expect(topicStatusFromThreads([th("hitl", 1), th("error", 2), th("idle", 9)])).toBe("error");
+    expect(topicStatusFromThreads([th("hitl", 1, false), th("idle", 9)])).toBe("idle");
+  });
   it("no threads -> null", () => {
     expect(topicStatusFromThreads([])).toBeNull();
   });

@@ -715,6 +715,16 @@ export class Axiom {
           reason ?? null,
           threadId,
         );
+        // A thread that ends while still running (killed, crashed session) is no longer working.
+        if (th.status === "wip") {
+          this.run(
+            `UPDATE thread SET status = 'idle', status_changed_at = ?,
+               status_changed_seq = (SELECT COALESCE(MAX(status_changed_seq), 0) + 1 FROM thread)
+             WHERE id = ?`,
+            this.iso(),
+            threadId,
+          );
+        }
       }
       this.insertEntry({
         topicId: th.topicId,
@@ -724,6 +734,11 @@ export class Axiom {
         body: `Thread ended${reason ? `: ${reason}` : ""}`,
         data: { event: "ended", provider: th.provider, providerThreadId: th.providerThreadId },
       });
+      // Only a thread that was still running changes the topic; otherwise a session ending would
+      // overwrite a status set by hand (for example the owner marking the topic done).
+      if (th.endedAt === null && th.status === "wip") {
+        this.recomputeFromThreads(this.topicRow(th.topicId), "thread ended", threadId);
+      }
       return this.threadRow(threadId);
     });
   }
