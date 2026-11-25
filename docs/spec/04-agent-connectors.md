@@ -33,6 +33,7 @@ Notes from reading the T3 source (`~/projects/t3code`, 2026-11-25):
 - 2026-11-25: A thread error is its own status, `error` (see 01).
 - 2026-11-25: A T3 thread is tied to a topic either by the agent running `axiom thread attach` inside it, or by the owner picking it from a list of T3 threads in Axiom.
 - 2026-11-25: Codex directly is a later provider.
+- 2026-11-25: Subagents. Claude Code's `Stop` payload lists `background_tasks`; running `subagent` entries mean the thread is still working. For Claude Code threads the hook then skips the stop. For T3 threads the hook (which fires inside T3 sessions too) records the pending-subagent state on the Axiom thread, and the T3 sync does not apply a stop while it is set. T3's own delegated child threads show as a `waiting` run, which the T3 provider already treats as working.
 - 2026-11-25: T3 is the source of truth for T3 threads. Hook events from T3-run sessions (they carry `T3CODE_THREAD_ID`) are not recorded as Claude Code threads; they make Axiom re-read that T3 thread at once (Q9).
 - 2026-11-25: Axiom pins the T3 version it is tested against (server `0.1.11-nightly.20261118.4890`, database migration 98) and warns on a mismatch. See [ADR 0005](../adr/0005-providers-claude-code-and-t3.md).
 - 2026-11-25: A topic has many threads (T3 threads, Claude Code sessions); see 01.

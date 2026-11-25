@@ -64,6 +64,9 @@ A **task** is a unit of work inside a topic, such as a row of a build plan (`S7`
 
 ### When an agent stops
 
+**Waiting on subagents is not stopping** (owner, 2026-11-25). If the agent ends its turn while subagents it started are still running, the thread stays `wip` (and so do its task and topic). The stop table below applies only when the thread stops with no running subagents. Claude Code reports this in the `Stop` hook payload (`background_tasks` entries with `type: "subagent"` and `status: "running"`; tested 2026-11-25); when the subagent finishes, the parent is re-invoked (a new prompt event), and its next stop is judged again. Background shell commands (dev servers, monitors) do not count.
+
+
 The owner asked for a common-sense rule (2026-11-25). Whatever the outcome, stopping raises a notification.
 
 | Last status the agent set | Topic after it stops |
@@ -137,6 +140,7 @@ Everything else is an attached record: threads, specs, artifacts, PRs, links, an
 - 2026-11-25: Unlinked tickets and epics use `to do` / `wip` / `done`. Linked ones show Jira's status names as-is.
 - 2026-11-25: When the agent stops, the topic becomes `idle` and a notification highlights it until the owner clicks it.
 - 2026-11-25: `wip` is the only automatic status. Opening a PR does not imply `review`.
+- 2026-11-25: A thread waiting on its running subagents stays `wip`; it has not stopped (see "When an agent stops").
 - 2026-11-25: An agent that stops on a question to the owner leaves the topic in `hitl`, not `idle`.
 - 2026-11-25 (temporary): With multiple threads, each thread has its own status and the topic's status is null.
 - 2026-11-25: Notifications are a general mechanism with their own notifications pane (see 02), not only the topic highlight.
