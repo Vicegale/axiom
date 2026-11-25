@@ -30,6 +30,10 @@
  *   (`$.fileName`), `web_search` (`$.patterns[]`), `subagent` (`$.title`). `updated_at` is the
  *   line's time. Other types (assistant text, checkpoints, todo lists, notices) are skipped.
  *
+ * - `projection_projects`: `project_id`, `title`, `workspace_root`, `default_model_selection_json`
+ *   (null or `null` when the project has no default model), `pinned_at`, `archived_at`,
+ *   `deleted_at`. Read for the new-topic dialog's project select (live projects only).
+ *
  * Everything else T3 stores is ignored. Any query error means the schema moved: the caller marks
  * the provider unavailable and tries again on the next tick.
  */
@@ -76,6 +80,15 @@ export interface T3ThreadSummary {
   environmentId: string | null;
   status: T3SessionStatus | "waiting";
   updatedAt: string;
+}
+
+export interface T3Project {
+  id: string;
+  title: string;
+  workspaceRoot: string;
+  /** The project has a default model, so a new thread needs no model of its own. */
+  hasDefaultModel: boolean;
+  pinned: boolean;
 }
 
 export interface T3Meta {
@@ -165,6 +178,20 @@ const ACTIVITY_SQL = `SELECT type, updated_at, payload_json
   WHERE thread_id = ?
     AND type IN ('reasoning', 'command_execution', 'dynamic_tool', 'file_change', 'web_search', 'subagent')
   ORDER BY ordinal DESC LIMIT 1`;
+
+const PROJECTS_SQL = `SELECT project_id, title, workspace_root, default_model_selection_json, pinned_at
+  FROM projection_projects WHERE deleted_at IS NULL AND archived_at IS NULL
+  ORDER BY (pinned_at IS NULL), title COLLATE NOCASE, project_id`;
+
+function hasModelSelection(json: string | null): boolean {
+  if (!json) return false;
+  try {
+    const v: unknown = JSON.parse(json);
+    return typeof v === "object" && v !== null && Object.keys(v).length > 0;
+  } catch {
+    return false;
+  }
+}
 
 const THINKING_CHARS = 80;
 
@@ -286,6 +313,25 @@ export class T3Db {
     this.db.prepare(PENDING_SQL);
     this.db.prepare(REQUEST_ITEM_SQL);
     this.db.prepare(ACTIVITY_SQL);
+    this.db.prepare(PROJECTS_SQL);
+  }
+
+  /** Live (not deleted, not archived) projects: pinned first, then by title. */
+  listProjects(): T3Project[] {
+    const rows = this.db.prepare(PROJECTS_SQL).all() as {
+      project_id: string;
+      title: string;
+      workspace_root: string;
+      default_model_selection_json: string | null;
+      pinned_at: string | null;
+    }[];
+    return rows.map((r) => ({
+      id: r.project_id,
+      title: r.title,
+      workspaceRoot: r.workspace_root,
+      hasDefaultModel: hasModelSelection(r.default_model_selection_json),
+      pinned: r.pinned_at !== null,
+    }));
   }
 
   /** The newest step of a thread as one line, with its time; null when it has taken none. */

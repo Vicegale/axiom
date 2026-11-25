@@ -1,5 +1,11 @@
 import type { Axiom, Thread } from "@axiom/core";
-import { readT3Meta, T3Db, type T3ThreadState, type T3ThreadSummary } from "./reader.js";
+import {
+  readT3Meta,
+  T3Db,
+  type T3Project,
+  type T3ThreadState,
+  type T3ThreadSummary,
+} from "./reader.js";
 
 export type T3HealthState = "ok" | "untested-version" | "unavailable";
 
@@ -241,6 +247,16 @@ export class T3Provider {
         exclude,
         limit: options.limit ?? 50,
       });
+    } finally {
+      db.close();
+    }
+  }
+
+  /** Live T3 projects for the new-topic dialog. Throws when T3 cannot be read. */
+  listProjects(): T3Project[] {
+    const db = T3Db.open(this.dir);
+    try {
+      return db.listProjects();
     } finally {
       db.close();
     }

@@ -665,6 +665,15 @@ export function createApp(ctx: AppContext): Hono {
     }
   });
 
+  app.get("/api/t3/projects", (c) => {
+    try {
+      return c.json(ctx.t3.listProjects());
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      return c.json(err("unavailable", `T3 cannot be read: ${why}`), 503);
+    }
+  });
+
   // ---- server-sent events -------------------------------------------------
 
   app.get("/api/events", (c) =>

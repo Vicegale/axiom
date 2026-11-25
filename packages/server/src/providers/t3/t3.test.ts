@@ -135,6 +135,31 @@ describe("reader", () => {
     }
   });
 
+  it("lists live projects, pinned first then by title, with the default-model flag", () => {
+    t3.project("z", { title: "Zed", pinned: true, root: "/work/zed" })
+      .project("b", { title: "beta", model: true })
+      .project("a", { title: "Alpha" })
+      .project("gone", { title: "Gone", deleted: true })
+      .project("old", { title: "Old", archived: true });
+    const db = T3Db.open(t3.dir);
+    try {
+      expect(db.listProjects()).toEqual([
+        { id: "z", title: "Zed", workspaceRoot: "/work/zed", hasDefaultModel: false, pinned: true },
+        {
+          id: "a",
+          title: "Alpha",
+          workspaceRoot: "/work/a",
+          hasDefaultModel: false,
+          pinned: false,
+        },
+        { id: "b", title: "beta", workspaceRoot: "/work/b", hasDefaultModel: true, pinned: false },
+      ]);
+      expect(provider.listProjects().map((p) => p.id)).toEqual(["z", "a", "b"]);
+    } finally {
+      db.close();
+    }
+  });
+
   it("opens the database read-only", () => {
     const db = T3Db.open(t3.dir);
     try {
