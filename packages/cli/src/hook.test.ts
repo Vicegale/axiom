@@ -268,6 +268,71 @@ describe("axiom hook", () => {
     }
   });
 
+  it("stores the stop payload's last_assistant_message on the attached thread, replacing the old one", () => {
+    const s = session();
+    s.attach();
+    const reply = () => {
+      const ax = openDatabase(s.db);
+      try {
+        const th = ax.findThread({ provider: "claude-code", providerThreadId: SID });
+        return th?.lastReply;
+      } finally {
+        ax.close();
+      }
+    };
+    s.hook("prompt", PROMPT);
+    s.hook("stop", payload("Stop", { last_assistant_message: "First answer" }));
+    expect(reply()).toBe("First answer");
+    s.hook("prompt", PROMPT);
+    s.hook("stop", payload("Stop", { last_assistant_message: "" }));
+    expect(reply()).toBe("First answer"); // empty is ignored
+    s.hook("stop", payload("Stop", { last_assistant_message: "Second answer" }));
+    expect(reply()).toBe("Second answer");
+    expect(
+      s
+        .topic()
+        .history.map((e: any) => e.body)
+        .join("\n"),
+    ).not.toContain("answer");
+    expect(s.log()).toBe("");
+  });
+
+  it("inside an attached T3 session, a stop stores the reply on the T3 thread", () => {
+    const s = session();
+    s.exec(["topic", "new", "demo", "--title", "Demo"]);
+    s.exec(["thread", "attach", "demo", "--provider", "t3", "--id", "t3-r"]);
+    s.hook("stop", payload("Stop", { last_assistant_message: "From T3" }), {
+      T3CODE_THREAD_ID: "t3-r",
+    });
+    const ax = openDatabase(s.db);
+    try {
+      expect(ax.findThread({ provider: "t3", providerThreadId: "t3-r" })?.lastReply).toBe(
+        "From T3",
+      );
+    } finally {
+      ax.close();
+    }
+  });
+
+  it("does nothing at all when AXIOM_INTERNAL=1 (Axiom's own claude runs)", () => {
+    const s = session();
+    s.attach();
+    s.hook("prompt", PROMPT);
+    s.hook("stop", payload("Stop", { last_assistant_message: "ignored" }), { AXIOM_INTERNAL: "1" });
+    s.hook("prompt", "not json", { AXIOM_INTERNAL: "1" });
+    expect(s.topic().status).toBe("wip");
+    expect(s.notifications()).toEqual([]);
+    expect(s.log()).toBe("");
+    const ax = openDatabase(s.db);
+    try {
+      expect(
+        ax.findThread({ provider: "claude-code", providerThreadId: SID })?.lastReply,
+      ).toBeNull();
+    } finally {
+      ax.close();
+    }
+  });
+
   it("does nothing inside a T3 session (T3CODE_THREAD_ID set)", () => {
     const s = session();
     s.attach();

@@ -8,6 +8,8 @@ import { backupDir, backupIfDue } from "./backup.js";
 import { ChangeBus } from "./events.js";
 import { T3Provider } from "./providers/t3/provider.js";
 import { t3Dir } from "./providers/t3/reader.js";
+import { defaultT3Cli, T3ReplyFetcher } from "./providers/t3/replies.js";
+import { findClaude, SummaryWorker } from "./summaries.js";
 
 export { backupDir, backupIfDue, newestBackupMs, runBackup } from "./backup.js";
 export type { InstallOptions, InstallResult } from "./install.js";
@@ -28,6 +30,13 @@ export interface StartServerOptions {
   t3Dir?: string;
   /** How often the T3 provider reads T3; default 2 s. */
   t3PollMs?: number;
+  /** The `t3` binary when the `t3Cli` setting is not set (default ~/.t3/bin/t3). */
+  t3Cli?: string;
+  /** The `claude` binary when the `claudeCli` setting is not set (default: found on PATH). */
+  claudeCli?: string;
+  /** Summary run timeout (default 60 s) and the wait before retrying a failure (default 10 min). */
+  summaryTimeoutMs?: number;
+  summaryRetryMs?: number;
 }
 
 export interface RunningServer {
@@ -73,12 +82,20 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   maintain();
 
   /** Syncs T3 now; tells the UI when threads changed. Never throws. */
+  const replies = new T3ReplyFetcher(ax, () => {
+    const s = ax.getSetting("t3Cli");
+    return typeof s === "string" && s ? s : (options.t3Cli ?? defaultT3Cli());
+  });
   const syncT3 = () => {
     try {
       if (t3.sync() > 0) bus.emit();
     } catch (e) {
       console.error("T3 sync failed:", e);
     }
+    // Stopped T3 threads: fetch their latest reply (async; a run at a time).
+    void replies.run().then((n) => {
+      if (n > 0) bus.emit();
+    });
   };
   syncT3();
   const t3Timer = setInterval(syncT3, options.t3PollMs ?? T3_POLL_MS);
@@ -86,6 +103,15 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   const unsubscribeT3 = bus.subscribe(() => {
     if (t3.refreshRequested()) syncT3();
   });
+  const summaries = new SummaryWorker({
+    ax,
+    bus,
+    claudeCli: options.claudeCli ?? findClaude(),
+    timeoutMs: options.summaryTimeoutMs,
+    retryMs: options.summaryRetryMs,
+    now,
+  });
+  summaries.start();
   const timer = setInterval(maintain, options.maintenanceMs ?? HOUR_MS);
 
   const host = options.host ?? "127.0.0.1";
@@ -101,6 +127,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
     clearInterval(timer);
     clearInterval(t3Timer);
     unsubscribeT3();
+    summaries.stop();
     bus.stop();
     ax.close();
     throw e;
@@ -114,6 +141,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
       clearInterval(timer);
       clearInterval(t3Timer);
       unsubscribeT3();
+      summaries.stop();
       bus.stop();
       for (const end of [...streams]) end();
       await new Promise<void>((resolve) => {

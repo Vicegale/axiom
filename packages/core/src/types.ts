@@ -30,6 +30,10 @@ export interface Topic {
   stalePromptDismissed: boolean;
   createdAt: string;
   lastWorkedAt: string;
+  /** Desk arrangement (02): favourite, hidden from the Desk, the owner's drag position. */
+  favorite: boolean;
+  deskHidden: boolean;
+  deskOrder: number | null;
 }
 
 export interface WorkItem {
@@ -64,6 +68,15 @@ export interface Thread {
   startedAt: string;
   endedAt: string | null;
   endReason: string | null;
+  /** The latest reply of the agent (Desk). Can be large; API listings leave it out. */
+  lastReply: string | null;
+  lastReplyAt: string | null;
+  /** The ephemeral summary of that reply, and the reply time it was made from. */
+  summaryNow: string | null;
+  summaryNext: string | null;
+  summaryAt: string | null;
+  summaryReplyAt: string | null;
+  summaryError: string | null;
 }
 
 export interface Link {
