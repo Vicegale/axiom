@@ -48,19 +48,20 @@ describe("Settings page", () => {
     await waitFor(() => expect(document.documentElement.getAttribute("data-theme")).toBe("light"));
   });
 
-  it("mutes and unmutes kinds, sending the whole list", async () => {
+  it("shows each notification kind as on unless muted, and saves the muted list", async () => {
     server.settings.mutedKinds = ["jira changed"];
     open();
-    const jira = (await screen.findByLabelText("jira changed")) as HTMLInputElement;
-    expect(jira.checked).toBe(true);
+    const jira = (await screen.findByLabelText("Jira status changed")) as HTMLInputElement;
+    expect(jira.checked).toBe(false);
+    expect((screen.getByLabelText("Thread error") as HTMLInputElement).checked).toBe(true);
     expect(screen.getAllByRole("checkbox")).toHaveLength(7);
-    fireEvent.click(screen.getByLabelText("error"));
+    fireEvent.click(screen.getByLabelText("Thread error"));
     await waitFor(() =>
       expect(server.called("PUT", "/api/settings")[0]?.body).toEqual({
         mutedKinds: ["jira changed", "error"],
       }),
     );
-    fireEvent.click(screen.getByLabelText("jira changed"));
+    fireEvent.click(screen.getByLabelText("Jira status changed"));
     await waitFor(() =>
       expect(server.called("PUT", "/api/settings")[1]?.body).toEqual({ mutedKinds: ["error"] }),
     );

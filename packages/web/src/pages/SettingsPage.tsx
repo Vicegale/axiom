@@ -84,20 +84,21 @@ export function SettingsPage() {
           </div>
         </section>
 
-        <section className="settings" aria-label="Notification settings">
-          <h3>Mute by kind</h3>
+        <section className="settings" aria-label="Notifications">
+          <h3>Notifications</h3>
           <p className="hint">
-            Checked kinds are muted: hidden in the notifications list and as system notifications.
+            Each kind is on by default. Turning one off hides it in the notifications list and as a
+            system notification; topics still stay highlighted until you open them.
           </p>
           <div className="checks">
             {NOTIFICATION_KINDS.map((k) => (
               <label key={k} className="check">
                 <input
                   type="checkbox"
-                  checked={muted.has(k)}
-                  onChange={(e) => toggleKind(k, e.target.checked)}
+                  checked={!muted.has(k)}
+                  onChange={(e) => toggleKind(k, !e.target.checked)}
                 />
-                <span>{k}</span>
+                <span>{KIND_LABEL[k]}</span>
               </label>
             ))}
           </div>
@@ -122,15 +123,6 @@ export function SettingsPage() {
             <p className="hint">No topics are muted.</p>
           )}
 
-          <h3>Stale prompt</h3>
-          <StaleDays
-            key={settings.staleAfterDays}
-            days={settings.staleAfterDays}
-            onSave={(n) => void actions.saveSettings({ staleAfterDays: n })}
-          />
-        </section>
-
-        <section className="settings" aria-label="Browser notifications">
           <h3>Browser notifications</h3>
           <p className="hint">
             <span
@@ -152,10 +144,29 @@ export function SettingsPage() {
             </p>
           ) : null}
         </section>
+
+        <section className="settings" aria-label="Stale topics">
+          <h3>Stale topics</h3>
+          <StaleDays
+            key={settings.staleAfterDays}
+            days={settings.staleAfterDays}
+            onSave={(n) => void actions.saveSettings({ staleAfterDays: n })}
+          />
+        </section>
       </div>
     </div>
   );
 }
+
+const KIND_LABEL: Record<NotificationKind, string> = {
+  "agent stopped": "Agent stopped",
+  "agent asked": "Agent asked a question",
+  "monitor problem": "Monitor found a problem",
+  "jira changed": "Jira status changed",
+  "pr review": "PR review arrived",
+  "stale prompt": "Stale prompt",
+  error: "Thread error",
+};
 
 function StaleDays({ days, onSave }: { days: number; onSave: (n: number) => void }) {
   const [value, setValue] = useState(String(days));
