@@ -487,3 +487,86 @@ describe("threads", () => {
     expect(s.exec(["thread", "attach", "missing", "--provider", "t3", "--id", "x"]).code).toBe(1);
   });
 });
+
+describe("tasks", () => {
+  function withTopic() {
+    const s = session();
+    s.ok(["topic", "new", "t", "--title", "T"]);
+    return s;
+  }
+
+  it("adds tasks with --after, a spec path and done-when, then lists and shows them", () => {
+    const s = withTopic();
+    s.ok([
+      "task",
+      "add",
+      "S0",
+      "Setup",
+      "--topic",
+      "t",
+      "--spec",
+      "docs/plan.md",
+      "--done-when",
+      "builds",
+    ]);
+    s.ok(["task", "add", "S1", "Core", "--topic", "t", "--after", "S0", "--spec", "docs/plan.md"]);
+    s.ok(["task", "add", "S2", "Web", "--topic", "t", "--after", "S0", "--after", "S1"]);
+    const links = s.json(["topic", "show", "t"]).links;
+    expect(links.filter((l: any) => l.kind === "spec")).toHaveLength(1); // the path was reused
+    const list = s.ok(["task", "list", "--topic", "t"]);
+    expect(list).toMatch(/KEY\s+STATUS\s+TITLE\s+WAITS ON/);
+    expect(list).toMatch(/S2\s+to do\s+Web\s+S0, S1/);
+    s.ok(["task", "status", "S0", "done", "--topic", "t"]);
+    expect(s.ok(["task", "list", "--topic", "t"])).toMatch(/^S1\s+to do\s+Core$/m);
+    const shown = s.json(["task", "show", "S2", "--topic", "t"]);
+    expect(shown).toMatchObject({ key: "S2", waiting: true, dependsOn: ["S0", "S1"] });
+    expect(s.ok(["task", "show", "S0", "--topic", "t"])).toContain("docs/plan.md");
+    expect(s.json<any[]>(["task", "list", "--topic", "t"])).toHaveLength(3);
+  });
+
+  it("changes status (with todo aliases), and depends --on / --remove", () => {
+    const s = withTopic();
+    s.ok(["task", "add", "A", "a", "--topic", "t"]);
+    s.ok(["task", "add", "B", "b", "--topic", "t"]);
+    expect(s.json(["task", "status", "A", "wip", "--topic", "t"]).status).toBe("wip");
+    expect(s.json(["task", "status", "A", "todo", "--topic", "t"]).status).toBe("to do");
+    expect(s.json(["task", "status", "A", "to do", "--topic", "t"]).status).toBe("to do");
+    expect(s.exec(["task", "status", "A", "bogus", "--topic", "t"]).code).toBe(2);
+    expect(s.json(["task", "depend", "B", "--on", "A", "--topic", "t"]).dependsOn).toEqual(["A"]);
+    const cycle = s.exec(["task", "depend", "A", "--on", "B", "--topic", "t"]);
+    expect(cycle.code).toBe(1);
+    expect(cycle.err).toContain("cycle");
+    expect(s.exec(["task", "depend", "A", "--on", "A", "--topic", "t"]).code).toBe(1);
+    expect(s.exec(["task", "depend", "A", "--topic", "t"]).code).toBe(2);
+    expect(
+      s.json(["task", "depend", "B", "--on", "A", "--remove", "--topic", "t"]).dependsOn,
+    ).toEqual([]);
+    expect(s.exec(["task", "show", "nope", "--topic", "t"]).code).toBe(1);
+  });
+
+  it("defaults the topic from the thread, attaches with --task and switches with `thread task`", () => {
+    const s = withTopic();
+    const env = { CLAUDE_CODE_SESSION_ID: "sess-9" };
+    s.ok(["task", "add", "S1", "one", "--topic", "t"]);
+    s.ok(["task", "add", "S2", "two", "--topic", "t"]);
+    expect(s.exec(["thread", "attach", "t", "--task", "nope"], env).code).toBe(1);
+    s.ok(["thread", "attach", "t", "--task", "S1"], env);
+    const taskId = (key: string) => s.json(["task", "show", key, "--topic", "t"]).id;
+    expect(s.json(["thread", "show"], env).thread.taskId).toBe(taskId("S1"));
+    s.ok(["thread", "task", "S2"], env);
+    expect(s.json(["thread", "show"], env).thread.taskId).toBe(taskId("S2"));
+    expect(s.ok(["task", "list"], env)).toContain("S2");
+    s.ok(["thread", "task", "--none"], env);
+    expect(s.json(["thread", "show"], env).thread.taskId).toBeNull();
+    expect(s.exec(["thread", "task"], env).code).toBe(2);
+    expect(s.exec(["thread", "task", "S1"]).code).toBe(2); // not in a session
+  });
+
+  it("records who changed a task status in the history", () => {
+    const s = withTopic();
+    s.ok(["task", "add", "A", "a", "--topic", "t"]);
+    s.ok(["task", "status", "A", "done", "--topic", "t"], { AXIOM_ACTOR: "agent" });
+    const entry = s.json<any[]>(["entries", "t", "--kind", "status change"]).pop();
+    expect(entry.data).toEqual({ task: "A", from: "to do", to: "done", by: "agent" });
+  });
+});
