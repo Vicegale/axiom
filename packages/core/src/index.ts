@@ -16,6 +16,7 @@ export type {
   ListTopicsFilter,
   UpdateTaskInput,
 } from "./axiom.js";
+export { describeToolUse, oneLine } from "./activity.js";
 export { Axiom } from "./axiom.js";
 export * from "./constants.js";
 export type { OpenOptions } from "./database.js";

@@ -77,6 +77,9 @@ export interface Thread {
   summaryAt: string | null;
   summaryReplyAt: string | null;
   summaryError: string | null;
+  /** The newest step the agent took (ephemeral, one line), and when. */
+  activityText: string | null;
+  activityAt: string | null;
 }
 
 export interface Link {
