@@ -165,3 +165,18 @@ export interface TopicDetail extends TopicSummary {
   links: Link[];
   monitorTargets: MonitorTarget[];
 }
+
+/** A permission the agent asked for (Claude Code `PermissionRequest` hook); pending until decided. */
+export interface Approval {
+  id: number;
+  threadId: number;
+  toolName: string;
+  /** One line describing the tool call; never the full input. */
+  inputSummary: string;
+  createdAt: string;
+  decidedAt: string | null;
+  /** `expired`: the hook gave up and the terminal prompt took over. */
+  decision: "allow" | "deny" | "expired" | null;
+  message: string | null;
+  hookPid: number | null;
+}

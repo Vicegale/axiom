@@ -31,6 +31,7 @@ import {
 import type { ChangeBus } from "./events.js";
 import { registerNewTopicRoutes } from "./newtopic.js";
 import type { T3Provider } from "./providers/t3/provider.js";
+import { livePendingApprovals, registerRequestRoutes } from "./requests.js";
 import { registerSendRoutes } from "./sending.js";
 import { serveWeb } from "./static.js";
 
@@ -53,6 +54,8 @@ export interface AppContext {
   t3Cli?: string;
   claudeCli?: string;
   sendGraceMs?: number;
+  /** Replaces `fetch` for calls to T3's MCP endpoint (tests). */
+  fetchImpl?: typeof fetch;
 }
 
 const STATUS_CODES = { "not-found": 404, permission: 403, validation: 400, conflict: 409 } as const;
@@ -99,6 +102,7 @@ const bodies = {
   deskOrder: z.strictObject({ slugs: z.array(z.string()) }),
   settings: z.strictObject({
     summaries: z.strictObject({ enabled: z.boolean() }).optional(),
+    approvalTimeoutSec: z.number().int().min(10).max(600).optional(),
     mutedKinds: z.array(notificationKindSchema).optional(),
     staleAfterDays: z.number().int().positive().optional(),
     layout: z.enum(["inbox", "board", "console"]).optional(),
@@ -399,6 +403,8 @@ export function createApp(ctx: AppContext): Hono {
       // The newest step the agent took; the card shows it while the thread runs.
       activity:
         t.activityText === null ? null : { text: t.activityText, at: t.activityAt ?? t.startedAt },
+      // Questions and permission requests waiting on the owner (the card fetches them when > 0).
+      pendingRequests: pendingRequestCount(t),
       hasReply: t.lastReply !== null,
       // A reply newer than its summary, with summaries on and no error: one is being made.
       summaryPending:
@@ -407,6 +413,13 @@ export function createApp(ctx: AppContext): Hono {
         summariesEnabled() &&
         (t.summaryReplyAt === null || (t.lastReplyAt ?? "") > t.summaryReplyAt),
     };
+  }
+
+  function pendingRequestCount(t: TopicDetail["threads"][number]): number {
+    if (t.endedAt !== null) return 0;
+    if (t.provider === "t3") return ctx.t3.pendingCount(t.id);
+    // Only worth a look when some approval is pending at all.
+    return ax.pendingApprovals(t.id).length === 0 ? 0 : livePendingApprovals(ax, t.id).live.length;
   }
 
   function summariesEnabled(): boolean {
@@ -616,6 +629,7 @@ export function createApp(ctx: AppContext): Hono {
     layout: (ax.getSetting("layout") as string | undefined) ?? "inbox",
     theme: (ax.getSetting("theme") as string | undefined) ?? "system",
     summaries: ax.getSetting("summaries"),
+    approvalTimeoutSec: ax.getSetting("approvalTimeoutSec"),
   });
 
   app.get("/api/settings", (c) => c.json(readSettings()));
@@ -714,6 +728,14 @@ export function createApp(ctx: AppContext): Hono {
     claudeCli: ctx.claudeCli ?? "claude",
     graceMs: ctx.sendGraceMs,
     listProjects: () => ctx.t3.listProjects(),
+  });
+
+  registerRequestRoutes(app, {
+    ax,
+    bus: ctx.bus,
+    t3: ctx.t3,
+    t3Cli: ctx.t3Cli,
+    fetchImpl: ctx.fetchImpl,
   });
 
   app.all("/api/*", (c) => c.json(err("not-found", "no such endpoint"), 404));

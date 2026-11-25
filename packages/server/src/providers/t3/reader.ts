@@ -21,7 +21,9 @@
  *   `kind` (`user_input|command|...`), `status` (`pending` is what we want), `created_at`.
  * - `orchestration_v2_projection_turn_items`: `node_id`, `type`
  *   (`user_input_request|approval_request`), `ordinal`, `payload_json`
- *   (`$.questions[].question` for a question, `$.prompt` for an approval): the text of a request.
+ *   (`$.questions[]` for a question: `id`, `header`, `question`, `options[]` of `label` +
+ *   `description`, `multiSelect`; `$.prompt` and `$.requestKind` for an approval): a request's
+ *   text and, for questions, what the Desk card shows to answer.
  *   The same table holds a thread's step-by-step activity, read for the Desk card's live line:
  *   the newest row of the thread (`thread_id = ?`, highest `ordinal`: a main-thread item's ordinal
  *   is `run ordinal * 1000000 + n`, so it sorts across runs; index `..._thread_ordinal_idx`) whose
@@ -52,9 +54,25 @@ export type T3SessionStatus =
   | "stopped"
   | "error";
 
+/** One question of a `user_input` request, as T3 stores it. */
+export interface T3Question {
+  /** The key of its answer (often the question text itself). */
+  id: string;
+  header: string;
+  question: string;
+  options: { label: string; description: string }[];
+  multiSelect: boolean;
+}
+
 export interface T3Request {
+  /** T3's runtime request id (what an answer is addressed to). */
+  id: string;
   kind: string;
   text: string;
+  /** The structured questions of a `user_input` request; empty for approvals. */
+  questions: T3Question[];
+  /** What an approval is about (`command`, `file-change`, ...), when T3 says. */
+  requestKind: string | null;
 }
 
 export interface T3ThreadState {
@@ -269,6 +287,47 @@ function clip(text: string): string {
   return one.length > MAX_REQUEST_TEXT ? `${one.slice(0, MAX_REQUEST_TEXT - 1)}…` : one;
 }
 
+const MAX_QUESTIONS = 10;
+const MAX_OPTIONS = 20;
+const MAX_QUESTION_CHARS = 2000;
+
+function str(v: unknown, max: number): string {
+  return typeof v === "string" ? v.trim().slice(0, max) : "";
+}
+
+/**
+ * The questions of a `user_input_request` payload (`questions[]`: `id`, `header`, `question`,
+ * `options[]` of `label` + `description`, `multiSelect`). Entries without a question text or an
+ * id are skipped; everything else is kept as is (capped). Exported for tests.
+ */
+export function parseQuestions(payload: unknown): T3Question[] {
+  const list = (payload as { questions?: unknown } | null | undefined)?.questions;
+  if (!Array.isArray(list)) return [];
+  const out: T3Question[] = [];
+  for (const raw of list.slice(0, MAX_QUESTIONS)) {
+    if (typeof raw !== "object" || raw === null) continue;
+    const q = raw as Record<string, unknown>;
+    const question = str(q.question, MAX_QUESTION_CHARS);
+    const id = typeof q.id === "string" && q.id !== "" ? q.id : question;
+    if (!question || !id) continue;
+    const options = Array.isArray(q.options)
+      ? q.options.slice(0, MAX_OPTIONS).flatMap((o) => {
+          const opt = (typeof o === "object" && o !== null ? o : {}) as Record<string, unknown>;
+          const label = str(opt.label, 500);
+          return label ? [{ label, description: str(opt.description, 1000) }] : [];
+        })
+      : [];
+    out.push({
+      id,
+      header: str(q.header, 100),
+      question,
+      options,
+      multiSelect: q.multiSelect === true,
+    });
+  }
+  return out;
+}
+
 function requestText(kind: string, payload: unknown): string {
   const p = (payload ?? {}) as { prompt?: unknown; questions?: { question?: unknown }[] };
   if (Array.isArray(p.questions)) {
@@ -366,8 +425,20 @@ export class T3Db {
           }
         } catch {}
       }
-      return { kind: r.kind, text: requestText(r.kind, payload) };
+      const requestKind = (payload as { requestKind?: unknown } | undefined)?.requestKind;
+      return {
+        id: r.runtime_request_id,
+        kind: r.kind,
+        text: requestText(r.kind, payload),
+        questions: r.kind === "user_input" ? parseQuestions(payload) : [],
+        requestKind: typeof requestKind === "string" ? requestKind : null,
+      };
     });
+  }
+
+  /** The thread's pending approvals and questions, oldest first. */
+  pendingRequests(threadId: string): T3Request[] {
+    return this.pending(threadId);
   }
 
   /** The state of one thread, or null when T3 has no such thread at all. */

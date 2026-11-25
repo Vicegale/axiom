@@ -92,6 +92,11 @@ export type EntryAuthor = (typeof ENTRY_AUTHORS)[number];
 
 export const DEFAULT_STALE_AFTER_DAYS = 14;
 
+/** How long a `PermissionRequest` hook waits for the owner before the terminal prompt takes over. */
+export const DEFAULT_APPROVAL_TIMEOUT_SEC = 600;
+/** The hook timeout written into Claude Code's settings: the longest wait plus a margin. */
+export const APPROVAL_HOOK_TIMEOUT_SEC = 620;
+
 /** The T3 build Axiom is tested against (ADR 0005): server version and latest migration id. */
 export const DEFAULT_T3_PIN = {
   serverVersion: "0.1.11-nightly.20261118.4890",

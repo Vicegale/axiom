@@ -1,5 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
+import { APPROVAL_HOOK_TIMEOUT_SEC } from "@axiom/core";
 import { HOOK_EVENTS, type HookEvent } from "./hook.js";
 
 /** Claude Code settings hook names for each `axiom hook` event. */
@@ -8,6 +9,7 @@ export const CLAUDE_EVENT: Record<HookEvent, string> = {
   prompt: "UserPromptSubmit",
   "pre-tool": "PreToolUse",
   notification: "Notification",
+  permission: "PermissionRequest",
   stop: "Stop",
   "session-end": "SessionEnd",
 };
@@ -68,10 +70,16 @@ export function installInto(settings: Json, node: string, entry: string): Json {
         if (isAxiomCommand(h.command, event)) {
           found = true;
           h.command = command;
+          if (event === "permission") h.timeout = APPROVAL_HOOK_TIMEOUT_SEC;
         }
       }
     }
-    if (!found) groups.push({ hooks: [{ type: "command", command }] });
+    // The permission hook waits for the owner, so it needs a timeout longer than its own wait.
+    const hookEntry: HookEntry =
+      event === "permission"
+        ? { type: "command", command, timeout: APPROVAL_HOOK_TIMEOUT_SEC }
+        : { type: "command", command };
+    if (!found) groups.push({ hooks: [hookEntry] });
     hooks[name] = groups;
   }
   out.hooks = hooks;

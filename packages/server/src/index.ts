@@ -40,6 +40,8 @@ export interface StartServerOptions {
   summaryRetryMs?: number;
   /** How long a detached `claude -p` reply is watched for an early failure (default 1.5 s). */
   sendGraceMs?: number;
+  /** Replaces `fetch` for calls to T3's MCP endpoint (tests). */
+  fetchImpl?: typeof fetch;
 }
 
 export interface RunningServer {
@@ -70,6 +72,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
     t3Cli: options.t3Cli,
     claudeCli: options.claudeCli ?? findClaude(),
     sendGraceMs: options.sendGraceMs,
+    fetchImpl: options.fetchImpl,
   };
   const app = createApp(ctx);
 

@@ -78,6 +78,7 @@ export const settingSchemas = {
   mutedKinds: z.array(notificationKindSchema),
   staleAfterDays: z.number().int().positive(),
   summaries: z.strictObject({ enabled: z.boolean() }),
+  approvalTimeoutSec: z.number().int().min(10).max(600),
   t3Cli: z.string().min(1),
   claudeCli: z.string().min(1),
   t3Pin: z.strictObject({ serverVersion: z.string().min(1), migration: z.number().int().min(0) }),
