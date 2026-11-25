@@ -1,74 +1,115 @@
 # Axiom
 
-Axiom is part issue tracker, part multi-task UI, part faux-always-on agent.
+**Axiom keeps track of everything you and your coding agents are working on.** It is your command center: every agent on one screen, the state of every piece of work in one place, and the things that need you at the top.
 
-- **Tracker**: the place where work items, their context and their history live.
-- **Multi-task UI**: one view for many concurrent pieces of work, including the agents working on them.
-- **Faux-always-on agent**: an agent that feels always present (in the spirit of dots or the Grok bot) without literally running all the time.
+Axiom runs on your own machine: a small local server with its own SQLite database, used through your browser. It connects to your agents through the tools they already run on: Claude Code and T3 Code. There are no accounts, and your data stays on your machine.
 
-Long term, Axiom replaces the work-log system in GPT Command Center (`docs/work/`). It keeps its own internal database and connects to agents directly through their services and CLIs. It runs locally and is used through a web view.
+## What it does
 
-## Status
+### The tracker
 
-The tracker (plan [docs/plan/v1-tracker.md](docs/plan/v1-tracker.md)) and the Desk ([docs/plan/desk.md](docs/plan/desk.md)) are built; the Steward (spec 03) and the work-log migration (07) are not started. The spec starts at [docs/spec/README.md](docs/spec/README.md).
+Every piece of work is a **topic**: a goal, a status, a one-line status note, and a history of what happened.
 
-## Install (Linux and macOS)
+- **Agents record their own work.** An agent in Claude Code or T3 uses the `axiom` CLI (and the bundled skill) to create its topic, attach its session, and write history as it goes: notes, decisions, findings, verifications and next steps.
+- **Statuses that follow the agents.** A topic is `wip` while its agent runs and settles by itself when the agent stops: `hitl` when it needs you, `review` with a PR, `monitoring`, `blocked`, `done`, or back to `idle`. You can mark old work `stale`.
+- **Three views:** what's ongoing, what requires your attention, and what is being monitored.
+- **Tasks with dependencies.** Plans become tasks with a status and the tasks they wait on, drawn as a dependency graph.
+- **Links and artifacts.** Repositories, branches, worktrees, PRs, specs and artifacts are linked from the topic. Specs and plans open in the app as rendered Markdown (with Mermaid diagrams).
+- **Tickets and epics** group topics, and can be linked to their Jira ticket.
+- **Notifications** when an agent stops or needs you, with per-kind and per-topic muting.
+- Three tracker layouts (Board, Inbox, Console), switchable in settings.
 
-Needs Node 24 or newer (Axiom uses `node:sqlite`) and npm; Claude Code (`claude` on PATH) for Claude Code threads and Desk summaries; T3 Code (`~/.t3/bin/t3`) for T3 threads. Both providers are optional.
+### The Desk
+
+A grid of cards, one per topic, to watch and steer many agents at once.
+
+- **What happened, in one line.** Each time a thread stops, a Haiku summary says what the agent did and what it needs from you next; the full reply is one click away, rendered as Markdown.
+- **Live activity:** a running thread shows the step it is on (`$ npm test`, `Reading app.ts`, ...).
+- **Reply from the card:** to the selected thread, or as a new thread on the topic, with a model and effort picker.
+- **Answer agents from the card:** approve or deny Claude Code permission prompts, and answer T3 questions.
+- **New topic:** create a topic and start its first agent thread in one step.
+- **Arrange it your way:** favourites, hiding, drag to reorder or sort by "ready first", and choose how many cards per row.
+
+### Coming later
+
+An ambient agent (the "Steward") that wakes on a schedule, watches your topics and their PRs, and tells you about problems before you go looking. It suggests, but never overwrites your work.
+
+## Requirements
+
+- macOS or Linux
+- Node.js 24 or newer, with npm
+- At least one agent tool:
+  - Claude Code, with `claude` on your PATH (it also writes the Desk summaries)
+  - T3 Code, with its CLI at `~/.t3/bin/t3`
+
+## Install
 
 ```sh
-git clone <this repo> ~/projects/axiom   # see "Another machine" below
-cd ~/projects/axiom
-scripts/install.sh                       # --help for options
-axiom server                             # then open http://127.0.0.1:4477
+git clone <repository-url> axiom
+cd axiom
+scripts/install.sh
 ```
 
-The script checks the requirements, runs `npm ci` and the build, links `axiom` and `axiom-server` into `~/.local/bin` (`--bin-dir` to change it; it tells you if that folder isn't on PATH), and links the `axiom` skill into `~/.claude/skills`. Then it asks two questions (both default to no, and are skipped without a terminal):
+The installer checks the requirements, builds Axiom, puts `axiom` and `axiom-server` on your PATH (in `~/.local/bin`; it tells you if that folder isn't on PATH yet), and installs the `axiom` skill for Claude Code. It then asks two questions:
 
-1. Add Axiom's hooks to `~/.claude/settings.json`? (a backup is made; `--hooks` / `--no-hooks` answer it)
-2. Start the server now and at every login? This sets up a user service, systemd on Linux and launchd on macOS (`--service` / `--no-service`). Once set up, every later run restarts it on the new build without asking.
+1. **Add Axiom's hooks to Claude Code?** They let Axiom see your Claude Code sessions, show their live step, and route their permission prompts to the Desk. Your settings file is backed up first.
+2. **Start the server now and at every login?** This sets it up as a user service (systemd on Linux, launchd on macOS).
 
-`--yes` answers yes to both. The script never touches `~/.t3`.
+Then open **http://127.0.0.1:4477**.
 
-**Updating:** `git pull && scripts/install.sh`. The service, if you set one up, is restarted; a server started by hand needs a restart (the web app shows a banner when the server is older than the build).
+Run `scripts/install.sh --help` for the options: `--yes` answers yes to both questions, `--hooks` / `--no-hooks` and `--service` / `--no-service` answer one of them, and `--bin-dir` changes where the commands go.
 
-**Another machine:** the repository is local only. Either clone it over SSH from the machine that has it (`git clone ssh://<host>/home/<you>/projects/axiom`, then `git pull` to update), or carry a bundle: `git bundle create axiom.bundle --all` here, `git clone axiom.bundle ~/projects/axiom` there. Never copy `node_modules`: the install builds it for that system.
+**Updating:** `git pull && scripts/install.sh`. The service restarts on the new build; restart a server you started by hand. The app shows a banner when the server is older than the build.
 
-**The service by hand:** `axiom server install` writes `~/.config/systemd/user/axiom.service` (Linux) or `~/Library/LaunchAgents/local.axiom.server.plist` (macOS, logs in `~/Library/Logs/axiom/`) and prints the `systemctl --user` / `launchctl` commands to enable it. The service keeps the PATH you installed with, so it finds `claude` and `t3`; re-run it after moving them.
+**Without the service:** run `axiom server` (add `--port N` to change the port) whenever you want Axiom up.
 
-**Paths:** the database is `$AXIOM_DB`, else `$XDG_DATA_HOME/axiom/axiom.db`, else `~/.local/share/axiom/axiom.db` (macOS too). T3's data folder is `~/.t3/userdata` (`AXIOM_T3_DIR` overrides it). The hooks call the `node` that ran the install by its full path: after switching Node versions (nvm, fnm), re-run `scripts/install.sh`.
+## Using it with your agents
 
-**Removing:** `axiom hooks uninstall`, then delete the `~/.local/bin/axiom*` and `~/.claude/skills/axiom` links and the service file if you wrote one. The database stays until you delete it.
+Axiom only tracks projects that opt in. Add this line to a project's `AGENTS.md` or `CLAUDE.md`:
 
-## Layout
+> Track work in Axiom (see the `axiom` skill).
 
-| Path | What lives there |
-| --- | --- |
-| `docs/spec/` | The specification, one file per area, with an index and per-section status |
-| `docs/plan/` | Build plans: [v1-tracker.md](docs/plan/v1-tracker.md), [desk.md](docs/plan/desk.md) |
-| `packages/` | `core` (database), `cli` (`axiom`), `server` (API + providers), `web` (the app) |
-| `scripts/` | `install.sh`, the demo seed |
-| `docs/adr/` | Architecture Decision Records for decisions with real alternatives |
-| `CONTEXT.md` | Glossary: the words Axiom uses and what they mean |
-| `AGENTS.md` | Rules for agents working in this repo |
+Agents working in that project then keep their topic up to date on their own. Threads you start from the Desk are attached to their topic automatically.
+
+You can also use the CLI yourself:
+
+```sh
+axiom topic list                 # what's going on
+axiom topic show <slug>          # a topic: status, goal, links, recent history
+axiom topic new <slug> --title "…" --goal "…"
+axiom entry note "…"             # also: decision, finding, verification, next-steps
+axiom task list                  # tasks and what they wait on
+axiom --help                     # everything else; add --json to any command
+```
+
+## Your data
+
+Everything lives in one SQLite database: `~/.local/share/axiom/axiom.db`, on macOS too. Set `AXIOM_DB` to put it elsewhere. The server keeps a daily backup of the last seven days in `backups/` next to it.
+
+Axiom reads T3 Code's own database (`~/.t3/userdata`, or `AXIOM_T3_DIR`) but never writes to it. Agent summaries keep only the latest one per thread.
+
+## Uninstall
+
+```sh
+axiom hooks uninstall
+systemctl --user disable --now axiom.service                 # Linux, if you set up the service
+launchctl bootout gui/$(id -u)/local.axiom.server             # macOS, if you set up the service
+rm ~/.local/bin/axiom ~/.local/bin/axiom-server ~/.claude/skills/axiom
+```
+
+Then delete the service file (`~/.config/systemd/user/axiom.service` or `~/Library/LaunchAgents/local.axiom.server.plist`) and, if you no longer want your data, `~/.local/share/axiom`.
 
 ## Development
 
-Requires Node 24 and npm (npm workspaces: `packages/core`, `cli`, `server`, `web`).
+Axiom is a TypeScript monorepo (npm workspaces): `packages/core` (the database), `packages/cli` (the `axiom` command), `packages/server` (the local API and agent providers) and `packages/web` (the React app).
 
 ```sh
-npm install        # install all workspace dependencies
-npm run build      # build every package (tsc -b, then vite build)
-npm test           # vitest over all packages
-npm run lint       # biome check
-npm run format     # biome format --write
+npm install        # dependencies
+npm run build      # build every package
+npm test           # tests
+npm run lint       # Biome
 npm run typecheck  # type-check every package
-npm run dev        # start the web dev server
+npm run dev        # web dev server
 ```
 
-### Commands on PATH
-
-`~/.local/bin/axiom` and `~/.local/bin/axiom-server` are symlinks to the built entry points (`packages/cli/dist/index.js`, `packages/server/dist/cli.js`), made by `scripts/install.sh`, so keep `main` built (`npm run build`).
-
-- `axiom server` (or `axiom server start --port N`) runs the server in the foreground at http://127.0.0.1:4477.
-- `axiom server install [--dry-run] [--platform linux|darwin]` writes the user service (systemd on Linux, launchd on macOS) and prints the commands to enable it. It never enables anything itself.
+The design lives in [`docs/spec/`](docs/spec/README.md), the architecture decisions in [`docs/adr/`](docs/adr/README.md), and the vocabulary in [`CONTEXT.md`](CONTEXT.md).
