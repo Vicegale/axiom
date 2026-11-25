@@ -13,6 +13,7 @@
   /* history entry kinds */
   --k-note: #8b93a0; --k-decision: #f5a524; --k-finding: #ff8a3d; --k-verification: #3fcf8e; --k-owner: #ff6b9a;
   --k-authorization: #b48cff; --k-next: #46b7ff; --k-axiom: #5c6470;
+  --ink-mix: 55%; /* how much of a status colour tints its text: 4.5:1 in both themes */
   --radius: 0.375rem;
   color-scheme: dark;
 }

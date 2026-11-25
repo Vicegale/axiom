@@ -7,7 +7,7 @@
 }
 .bd-app .s-hitl, .bd-app .s-error, .bd-app .s-wip, .bd-app .s-monitoring, .bd-app .s-review,
 .bd-app .s-idle, .bd-app .s-blocked, .bd-app .s-stale, .bd-app .s-done {
-  --ink: color-mix(in srgb, var(--c) 70%, var(--text));
+  --ink: color-mix(in srgb, var(--c) var(--ink-mix), var(--text));
 }
 .bd-top {
   flex: none; height: 2.75rem; display: flex; align-items: center; gap: 0.875rem;

@@ -229,7 +229,6 @@ export function BoardShell() {
         tabIndex={-1}
         inert={!tray}
       >
-        <Splitter pane={trayHeight} axis="row" after edge="start" label="Resize notifications" />
         <header className="bd-tray-head">
           <h2>Notifications</h2>
           <span className="fine">
@@ -257,6 +256,7 @@ export function BoardShell() {
             />
           ) : null}
         </div>
+        <Splitter pane={trayHeight} axis="row" after edge="start" label="Resize notifications" />
       </aside>
 
       {selected && !onSettings ? (

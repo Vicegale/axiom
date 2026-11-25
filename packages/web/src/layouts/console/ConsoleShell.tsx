@@ -320,14 +320,6 @@ export function ConsoleShell() {
 
       {drawer ? (
         <aside className="cs-drawer" aria-label="Notifications" ref={drawerRef} tabIndex={-1}>
-          <Splitter
-            pane={drawerPane}
-            axis="col"
-            after
-            edge="start"
-            label="Resize notifications"
-            className="sp-drawer"
-          />
           <header>
             <b>Notifications</b>
             <span className="cs-count">{notifications.length}</span>
@@ -344,6 +336,14 @@ export function ConsoleShell() {
               onOpen={openTopic}
             />
           </div>
+          <Splitter
+            pane={drawerPane}
+            axis="col"
+            after
+            edge="start"
+            label="Resize notifications"
+            className="sp-drawer"
+          />
         </aside>
       ) : null}
 

@@ -14,7 +14,7 @@
 .task { border-bottom: 1px solid var(--line); padding: 0.4375rem 0 0.4375rem 0.5rem; border-left: 2px solid transparent; }
 .task.is-picked { border-left-color: var(--focus); background: color-mix(in srgb, var(--focus) 9%, transparent); }
 .task-line { display: grid; grid-template-columns: 2.375rem minmax(0, 1fr) auto auto; align-items: center; gap: 0.25rem 0.625rem; }
-.task-key { font: 600 0.7188rem var(--font-mono); color: color-mix(in srgb, var(--c, var(--text-2)) 70%, var(--text)); }
+.task-key { font: 600 0.7188rem var(--font-mono); color: color-mix(in srgb, var(--c, var(--text-2)) var(--ink-mix), var(--text)); }
 .task-title { min-width: 0; font-size: 0.8125rem; text-align: left; overflow-wrap: anywhere; }
 .task-title.as-button { background: none; border: 0; padding: 0; color: inherit; cursor: pointer; text-decoration: underline dotted var(--text-3); text-underline-offset: 0.1875rem; }
 .task.is-waiting .task-title { color: var(--text-2); }

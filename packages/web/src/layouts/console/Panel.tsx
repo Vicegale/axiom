@@ -42,6 +42,7 @@ export function Panel({ slug, listItem, now }: Props) {
   return (
     <section className="cs-panel" aria-label="Selected topic">
       <div className="cs-phead">
+        <h2 className="sr-only">{listItem?.title ?? slug ?? "Topic panel"}</h2>
         {listItem ? <Glyph status={listItem.status} /> : null}
         <span className="cs-pslug">{slug ?? "No topic selected"}</span>
         <span className="cs-ptitle">{listItem?.title ?? ""}</span>

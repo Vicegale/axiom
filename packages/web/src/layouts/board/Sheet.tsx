@@ -46,7 +46,6 @@ export function Sheet({ slug, listItem, now, onClose }: Props) {
   const current = SHEET_TABS.find((t) => t.id === tab) ?? SHEET_TABS[0];
   return (
     <Modal className={`bd-sheet s-${status}`} labelledBy="bd-sheet-title" onClose={onClose}>
-      <Splitter pane={width} axis="col" after edge="start" label="Resize topic sheet" />
       <header className="bd-sheet-head">
         <div className="bd-sh-row">
           <StatusPill status={listItem?.status} />
@@ -106,6 +105,7 @@ export function Sheet({ slug, listItem, now, onClose }: Props) {
           )}
         </TopicLoader>
       </div>
+      <Splitter pane={width} axis="col" after edge="start" label="Resize topic sheet" />
     </Modal>
   );
 }
