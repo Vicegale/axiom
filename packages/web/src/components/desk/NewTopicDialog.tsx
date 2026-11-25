@@ -290,51 +290,19 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
           ) : null}
         </div>
 
-        <div className="nt-field">
-          <label htmlFor={id("goal")}>
-            Goal <span className="nt-opt">optional</span>
-          </label>
-          <input
-            id={id("goal")}
-            value={goal}
-            disabled={created !== null}
-            onChange={(e) => setGoal(e.target.value)}
-          />
-        </div>
+        <div className="nt-row nt-meta">
+          <div className="nt-field nt-goal">
+            <label htmlFor={id("goal")}>
+              Goal <span className="nt-opt">optional</span>
+            </label>
+            <input
+              id={id("goal")}
+              value={goal}
+              disabled={created !== null}
+              onChange={(e) => setGoal(e.target.value)}
+            />
+          </div>
 
-        <div className="nt-row">
-          {withMessage ? null : (
-            <div className="nt-field">
-              <label htmlFor={id("folder")}>
-                Project folder <span className="nt-opt">optional</span>
-              </label>
-              <input
-                id={id("folder")}
-                ref={folderRef}
-                list={id("folders")}
-                value={folder}
-                disabled={created !== null}
-                placeholder="~/projects/…"
-                spellCheck={false}
-                autoComplete="off"
-                onChange={(e) => setFolder(e.target.value)}
-              />
-              <datalist id={id("folders")}>
-                {t3Projects?.map((p) => (
-                  <option key={`t3-${p.id}`} value={p.workspaceRoot}>
-                    T3: {p.title}
-                  </option>
-                ))}
-                {workspaces
-                  .filter((w) => !t3Projects?.some((p) => p.workspaceRoot === w.path))
-                  .map((w) => (
-                    <option key={w.path} value={w.path}>
-                      {w.label}
-                    </option>
-                  ))}
-              </datalist>
-            </div>
-          )}
           <div className="nt-field">
             <label htmlFor={id("parent")}>
               Parent <span className="nt-opt">optional</span>
@@ -367,6 +335,39 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
             </select>
           </div>
         </div>
+
+        {withMessage ? null : (
+          <div className="nt-field">
+            <label htmlFor={id("folder")}>
+              Project folder <span className="nt-opt">optional</span>
+            </label>
+            <input
+              id={id("folder")}
+              ref={folderRef}
+              list={id("folders")}
+              value={folder}
+              disabled={created !== null}
+              placeholder="~/projects/…"
+              spellCheck={false}
+              autoComplete="off"
+              onChange={(e) => setFolder(e.target.value)}
+            />
+            <datalist id={id("folders")}>
+              {t3Projects?.map((p) => (
+                <option key={`t3-${p.id}`} value={p.workspaceRoot}>
+                  T3: {p.title}
+                </option>
+              ))}
+              {workspaces
+                .filter((w) => !t3Projects?.some((p) => p.workspaceRoot === w.path))
+                .map((w) => (
+                  <option key={w.path} value={w.path}>
+                    {w.label}
+                  </option>
+                ))}
+            </datalist>
+          </div>
+        )}
 
         <ComposerBox className="nt-composer">
           <ComposerText
