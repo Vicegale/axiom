@@ -1,21 +1,103 @@
-/* The reply box of a Desk card. */
-.reply-box { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.625rem 0; }
-.reply-target { font-size: 0.75rem; color: var(--meta); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.reply-target strong { color: var(--text); font-weight: 600; }
-.reply-text {
-  width: 100%; min-height: 5rem; padding: 0.5rem; resize: vertical; font: inherit; font-size: 0.8125rem;
-  color: var(--text); background: var(--panel); border: 1px solid var(--control); border-radius: 0.1875rem;
+/* The composer of a Desk card (02): a one-line bar that expands into a box with its controls inside. */
+.rc-bar {
+  display: flex; align-items: center; gap: 0.5rem; width: 100%; min-height: 2.25rem; padding: 0 0.375rem 0 0.75rem;
+  font: inherit; font-size: 0.8125rem; text-align: left; color: var(--text-3); background: var(--raised);
+  border: 1px solid var(--line-strong); border-radius: 0.75rem; cursor: text;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
 }
-.reply-text:focus-visible, .reply-field select:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-.reply-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.reply-field { display: flex; flex-direction: column; gap: 0.125rem; min-width: 0; font-size: 0.6875rem; color: var(--meta); }
-.reply-field select {
-  height: 1.75rem; max-width: 14rem; padding: 0 0.375rem; font: inherit; font-size: 0.75rem; color: var(--text);
-  background: var(--panel); border: 1px solid var(--control); border-radius: 0.1875rem;
+.rc-bar:hover { border-color: var(--text-3); color: var(--text-2); }
+.rc-bar:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.rc-bar-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-draft { color: var(--text-2); }
+.rc-tag {
+  flex: none; padding: 0.0625rem 0.375rem; font-size: 0.6875rem; line-height: 1.25; color: var(--text-2);
+  border: 1px solid var(--line-strong); border-radius: 0.625rem;
 }
-.reply-field select:disabled { opacity: 0.5; }
-.reply-hint { font-size: 0.6875rem; color: var(--meta); }
-.reply-error { padding: 0.5rem; font-size: 0.75rem; color: var(--st-error); border: 1px solid var(--st-error); border-radius: 0.1875rem; }
-.reply-resume { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.375rem; }
-.reply-resume code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font: 400 0.6875rem/1.4 var(--font-mono); color: var(--text); }
-.reply-actions { display: flex; justify-content: flex-end; gap: 0.5rem; }
+.rc-bar-send { flex: none; display: grid; place-items: center; width: 1.5rem; height: 1.5rem; border-radius: 50%; color: var(--text-3); }
+.rc-bar:hover .rc-bar-send { color: var(--text); }
+
+/* Height and opacity ease in and out; the wrapper is a one-row grid so the height needs no measuring. */
+.rc-wrap { display: grid; grid-template-rows: 1fr; }
+.rc-wrap.in { animation: rc-in 0.16s ease-out; }
+.rc-wrap.out { animation: rc-out 0.14s ease-in forwards; }
+.rc-wrap.in, .rc-wrap.out { overflow: hidden; }
+.rc-wrap.in > .rc-box, .rc-wrap.out > .rc-box { min-height: 0; }
+@keyframes rc-in { from { grid-template-rows: 0fr; opacity: 0; } to { grid-template-rows: 1fr; opacity: 1; } }
+@keyframes rc-out { from { grid-template-rows: 1fr; opacity: 1; } to { grid-template-rows: 0fr; opacity: 0; } }
+
+.rc-box {
+  display: flex; flex-direction: column; gap: 0.25rem; min-width: 0; padding: 0.625rem 0.5rem 0.5rem 0.75rem;
+  background: var(--raised); border: 1px solid var(--line-strong); border-radius: 0.75rem;
+  transition: border-color 0.12s ease;
+}
+.rc-box:focus-within { border-color: var(--focus); outline: 2px solid color-mix(in srgb, var(--focus) 35%, transparent); outline-offset: 0; }
+.rc-text {
+  display: block; width: 100%; min-height: 1.5rem; max-height: 15rem; padding: 0; resize: none; overflow-y: auto;
+  font: inherit; font-size: 0.8125rem; line-height: 1.5; color: var(--text); background: transparent; border: 0; outline: none;
+}
+.rc-text::placeholder { color: var(--text-3); }
+
+.rc-error { padding: 0.375rem 0.5rem; font-size: 0.75rem; color: var(--st-error); border: 1px solid color-mix(in srgb, var(--st-error) 55%, transparent); border-radius: 0.375rem; background: color-mix(in srgb, var(--st-error) 8%, transparent); }
+.rc-resume { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.375rem; }
+.rc-resume code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font: 400 0.6875rem/1.4 var(--font-mono); color: var(--text); }
+
+.rc-bottom { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.125rem; }
+.rc-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; min-width: 0; }
+.rc-actions { display: flex; flex: none; align-items: center; gap: 0.25rem; }
+.rc-keys { margin-right: 0.25rem; font: 400 0.625rem/1 var(--font-mono); color: var(--text-3); white-space: nowrap; }
+@media (max-width: 26rem) { .rc-keys { display: none; } }
+
+.rc-chip {
+  display: inline-flex; align-items: center; gap: 0.25rem; max-width: 11rem; height: 1.5rem; padding: 0 0.4375rem 0 0.5rem;
+  font: inherit; font-size: 0.75rem; color: var(--text-2); background: transparent;
+  border: 1px solid var(--line-strong); border-radius: 0.75rem; cursor: pointer;
+}
+.rc-chip:hover { color: var(--text); border-color: var(--text-3); }
+.rc-chip.muted { color: var(--text-3); }
+.rc-chip.muted:hover { color: var(--text-2); }
+.rc-chip:has(+ .rc-menu:popover-open) { color: var(--text); border-color: var(--text-3); background: var(--panel-2); }
+.rc-chip[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; }
+.rc-chip[aria-disabled="true"]:hover { color: var(--text-2); border-color: var(--line-strong); }
+.rc-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rc-chev { flex: none; opacity: 0.7; }
+
+.rc-icon, .rc-send {
+  display: grid; place-items: center; flex: none; width: 1.75rem; height: 1.75rem; padding: 0; border-radius: 50%;
+  font: inherit; cursor: pointer;
+}
+.rc-icon { color: var(--text-3); background: transparent; border: 0; }
+.rc-icon:hover { color: var(--text); background: var(--panel-2); }
+.rc-send { color: var(--text-3); background: var(--panel-2); border: 1px solid var(--line-strong); }
+.rc-send.ready { color: var(--bg); background: var(--focus); border-color: var(--focus); }
+.rc-send.ready:hover { filter: brightness(1.1); }
+.rc-send:disabled { cursor: default; }
+.rc-send[aria-busy="true"] { color: var(--bg); background: var(--focus); border-color: var(--focus); opacity: 0.8; }
+.rc-spin { width: 0.875rem; height: 0.875rem; border: 2px solid color-mix(in srgb, var(--bg) 35%, transparent); border-top-color: var(--bg); border-radius: 50%; animation: rc-spin 0.7s linear infinite; }
+@keyframes rc-spin { to { transform: rotate(360deg); } }
+.rc-chip:focus-visible, .rc-icon:focus-visible, .rc-send:focus-visible, .rc-opt:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+.rc-menu {
+  position: fixed; inset: auto; margin: 0; padding: 0.25rem; overflow-y: auto; color: var(--text); background: var(--raised);
+  border: 1px solid var(--line-strong); border-radius: 0.5rem; box-shadow: 0 0.875rem 2.125rem rgba(0, 0, 0, 0.28);
+}
+.rc-menu:not(:popover-open) { display: none; }
+.rc-menu:focus-visible { outline: none; }
+.rc-opt-wrap[data-separated="true"] { margin-top: 0.25rem; padding-top: 0.25rem; border-top: 1px solid var(--line); }
+.rc-opt {
+  display: grid; grid-template-columns: 0.75rem minmax(0, 1fr); gap: 0.5rem; align-items: start; width: 100%;
+  padding: 0.375rem 0.5rem; font: inherit; text-align: left; color: inherit; background: transparent; border: 0;
+  border-radius: 0.3125rem; cursor: pointer;
+}
+.rc-opt:hover, .rc-opt:focus-visible { background: var(--panel-2); }
+.rc-opt:focus-visible { outline-offset: -2px; }
+.rc-tick { margin-top: 0.25rem; visibility: hidden; color: var(--focus); }
+.rc-opt[aria-checked="true"] .rc-tick { visibility: visible; }
+.rc-opt-body { display: flex; flex-direction: column; gap: 0.0625rem; min-width: 0; }
+.rc-opt-label { font-size: 0.8125rem; line-height: 1.3; overflow-wrap: anywhere; }
+.rc-opt-hint { font-size: 0.6875rem; line-height: 1.4; color: var(--text-2); }
+
+@media (prefers-reduced-motion: reduce) {
+  .rc-wrap.in, .rc-wrap.out { animation: none; }
+  .rc-bar, .rc-box { transition: none; }
+  .rc-spin { animation-duration: 2s; }
+}

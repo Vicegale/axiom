@@ -135,6 +135,14 @@ export function DeskCard({ topic, now, theme, move, onFavorite, onHide, onOpen, 
       }`}
       data-slug={topic.slug}
       aria-labelledby={`${uid}-t`}
+      onKeyDown={(e) => {
+        // `r` on a focused card (not while typing in a field) opens the composer.
+        if (e.key !== "r" || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
+        const el = e.target as HTMLElement;
+        if (el.closest("input, textarea, select, [contenteditable], [role=menu]")) return;
+        e.preventDefault();
+        setReplying(true);
+      }}
     >
       <header className="dk-head">
         <h2 id={`${uid}-t`} className="dk-title">
@@ -289,31 +297,14 @@ export function DeskCard({ topic, now, theme, move, onFavorite, onHide, onOpen, 
         </>
       ) : null}
 
-      <div className="dk-foot">
-        <button
-          type="button"
-          className="btn ghost"
-          aria-expanded={replying}
-          aria-controls={`${uid}-rb`}
-          onClick={() => setReplying((v) => !v)}
-        >
-          Reply
-        </button>
-      </div>
-      <div id={`${uid}-rb`} hidden={!replying}>
-        {replying ? (
-          <ReplyBox
-            topicSlug={topic.slug}
-            thread={thread}
-            threads={threads}
-            onSent={() => {
-              setReplying(false);
-              onSent();
-            }}
-            onClose={() => setReplying(false)}
-          />
-        ) : null}
-      </div>
+      <ReplyBox
+        topicSlug={topic.slug}
+        thread={thread}
+        threads={threads}
+        open={replying}
+        onOpenChange={setReplying}
+        onSent={onSent}
+      />
     </article>
   );
 }
