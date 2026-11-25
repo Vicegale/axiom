@@ -130,6 +130,7 @@ The owner can hard-delete an entry (for example one that leaked a secret). Nothi
    - Answered by 00 (single user, local): no.
 6. **Important.** "With more than one thread on a topic, the topic's status is null" (01). A topic collects many threads over its life, so read literally almost every topic would end up with a null status. Does it mean *more than one thread active at the same time*? The draft assumes that: once only one thread is active again, or none, the topic has its own status again.
    - Provisional 2026-11-25: build with that assumption and decide from real use. Keep the rule in one place in `core` so it is cheap to change.
+   - Implemented 2026-11-25 (`packages/core/src/rules.ts`, `topicStatusFromThreads`): more than one open `wip` thread → null; exactly one → `wip`; otherwise an open `error` thread, then an open `hitl` thread, decides (so a question is never hidden by another thread stopping later); otherwise the most recently changed thread.
 7. Does a thread always belong to exactly one topic?
    - Answered 2026-11-25: yes. It can mention other topics, but belongs to one.
 8. When the owner dismisses a "mark as stale" prompt without marking the topic stale, does the prompt come back after another N days, or never for that topic?
