@@ -12,6 +12,7 @@ import { Link } from "wouter";
 import { api, type DeskTopic, type Health } from "../api";
 import { SkipLink } from "../components";
 import { DeskCard } from "../components/desk/DeskCard";
+import { NewTopicDialog } from "../components/desk/NewTopicDialog";
 import { useResource } from "../data/useResource";
 import { hrefs } from "../layouts/shared/routes";
 import { useShell } from "../layouts/shared/useShell";
@@ -170,6 +171,10 @@ export function DeskPage() {
   const settled = useRef(false);
   const [said, setSaid] = useState("");
   const main = useRef<HTMLElement>(null);
+  const newButton = useRef<HTMLButtonElement>(null);
+  const [creating, setCreating] = useState(false);
+  /** The slug of a topic just created, until its card has been shown. */
+  const [fresh, setFresh] = useState<string | null>(null);
   const theme = effectiveTheme(data.settings?.theme);
 
   const setSort = (s: DeskSort) => {
@@ -326,6 +331,47 @@ export function DeskPage() {
 
   const health = providerHealth(data.health);
 
+  // `n` opens the New topic dialog unless the owner is typing or another dialog is open.
+  useEffect(() => {
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== "n" || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey || e.defaultPrevented) {
+        return;
+      }
+      const t = e.target;
+      if (
+        t instanceof HTMLElement &&
+        (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))
+      ) {
+        return;
+      }
+      if (document.querySelector("dialog[open]")) return;
+      e.preventDefault();
+      setCreating(true);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Focus goes back to the button when the dialog closes (also after the `n` key).
+  const wasCreating = useRef(false);
+  useEffect(() => {
+    if (wasCreating.current && !creating) newButton.current?.focus();
+    wasCreating.current = creating;
+  }, [creating]);
+
+  // The topic just created: scroll its card into view and flash it once it has arrived.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs when the cards change.
+  useEffect(() => {
+    if (!fresh) return;
+    const el = main.current?.querySelector<HTMLElement>(`[data-slug="${CSS.escape(fresh)}"]`);
+    if (!el) return;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+    el.scrollIntoView?.({ block: "center", behavior: reduce ? "auto" : "smooth" });
+    el.classList.add("nt-flash");
+    setTimeout(() => el.classList.remove("nt-flash"), 2400);
+    setFresh(null);
+  }, [fresh, shown]);
+
   return (
     <div className={`dk-app${data.error ? " has-banner" : ""}`} data-per-row={String(perRow)}>
       <SkipLink />
@@ -371,8 +417,13 @@ export function DeskPage() {
               </li>
             ))}
           </ul>
-          {/* TODO(D4): + New topic (title, folder, first message, provider, model, effort). */}
-          <button type="button" className="btn dk-new" disabled title="Arrives with D4">
+          <button
+            type="button"
+            ref={newButton}
+            className="btn dk-new"
+            title="New topic (n)"
+            onClick={() => setCreating(true)}
+          >
             + New topic
           </button>
           <HiddenMenu hidden={hidden} onUnhide={(s) => void actions.setDeskHidden(s, false)} />
@@ -431,6 +482,17 @@ export function DeskPage() {
           </div>
         )}
       </main>
+      {creating ? (
+        <NewTopicDialog
+          onClose={() => setCreating(false)}
+          onTopic={data.refresh}
+          onDone={(slug) => {
+            setCreating(false);
+            setFresh(slug);
+            data.refresh();
+          }}
+        />
+      ) : null}
       <div className="sr-only" aria-live="polite">
         {said}
       </div>

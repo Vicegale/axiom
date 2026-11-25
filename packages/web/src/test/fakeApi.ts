@@ -163,6 +163,18 @@ export class FakeServer {
   /** Artifact metadata by `<slug>:<linkId>`; a missing key is a 404. */
   artifacts = new Map<string, ArtifactData>();
 
+  workspaces: { path: string; label: string; source: string }[] = [];
+  composeOptions = {
+    source: "static",
+    providers: {
+      t3: { models: ["claude-opus-5-5", "claude-sonnet-5-5"], efforts: ["low", "high"] },
+      "claude-code": { models: ["claude-opus-5-5", "claude-sonnet-5-5"], efforts: ["low", "high"] },
+    },
+  };
+  createTopicFails = false;
+  /** How many POST .../threads/new calls answer 502 before one succeeds. */
+  newThreadFails = 0;
+
   install(): void {
     vi.stubGlobal(
       "fetch",
@@ -243,6 +255,29 @@ export class FakeServer {
       return art
         ? this.json(art)
         : this.json({ error: { code: "not-found", message: "no such file" } }, 404);
+    }
+    if (method === "GET" && path === "/api/workspaces") return this.json(this.workspaces);
+    if (method === "GET" && path === "/api/compose/options") return this.json(this.composeOptions);
+    if (method === "POST" && path === "/api/topics") {
+      if (this.createTopicFails) {
+        return this.json({ error: { code: "conflict", message: "slug taken" } }, 409);
+      }
+      const slug = String(body.slug ?? body.title)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-");
+      this.desk.push(deskTopic({ slug, title: body.title }));
+      return this.json({ slug, title: body.title }, 201);
+    }
+    const newThreadM = /^\/api\/topics\/([^/]+)\/threads\/new$/.exec(path);
+    if (newThreadM && method === "POST") {
+      if (this.newThreadFails > 0) {
+        this.newThreadFails--;
+        return this.json(
+          { error: { code: "provider", message: "t3 thread start exited with 1" } },
+          502,
+        );
+      }
+      return this.json({ id: 900 }, 201);
     }
     if (method === "GET" && path === "/api/desk") return this.json({ topics: this.desk });
     const replyM = /^\/api\/threads\/(\d+)\/reply$/.exec(path);
