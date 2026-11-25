@@ -1,0 +1,1150 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-open="axiom-spec">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Axiom · triage inbox (mockup)</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+/* Triage inbox: mail-client split view. Colour and type come from the shared token sheet. */
+[hidden] { display: none !important; }
+*, *::before, *::after { box-sizing: border-box; }
+:root { --meta: color-mix(in srgb, var(--text-2) 55%, var(--text-3)); }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font: 13px/1.45 var(--font-sans); -webkit-font-smoothing: antialiased; }
+button, input { font: inherit; color: inherit; }
+h1, h2, h3, p, dl, dd, ul, ol { margin: 0; padding: 0; }
+ul, ol { list-style: none; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+
+/* Status and kind colours, read through --c. */
+.s-idle { --c: var(--st-idle); }
+.s-wip { --c: var(--st-wip); }
+.s-hitl { --c: var(--st-hitl); }
+.s-monitoring { --c: var(--st-monitoring); }
+.s-blocked { --c: var(--st-blocked); }
+.s-review { --c: var(--st-review); }
+.s-done { --c: var(--st-done); }
+.s-stale { --c: var(--st-stale); }
+.s-error { --c: var(--st-error); }
+.k-note { --c: var(--k-note); }
+.k-decision { --c: var(--k-decision); }
+.k-finding { --c: var(--k-finding); }
+.k-verification { --c: var(--k-verification); }
+.k-owner { --c: var(--k-owner); }
+.k-authorization { --c: var(--k-authorization); }
+.k-next { --c: var(--k-next); }
+.k-axiom { --c: var(--k-axiom); }
+
+/* Frame: fixed 900px, three columns under a thin bar and above a status bar. */
+.app {
+  display: grid;
+  grid-template-columns: 232px minmax(340px, 400px) minmax(0, 1fr);
+  grid-template-rows: 40px minmax(0, 1fr) 26px;
+  height: 900px;
+  min-width: 1100px;
+  overflow: hidden;
+  background: var(--bg);
+}
+.bar {
+  grid-column: 1 / -1; grid-row: 1;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 10px 0 14px;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 13px; letter-spacing: -0.01em; }
+.brand-mark { width: 10px; height: 10px; border: 2px solid var(--focus); border-radius: 2px; transform: rotate(45deg); }
+.seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 3px; overflow: hidden; }
+.seg button { height: 24px; padding: 0 10px; border: 0; background: none; color: var(--text-2); font-size: 12px; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--line-strong); }
+.seg button[aria-pressed="true"] { background: var(--raised); color: var(--text); }
+
+/* Bottom status bar: counts and clock, in the IDE register. */
+.status {
+  grid-column: 1 / -1; grid-row: 3;
+  display: flex; align-items: center; gap: 18px;
+  padding: 0 12px 0 14px; overflow: hidden; white-space: nowrap;
+  background: var(--panel); border-top: 1px solid var(--line);
+  font: 400 11px var(--font-mono); color: var(--meta);
+}
+.sb { display: inline-flex; align-items: center; gap: 6px; }
+.sb-end { margin-left: auto; }
+.status .sdot { width: 6px; height: 6px; }
+
+/* Rail: mailboxes, piles, notifications, health. */
+.rail {
+  grid-column: 1; grid-row: 2;
+  display: flex; flex-direction: column; gap: 1px;
+  min-height: 0; overflow: auto; padding: 8px 8px 12px;
+  background: var(--panel); border-right: 1px solid var(--line);
+}
+.rail-h { margin: 14px 8px 4px; font-size: 11px; font-weight: 500; color: var(--meta); }
+.nav {
+  display: flex; align-items: center; gap: 8px;
+  width: 100%; height: 28px; padding: 0 8px;
+  border: 0; border-radius: 3px; background: none;
+  color: var(--text-2); text-align: left; cursor: pointer; font-size: 13px;
+}
+.nav:hover { background: var(--panel-2); color: var(--text); }
+.nav[aria-current="true"] { background: var(--raised); color: var(--text); }
+.nav .lbl { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.nav .n { font: 500 11px var(--font-mono); color: var(--meta); font-variant-numeric: tabular-nums; }
+.nav.has-attn .n { color: color-mix(in srgb, var(--st-hitl) 80%, var(--text)); }
+.nav-notifs { margin-top: auto; }
+.sdot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--c, var(--text-3)); }
+.health-block { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.health { display: grid; gap: 10px; margin: 0 8px; font-size: 11px; color: var(--meta); }
+.health li { display: grid; grid-template-columns: 7px minmax(0, 1fr); column-gap: 8px; row-gap: 1px; }
+.health .hd { grid-row: span 2; width: 7px; height: 7px; margin-top: 4px; border-radius: 50%; background: var(--st-done); }
+.health [data-state="warn"] .hd { background: var(--st-hitl); }
+.health [data-state="error"] .hd { background: var(--st-error); }
+.health b { font-weight: 500; color: var(--text-2); }
+.health p { grid-column: 2; line-height: 1.35; overflow-wrap: anywhere; }
+
+/* Pills, chips, buttons, shared bits. */
+.pill {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  height: 18px; padding: 0 6px 0 5px;
+  border: 1px solid color-mix(in srgb, var(--c, var(--text-3)) 42%, transparent);
+  background: color-mix(in srgb, var(--c, var(--text-3)) 13%, transparent);
+  border-radius: 3px;
+  font: 500 11px/1 var(--font-mono); white-space: nowrap;
+  color: color-mix(in srgb, var(--c, var(--text-3)) 70%, var(--text));
+}
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--c, var(--text-3)); }
+.pill.none::before { display: none; }
+.pill.none { color: var(--meta); border-style: dashed; background: none; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  max-width: 100%; min-width: 0; height: 18px; padding: 0 6px;
+  border: 1px solid var(--line-strong); border-radius: 3px;
+  font-size: 11px; color: var(--text-2); white-space: nowrap;
+}
+.chip-t { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.chip .cs { color: var(--meta); }
+.chip .lock { width: 9px; height: 9px; flex: none; color: var(--meta); }
+.btn {
+  display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+  height: 26px; padding: 0 10px;
+  border: 1px solid var(--line-strong); border-radius: 3px; background: var(--raised);
+  color: var(--text); font-size: 12px; font-weight: 500; cursor: pointer;
+}
+.btn:hover { border-color: var(--text-3); }
+.btn.ghost { background: transparent; }
+.btn.primary { border-color: color-mix(in srgb, var(--st-stale) 70%, transparent); background: color-mix(in srgb, var(--st-stale) 22%, transparent); }
+.btn.sm { height: 22px; padding: 0 8px; font-size: 11.5px; }
+.btn[aria-pressed="true"] { border-color: var(--focus); background: color-mix(in srgb, var(--focus) 14%, transparent); }
+.count { font: 500 11px var(--font-mono); color: var(--meta); font-variant-numeric: tabular-nums; }
+.meta { color: var(--meta); }
+.hint { margin-top: 10px; font-size: 12px; line-height: 1.5; color: var(--text-2); max-width: 72ch; }
+.empty, .empty-line { padding: 14px; font-size: 12px; color: var(--meta); }
+.empty-line { padding: 8px 0; }
+
+/* Middle column: list head, sections, rows. */
+.list {
+  grid-column: 2; grid-row: 2;
+  display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  background: var(--panel); border-right: 1px solid var(--line);
+}
+.list-head { flex: none; padding: 12px 14px 10px; border-bottom: 1px solid var(--line); }
+.list-title { display: flex; align-items: baseline; gap: 10px; }
+.list-title h2 { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+.filter { display: block; margin-top: 9px; }
+.filter input {
+  width: 100%; height: 28px; padding: 0 9px;
+  border: 1px solid var(--line-strong); border-radius: 3px; background: var(--bg);
+  font-size: 12px;
+}
+.filter input::placeholder { color: var(--meta); }
+.list-body { position: relative; flex: 1; min-height: 0; overflow: auto; outline: none; }
+.sect-h {
+  position: sticky; top: 0; z-index: 1;
+  display: flex; align-items: center; gap: 8px;
+  height: 30px; padding: 0 14px;
+  background: var(--panel); border-bottom: 1px solid var(--line);
+  font-size: 12px; font-weight: 500; color: var(--text-2);
+}
+.sect-h .count { margin-left: auto; }
+.pile { border-bottom: 1px solid var(--line); }
+.pile > summary {
+  position: sticky; top: 0; z-index: 1;
+  display: flex; align-items: center; gap: 8px;
+  height: 30px; padding: 0 14px; cursor: pointer;
+  background: var(--panel); font-size: 12px; font-weight: 500; color: var(--text-2);
+  list-style: none;
+}
+.pile > summary::-webkit-details-marker { display: none; }
+.pile > summary::before {
+  content: ""; width: 5px; height: 5px; margin: 0 3px 0 1px; flex: none;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  transform: rotate(-45deg);
+}
+.pile[open] > summary::before { transform: rotate(45deg); margin-top: -3px; }
+.pile > summary .count { margin-left: auto; }
+.pile > summary:hover { color: var(--text); }
+
+.row {
+  display: block; width: 100%; margin: 0; padding: 10px 14px;
+  border: 0; border-bottom: 1px solid var(--line); background: none;
+  text-align: left; cursor: pointer;
+  box-shadow: inset 3px 0 0 var(--c, transparent);
+}
+.row:hover { background: var(--panel-2); }
+.row.is-unread { background: color-mix(in srgb, var(--focus) 8%, var(--panel)); }
+.row[aria-current="true"] { background: var(--raised); }
+.row.is-unread[aria-current="true"] { background: color-mix(in srgb, var(--focus) 13%, var(--raised)); }
+.row:focus-visible { outline-offset: -2px; }
+.row-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.row-title { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 13px; font-weight: 500; }
+.row.is-unread .row-title { font-weight: 600; }
+.row-when { flex: none; font: 500 11px var(--font-mono); color: var(--meta); font-variant-numeric: tabular-nums; }
+.udot { flex: none; width: 6px; height: 6px; margin-left: -2px; border-radius: 50%; background: var(--focus); }
+.row-reason {
+  display: block; margin-top: 5px;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  font-size: 12px; line-height: 1.35; color: var(--text);
+}
+.row-reason b { font-weight: 500; color: color-mix(in srgb, var(--c, var(--text)) 72%, var(--text)); }
+.row-note {
+  display: block; margin-top: 2px;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  font-size: 12px; color: var(--text-2);
+}
+.row-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px 6px; margin-top: 7px; min-width: 0; font-size: 11px; color: var(--meta); }
+.row-threads { white-space: nowrap; }
+.tdots { display: inline-flex; align-items: center; gap: 3px; margin-left: 2px; }
+.tdots i { width: 6px; height: 6px; border-radius: 50%; background: var(--c, var(--text-3)); }
+
+/* Notifications panel (replaces the list). */
+.np { padding: 4px 14px 28px; }
+.notifs { margin-top: 6px; }
+.notif {
+  padding: 10px 0 11px 12px; border-bottom: 1px solid var(--line);
+  box-shadow: inset 2px 0 0 var(--c, transparent);
+}
+.n-head { display: flex; align-items: center; gap: 10px; font-size: 11px; color: var(--meta); }
+.n-kind { font: 500 11px var(--font-mono); color: color-mix(in srgb, var(--c, var(--text-2)) 72%, var(--text)); }
+.n-head time { margin-left: auto; font-family: var(--font-mono); }
+.n-topic {
+  display: block; margin-top: 4px; padding: 0; border: 0; background: none;
+  font-size: 13px; font-weight: 500; text-align: left; cursor: pointer;
+}
+.n-topic:hover { text-decoration: underline; text-underline-offset: 3px; }
+.n-body { margin-top: 2px; font-size: 12px; color: var(--text-2); }
+.n-actions { margin-top: 8px; }
+.settings { margin-top: 18px; }
+.settings h3 {
+  margin: 20px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line);
+  font-size: 12px; font-weight: 600; color: var(--text-2);
+}
+.checks { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 14px; }
+.check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; cursor: pointer; }
+.check input { width: 14px; height: 14px; margin: 0; accent-color: var(--focus); }
+.muted-list li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 0; font-size: 12.5px; }
+.inline { font-size: 12.5px; line-height: 2; color: var(--text-2); }
+.inline input {
+  width: 62px; height: 24px; margin: 0 4px; padding: 0 6px;
+  border: 1px solid var(--line-strong); border-radius: 3px; background: var(--bg);
+  font: 500 12px var(--font-mono); color: var(--text);
+}
+.st-dot { display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: var(--st-done); vertical-align: 0; }
+.st-dot[data-state="warn"] { background: var(--st-hitl); }
+
+/* Reader: header, facts, threads, links, monitors, history. */
+.reader {
+  grid-column: 3; grid-row: 2;
+  min-width: 0; min-height: 0; overflow: hidden; outline: none;
+  background-color: var(--bg);
+  background-image: radial-gradient(var(--bg-dots) 1px, transparent 1.3px);
+  background-size: 18px 18px;
+}
+.r-scroll { height: 100%; overflow: auto; padding: 22px 34px 44px; }
+.r-inner { max-width: 860px; }
+.r-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.slug { font: 400 11.5px var(--font-mono); color: var(--meta); }
+.r-h1 { margin-top: 10px; font-size: 21px; line-height: 1.25; font-weight: 600; letter-spacing: -0.012em; text-wrap: balance; }
+.r-h1:focus { outline: none; }
+.status-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.status-note { font-size: 13px; color: var(--text-2); }
+.callout {
+  margin-top: 14px; padding: 9px 12px;
+  border-left: 2px solid var(--c, var(--line-strong));
+  border-radius: 0 3px 3px 0;
+  background: color-mix(in srgb, var(--c, var(--text-3)) 9%, transparent);
+  font-size: 13px; line-height: 1.5;
+}
+.callout strong { font-weight: 600; color: color-mix(in srgb, var(--c) 72%, var(--text)); }
+.prompt {
+  margin-top: 14px; padding: 9px 12px;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border: 1px dashed color-mix(in srgb, var(--st-stale) 70%, transparent); border-radius: 3px;
+  font-size: 13px;
+}
+.prompt-actions { display: flex; gap: 6px; flex: none; }
+.facts {
+  display: grid; grid-template-columns: 96px minmax(0, 1fr);
+  gap: 9px 14px; margin-top: 18px; font-size: 13px;
+}
+.facts dt { font-size: 12px; color: var(--meta); padding-top: 1px; }
+.facts dd { min-width: 0; }
+.parents li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.parents li + li { margin-top: 5px; }
+.p-kind { font-size: 11px; color: var(--meta); min-width: 40px; }
+.p-title { color: var(--text); }
+.p-under { font-size: 12px; color: var(--meta); }
+.p-st { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-2); }
+.p-st .lock { width: 9px; height: 9px; color: var(--meta); }
+
+.sec { margin-top: 26px; }
+.sec-h {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding-bottom: 7px; border-bottom: 1px solid var(--line);
+}
+.sec-title { display: flex; align-items: baseline; gap: 8px; }
+.sec-title h2 { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.picker-wrap { position: relative; margin-left: auto; }
+.picker {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 5;
+  width: 400px; padding: 6px;
+  background: var(--raised); border: 1px solid var(--line-strong); border-radius: 4px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+}
+.picker:focus { outline: none; }
+.picker-h { padding: 6px 8px 8px; font-size: 11px; color: var(--meta); }
+.picker li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 3px; }
+.picker li:hover { background: var(--panel-2); }
+.picker-t { display: block; font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.picker-sub { display: flex; flex-wrap: wrap; gap: 2px 10px; margin-top: 2px; min-width: 0; font: 400 11px/1.4 var(--font-mono); color: var(--meta); }
+.picker-empty { padding: 8px; font-size: 12px; color: var(--meta); }
+
+.threads { margin-top: 2px; }
+.thread {
+  display: grid; grid-template-columns: 78px minmax(0, 1fr) auto auto;
+  align-items: center; gap: 4px 12px;
+  padding: 9px 0; border-bottom: 1px solid var(--line);
+}
+.prov {
+  justify-self: start; display: inline-flex; align-items: center;
+  height: 18px; padding: 0 6px;
+  border: 1px solid var(--line-strong); border-radius: 3px;
+  font: 500 10.5px var(--font-mono); color: var(--text-2); white-space: nowrap;
+}
+.th-main { display: flex; flex-direction: column; min-width: 0; }
+.th-title { font-size: 13px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.th-meta { display: flex; gap: 12px; min-width: 0; font: 400 11px var(--font-mono); color: var(--meta); white-space: nowrap; }
+.th-meta span { overflow: hidden; text-overflow: ellipsis; }
+.th-time { font: 400 11px var(--font-mono); color: var(--meta); white-space: nowrap; }
+
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 28px; }
+.lgroup { margin-top: 12px; }
+.lgroup h3 { margin-bottom: 2px; font-size: 11px; font-weight: 500; color: var(--meta); }
+.lnk { display: flex; flex-direction: column; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.l-label { font-size: 13px; }
+.l-target { font: 400 11px/1.5 var(--font-mono); color: var(--text-2); overflow-wrap: anywhere; }
+.mon {
+  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line);
+}
+.mon-kind { font: 400 11px var(--font-mono); color: var(--text-2); }
+.mon-target { font-size: 12.5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.mon-state { font: 500 10.5px/1 var(--font-mono); padding: 3px 6px; border-radius: 3px; }
+.mon-state.confirmed { color: color-mix(in srgb, var(--st-monitoring) 75%, var(--text)); border: 1px solid color-mix(in srgb, var(--st-monitoring) 45%, transparent); background: color-mix(in srgb, var(--st-monitoring) 12%, transparent); }
+.mon-state.suggested { color: var(--text-2); border: 1px dashed var(--line-strong); }
+
+.day { margin: 20px 0 10px; font-size: 12px; font-weight: 500; color: var(--text-2); }
+.hist { position: relative; padding-left: 18px; }
+.hist::before { content: ""; position: absolute; left: 4px; top: 4px; bottom: 4px; width: 1px; background: var(--line-strong); }
+.entry { position: relative; padding-bottom: 16px; }
+.entry::before {
+  content: ""; position: absolute; left: -18px; top: 4px;
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--bg); border: 2px solid var(--c, var(--text-3));
+}
+.e-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 9px; font-size: 11px; color: var(--meta); }
+.e-label {
+  font: 600 10.5px/1 var(--font-mono); letter-spacing: 0.07em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--c, var(--text-2)) 72%, var(--text));
+}
+.e-meta time, .e-thread { font-family: var(--font-mono); }
+.e-body { margin-top: 5px; max-width: 70ch; font-size: 13.5px; line-height: 1.5; text-wrap: pretty; }
+.e-data { margin-top: 4px; max-width: 70ch; font-size: 12px; line-height: 1.5; color: var(--text-2); }
+.e-data .k { color: var(--meta); }
+.status-move { display: inline-flex; align-items: center; gap: 8px; }
+.arrow { color: var(--meta); }
+.badge {
+  display: inline-flex; align-items: center; height: 17px; padding: 0 6px;
+  border: 1px solid color-mix(in srgb, var(--c, var(--text-2)) 45%, transparent);
+  border-radius: 3px; background: color-mix(in srgb, var(--c, var(--text-2)) 12%, transparent);
+  font: 500 10.5px var(--font-mono); color: color-mix(in srgb, var(--c, var(--text-2)) 70%, var(--text));
+}
+.badge.r-pass { --c: var(--st-done); }
+.badge.r-partial { --c: var(--st-hitl); }
+.badge.r-fail { --c: var(--st-error); }
+.refs { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.refs li { padding: 1px 6px; border: 1px solid var(--line); border-radius: 3px; font: 400 11px var(--font-mono); color: var(--text-2); }
+
+/* Below 1320px the reader is narrow: stack links above monitors. */
+@media (max-width: 1320px) {
+  .two { grid-template-columns: minmax(0, 1fr); }
+  .r-scroll { padding: 22px 26px 44px; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="bar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"></span>Axiom</div>
+    <div class="seg" role="group" aria-label="Theme">
+      <button type="button" data-act="theme" data-value="dark" aria-pressed="true">Dark</button>
+      <button type="button" data-act="theme" data-value="light" aria-pressed="false">Light</button>
+    </div>
+  </header>
+
+  <nav class="rail" id="rail" aria-label="Mailboxes"></nav>
+
+  <section class="list" aria-labelledby="list-title">
+    <div class="list-head">
+      <div class="list-title"><h2 id="list-title">Everything</h2><span class="count" id="list-count"></span></div>
+      <div class="filter" id="filter-wrap">
+        <label class="sr-only" for="filter">Filter topics in this list</label>
+        <input id="filter" type="search" placeholder="Filter topics" autocomplete="off">
+      </div>
+    </div>
+    <div class="list-body" id="list-body" tabindex="-1"></div>
+  </section>
+
+  <main class="reader" id="reader" aria-label="Selected topic" tabindex="-1"></main>
+
+  <footer class="status" id="status"></footer>
+</div>
+
+<script src="data.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  var A = window.AXIOM;
+  var root = document.documentElement;
+  var DAY = 864e5;
+  var NOW = new Date(A.now);
+  var MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  var WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  var SECTIONS = ["attention", "ongoing", "monitoring", "idle", "blocked", "stale", "done"];
+  var PILES = ["idle", "blocked", "stale", "done"];
+  var VIEW_STATUSES = {
+    attention: ["hitl", "error"],
+    ongoing: ["wip"],
+    monitoring: ["monitoring", "review"],
+    idle: ["idle"],
+    blocked: ["blocked"],
+    stale: ["stale"],
+    done: ["done"]
+  };
+  var LABELS = {
+    all: "Everything", attention: "Requires attention", ongoing: "Ongoing",
+    monitoring: "Under monitoring", idle: "Idle", blocked: "Blocked", stale: "Stale", done: "Done"
+  };
+  var DOTS = { attention: "s-hitl", ongoing: "s-wip", monitoring: "s-monitoring", idle: "s-idle", blocked: "s-blocked", stale: "s-stale", done: "s-done" };
+  var KIND_CLASS = {
+    "note": "k-note", "decision": "k-decision", "finding": "k-finding", "verification": "k-verification",
+    "owner input": "k-owner", "authorization": "k-authorization", "next steps": "k-next",
+    "status change": "k-axiom", "topic created": "k-axiom", "thread event": "k-axiom",
+    "git event": "k-axiom", "deploy event": "k-axiom"
+  };
+  var AUTHOR = { agent: "AGENT", owner: "YOU", axiom: "AXIOM" };
+  var NOTIF_STATUS = {
+    "agent asked": "hitl", "agent stopped": "idle", "monitor problem": "hitl", "pr review": "review",
+    "error": "error", "stale prompt": "stale", "jira changed": "monitoring"
+  };
+  var LINK_ORDER = ["repository", "branch", "worktree", "pr", "spec", "artifact"];
+  var LINK_LABEL = { repository: "Repository", branch: "Branch", worktree: "Worktree", pr: "Pull requests", spec: "Specs", artifact: "Artifacts" };
+  var PROVIDER = { t3: "T3", "claude-code": "Claude Code" };
+  var HEALTH = [["Server", "server"], ["Claude Code", "claudeCode"], ["T3", "t3"]];
+  var LOCK = '<svg class="lock" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="5.2" width="7" height="5.5" rx="1" fill="currentColor"/><path d="M4.2 5.2V3.8a1.8 1.8 0 0 1 3.6 0v1.4" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>';
+
+  /* ---------- helpers ---------- */
+
+  function $(id) { return document.getElementById(id); }
+
+  function esc(v) {
+    return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function pad(n) { return n < 10 ? "0" + n : "" + n; }
+  function when(s) { return new Date(s); }
+  function hm(s) { var t = when(s); return pad(t.getHours()) + ":" + pad(t.getMinutes()); }
+  function dateShort(s) { var t = when(s); return t.getDate() + " " + MONTHS[t.getMonth()]; }
+  function dayKey(s) { var t = when(s); return t.getFullYear() + "-" + pad(t.getMonth() + 1) + "-" + pad(t.getDate()); }
+  function dayStart(s) { var t = when(s); return new Date(t.getFullYear(), t.getMonth(), t.getDate()).getTime(); }
+  function dayLabel(s) {
+    var diff = Math.round((dayStart(A.now) - dayStart(s)) / DAY);
+    if (diff === 0) return "Today, " + dateShort(s);
+    if (diff === 1) return "Yesterday, " + dateShort(s);
+    return WEEKDAYS[when(s).getDay()] + " " + dateShort(s);
+  }
+  // Short stamp: time when same day as AXIOM.now, otherwise date plus time.
+  function stamp(s) {
+    return dayKey(s) === dayKey(A.now) ? hm(s) : dateShort(s) + " " + hm(s);
+  }
+  function fullStamp(s) { return dateShort(s) + " " + hm(s); }
+  // Relative time from AXIOM.now. compact: "9 min", "3 h", "21 d"; otherwise "9 min ago".
+  function ago(s, compact) {
+    var m = Math.round((NOW - when(s)) / 60000);
+    var tail = compact ? "" : " ago";
+    if (m < 1) return "now";
+    if (m < 60) return m + " min" + tail;
+    var h = Math.round(m / 60);
+    if (h < 24) return h + " h" + tail;
+    var days = Math.round(m / 1440);
+    if (days < 30) return days + " d" + tail;
+    return dateShort(s);
+  }
+  function idleDays(t) { return Math.floor((NOW - when(t.lastWorkedAt)) / DAY); }
+  function byRecent(a, b) { return when(b.lastWorkedAt) - when(a.lastWorkedAt); }
+
+  /* ---------- model ---------- */
+
+  var epicById = {};
+  A.epics.forEach(function (e) { epicById[e.slug] = e; });
+  var ticketById = {};
+  A.tickets.forEach(function (k) { ticketById[k.slug] = k; });
+  var attached = {};
+
+  var topics = A.topics.map(function (t) {
+    return {
+      slug: t.slug,
+      title: t.title,
+      status: t.status || null,
+      statusNote: t.statusNote || "",
+      goal: t.goal || "",
+      parents: t.parents || { epics: [], tickets: [] },
+      createdAt: t.createdAt,
+      lastWorkedAt: t.lastWorkedAt,
+      attention: t.attention || null,
+      unread: !!t.unread,
+      muted: !!t.muted || A.notificationSettings.mutedTopics.indexOf(t.slug) > -1,
+      staleDismissed: !!t.staleDismissed,
+      threads: (t.threads || []).map(function (th) { return Object.assign({}, th); }),
+      links: t.links || [],
+      monitors: t.monitors || [],
+      entries: (t.entries || []).slice().sort(function (a, b) { return when(b.at) - when(a.at); })
+    };
+  });
+
+  var notifs = A.notifications.map(function (n) { return Object.assign({}, n); });
+  var mutedKinds = {};
+  A.notificationSettings.mutedKinds.forEach(function (k) { mutedKinds[k] = true; });
+
+  var S = {
+    theme: root.getAttribute("data-theme") === "light" ? "light" : "dark",
+    mailbox: "all",
+    panel: "list",
+    selected: root.getAttribute("data-open") || "axiom-spec",
+    query: "",
+    picker: false,
+    openPiles: {},
+    staleAfter: A.notificationSettings.staleAfterDays
+  };
+
+  function topicBySlug(slug) {
+    for (var i = 0; i < topics.length; i++) if (topics[i].slug === slug) return topics[i];
+    return null;
+  }
+  if (!topicBySlug(S.selected)) S.selected = topics[0].slug;
+  function selectedTopic() { return topicBySlug(S.selected); }
+
+  /* ---------- views and membership ---------- */
+
+  function statusesOf(t) {
+    return t.status ? [t.status] : t.threads.filter(function (th) { return !th.endedAt; }).map(function (th) { return th.status; });
+  }
+  function inView(t, id) {
+    var want = VIEW_STATUSES[id];
+    return statusesOf(t).some(function (s) { return want.indexOf(s) > -1; });
+  }
+  // The one section a topic is listed under in "Everything".
+  function sectionOf(t) {
+    for (var i = 0; i < SECTIONS.length; i++) if (inView(t, SECTIONS[i])) return SECTIONS[i];
+    return null;
+  }
+  // Colour for the row spine. A null-status topic takes the colour of its first matching thread.
+  function spineStatus(t) {
+    if (t.status) return t.status;
+    var ss = statusesOf(t);
+    for (var i = 0; i < SECTIONS.length; i++) {
+      var want = VIEW_STATUSES[SECTIONS[i]];
+      for (var j = 0; j < ss.length; j++) if (want.indexOf(ss[j]) > -1) return ss[j];
+    }
+    return "idle";
+  }
+  function needsStalePrompt(t) {
+    return t.status === "idle" && !t.staleDismissed && idleDays(t) >= S.staleAfter;
+  }
+  function visibleNotifs() {
+    return notifs.filter(function (n) {
+      var t = topicBySlug(n.topic);
+      return !mutedKinds[n.kind] && !(t && t.muted);
+    });
+  }
+  function matchesQuery(t) {
+    var q = S.query.trim().toLowerCase();
+    if (!q) return true;
+    var parts = [t.title, t.slug, t.statusNote, t.goal, t.status || ""];
+    parentInfos(t).forEach(function (p) { parts.push(p.title, p.jira ? p.jira.key : ""); });
+    return parts.join(" ").toLowerCase().indexOf(q) > -1;
+  }
+  function currentItems() {
+    return topics
+      .filter(function (t) { return S.mailbox === "all" || inView(t, S.mailbox); })
+      .filter(matchesQuery)
+      .sort(byRecent);
+  }
+
+  /* ---------- parents and chips ---------- */
+
+  function parentInfos(t) {
+    var out = [];
+    t.parents.tickets.forEach(function (slug) {
+      var k = ticketById[slug];
+      if (!k) return;
+      var epic = k.epics && k.epics.length ? epicById[k.epics[0]] : null;
+      out.push({ kind: "Ticket", title: k.title, jira: k.jira || null, status: k.status || null, under: epic ? epic.title : null });
+    });
+    t.parents.epics.forEach(function (slug) {
+      var e = epicById[slug];
+      if (!e) return;
+      out.push({ kind: "Epic", title: e.title, jira: e.jira || null, status: e.status || null, under: null });
+    });
+    return out;
+  }
+  function parentChip(p) {
+    var label = p.jira ? p.jira.key : p.title;
+    var st = p.jira ? p.jira.status : p.status;
+    return '<span class="chip" title="' + esc(p.kind + ": " + p.title) + '"><span class="chip-t">' + esc(label) + '</span><span class="cs">' + esc(st) + "</span>" + (p.jira ? LOCK : "") + "</span>";
+  }
+
+  /* ---------- small templates ---------- */
+
+  function pillHtml(st) {
+    if (!st) return '<span class="pill none" title="More than one thread: each thread has its own status">—</span>';
+    return '<span class="pill s-' + esc(st) + '">' + esc(st) + "</span>";
+  }
+
+  // Keep focus on the same control when a region re-renders.
+  function keepFocus(el) {
+    var a = document.activeElement;
+    if (!a || !el.contains(a)) return null;
+    return a.getAttribute("data-key") || "__fallback";
+  }
+  function restoreFocus(el, key) {
+    if (!key) return;
+    var target = null;
+    if (key !== "__fallback") {
+      var all = el.querySelectorAll("[data-key]");
+      for (var i = 0; i < all.length; i++) if (all[i].getAttribute("data-key") === key) { target = all[i]; break; }
+    }
+    if (!target) target = el.querySelector("[data-fallback]") || el;
+    target.focus();
+  }
+
+  /* ---------- rail ---------- */
+
+  function navBtn(o) {
+    return '<button type="button" class="nav' + (o.attn ? " has-attn" : "") + (o.extra ? " " + o.extra : "") + '"' +
+      ' data-act="nav" data-value="' + o.value + '" data-key="nav:' + o.value + '"' +
+      (o.active ? ' aria-current="true"' : "") + ">" +
+      (o.dot ? '<i class="sdot ' + o.dot + '" aria-hidden="true"></i>' : "") +
+      '<span class="lbl">' + esc(o.label) + '</span><span class="n">' + o.count + "</span></button>";
+  }
+
+  function renderRail() {
+    var el = $("rail");
+    var key = keepFocus(el);
+    var count = function (id) {
+      return topics.filter(function (t) { return id === "all" || inView(t, id); }).length;
+    };
+    var panelIsList = S.panel === "list";
+    var html = navBtn({ value: "all", label: LABELS.all, count: count("all"), active: panelIsList && S.mailbox === "all" });
+    html += '<h2 class="rail-h">Views</h2>';
+    ["attention", "ongoing", "monitoring"].forEach(function (id) {
+      html += navBtn({
+        value: id, label: LABELS[id], count: count(id), dot: DOTS[id],
+        active: panelIsList && S.mailbox === id, attn: id === "attention" && count(id) > 0
+      });
+    });
+    html += '<h2 class="rail-h">Piles</h2>';
+    PILES.forEach(function (id) {
+      html += navBtn({ value: id, label: LABELS[id], count: count(id), dot: DOTS[id], active: panelIsList && S.mailbox === id });
+    });
+    html += navBtn({
+      value: "notifs", label: "Notifications", count: visibleNotifs().length,
+      active: S.panel === "notifs", extra: "nav-notifs"
+    });
+    html += '<div class="health-block"><h2 class="rail-h" style="margin-top:0">Health</h2><ul class="health">';
+    HEALTH.forEach(function (h) {
+      var s = A.health[h[1]];
+      html += '<li data-state="' + esc(s.state) + '"><i class="hd" aria-hidden="true"></i><b>' + esc(h[0]) + "</b><p>" + esc(s.text) + "</p></li>";
+    });
+    html += "</ul></div>";
+    el.innerHTML = html;
+    restoreFocus(el, key);
+  }
+
+  /* ---------- list head and list ---------- */
+
+  function renderListHead() {
+    var notifMode = S.panel === "notifs";
+    $("list-title").textContent = notifMode ? "Notifications" : LABELS[S.mailbox];
+    $("list-count").textContent = String(notifMode ? visibleNotifs().length : currentItems().length);
+    $("filter-wrap").hidden = notifMode;
+  }
+
+  function rowHtml(t) {
+    var sel = t.slug === S.selected;
+    var provs = [];
+    t.threads.forEach(function (th) {
+      var p = PROVIDER[th.provider] || th.provider;
+      if (provs.indexOf(p) < 0) provs.push(p);
+    });
+    var n = t.threads.length;
+    var threadTxt = n === 0 ? "No threads" : n + (n === 1 ? " thread" : " threads") + (provs.length ? ", " + provs.join(", ") : "");
+    var dots = t.threads.map(function (th) {
+      return '<i class="s-' + esc(th.status) + '" title="' + esc(th.title + ": " + th.status) + '"></i>';
+    }).join("");
+    var reason = t.attention
+      ? '<span class="row-reason"><b>' + esc(t.attention.reason) + ":</b> " + esc(t.attention.text) + "</span>"
+      : "";
+    var parents = parentInfos(t).map(parentChip).join("");
+    return '<li><button type="button" class="row s-' + spineStatus(t) + (t.unread ? " is-unread" : "") + '"' +
+      ' data-act="open" data-slug="' + esc(t.slug) + '" data-key="row:' + esc(t.slug) + '"' +
+      (sel ? ' aria-current="true"' : "") + ">" +
+      '<span class="row-head">' + pillHtml(t.status) +
+      '<span class="row-title">' + esc(t.title) + "</span>" +
+      (t.unread ? '<i class="udot" aria-hidden="true"></i><span class="sr-only">Unread. </span>' : "") +
+      '<time class="row-when" datetime="' + esc(t.lastWorkedAt) + '">' + esc(ago(t.lastWorkedAt, true)) + "</time></span>" +
+      reason +
+      '<span class="row-note">' + esc(t.statusNote) + "</span>" +
+      '<span class="row-meta">' + parents + '<span class="tdots" aria-hidden="true">' + dots + '</span><span class="row-threads">' + esc(threadTxt) + "</span></span>" +
+      "</button></li>";
+  }
+
+  function topicsListHtml() {
+    var items = currentItems();
+    if (!items.length) return '<p class="empty">' + (S.query ? "No topics match the filter." : "Nothing in this view.") + "</p>";
+    if (S.mailbox !== "all") return '<ol>' + items.map(rowHtml).join("") + "</ol>";
+    var html = "";
+    SECTIONS.forEach(function (sec) {
+      var group = items.filter(function (t) { return sectionOf(t) === sec; });
+      if (!group.length) return;
+      var rows = '<ol>' + group.map(rowHtml).join("") + "</ol>";
+      if (PILES.indexOf(sec) === -1) {
+        html += '<div class="sect-h"><i class="sdot ' + DOTS[sec] + '" aria-hidden="true"></i>' + esc(LABELS[sec]) +
+          '<span class="count">' + group.length + "</span></div>" + rows;
+      } else {
+        var holdsSel = group.some(function (t) { return t.slug === S.selected; });
+        var open = !!(S.query || S.openPiles[sec] || holdsSel);
+        html += '<details class="pile" data-pile="' + sec + '"' + (open ? " open" : "") + ">" +
+          '<summary data-key="pile:' + sec + '"><i class="sdot ' + DOTS[sec] + '" aria-hidden="true"></i>' + esc(LABELS[sec]) +
+          '<span class="count">' + group.length + "</span></summary>" + rows + "</details>";
+      }
+    });
+    return html;
+  }
+
+  function notifHtml(n) {
+    var t = topicBySlug(n.topic);
+    var st = NOTIF_STATUS[n.kind] || "idle";
+    return '<li class="notif s-' + st + '"><div class="n-head"><span class="n-kind">' + esc(n.kind) + "</span>" +
+      '<time datetime="' + esc(n.at) + '">' + esc(stamp(n.at)) + "</time></div>" +
+      '<button type="button" class="n-topic" data-act="open" data-slug="' + esc(n.topic) + '" data-key="n-open:' + n.id + '">' + esc(t ? t.title : n.topic) + "</button>" +
+      '<p class="n-body">' + esc(n.body) + "</p>" +
+      '<div class="n-actions"><button type="button" class="btn ghost sm" data-act="dismiss" data-id="' + n.id + '" data-key="n-dismiss:' + n.id + '">Dismiss</button></div></li>';
+  }
+
+  function notifsHtml() {
+    var vis = visibleNotifs();
+    var hidden = notifs.length - vis.length;
+    var h = '<div class="np">';
+    h += vis.length
+      ? '<ol class="notifs">' + vis.map(notifHtml).join("") + "</ol>"
+      : '<p class="empty">No notifications right now.</p>';
+    if (hidden) h += '<p class="hint">' + hidden + " hidden by your mutes.</p>";
+
+    h += '<section class="settings" aria-label="Notification settings">';
+    h += "<h3>Mute by kind</h3>";
+    h += '<p class="hint">Checked kinds are muted: hidden here and as system notifications.</p>';
+    h += '<div class="checks">' + A.notificationSettings.kinds.map(function (k) {
+      return '<label class="check"><input type="checkbox" data-act="mute-kind" data-value="' + esc(k) + '" data-key="kind:' + esc(k) + '"' +
+        (mutedKinds[k] ? " checked" : "") + "><span>" + esc(k) + "</span></label>";
+    }).join("") + "</div>";
+
+    var mt = topics.filter(function (t) { return t.muted; });
+    h += "<h3>Muted topics</h3>";
+    h += mt.length
+      ? '<ul class="muted-list">' + mt.map(function (t) {
+          return '<li><span>' + esc(t.title) + '</span><button type="button" class="btn sm" data-act="unmute" data-slug="' + esc(t.slug) +
+            '" data-key="unmute:' + esc(t.slug) + '">Unmute</button></li>';
+        }).join("") + "</ul>"
+      : '<p class="hint">No topics are muted.</p>';
+
+    h += "<h3>Stale prompt</h3>";
+    h += '<p class="inline">Ask "Mark as stale?" after <label><input type="number" min="1" max="365" value="' + S.staleAfter +
+      '" data-act="stale-days" data-key="stale-days" aria-label="Days idle before the prompt"> days</label> idle with no activity.</p>';
+
+    var bn = A.notificationSettings.browserNotifications;
+    var bnText = bn === "granted" ? "Granted. System notifications follow the mutes above."
+      : bn === "denied" ? "Denied in this browser. Notifications show only in this pane."
+      : "Not asked yet.";
+    h += "<h3>Browser notifications</h3>";
+    h += '<p class="hint"><span class="st-dot" data-state="' + (bn === "granted" ? "ok" : "warn") + '" aria-hidden="true"></span>' + esc(bnText) + "</p>";
+    h += "</section></div>";
+    return h;
+  }
+
+  function renderList() {
+    var el = $("list-body");
+    var key = keepFocus(el);
+    el.innerHTML = S.panel === "notifs" ? notifsHtml() : topicsListHtml();
+    restoreFocus(el, key);
+  }
+
+  /* ---------- reader ---------- */
+
+  function threadHtml(th) {
+    var end = th.endedAt ? stamp(th.endedAt) : "open";
+    return '<li class="thread s-' + esc(th.status) + '">' +
+      '<span class="prov">' + esc(PROVIDER[th.provider] || th.provider) + "</span>" +
+      '<span class="th-main"><span class="th-title">' + esc(th.title) + '</span><span class="th-meta"><span>' + esc(th.id) + "</span>" +
+      (th.env ? "<span>" + esc(th.env) + "</span>" : "") + "</span></span>" +
+      pillHtml(th.status) +
+      '<time class="th-time">' + esc(stamp(th.startedAt)) + " → " + esc(end) + "</time></li>";
+  }
+
+  function pickerHtml() {
+    var free = A.t3Unattached.filter(function (x) { return !attached[x.id]; });
+    var list = free.length
+      ? "<ul>" + free.map(function (x) {
+          return '<li><div><span class="picker-t">' + esc(x.title) + '</span><span class="picker-sub"><span>' + esc(x.id) + "</span><span>" + esc(x.env) +
+            "</span><span>" + esc(x.status) + "</span><span>updated " + esc(ago(x.updatedAt, true)) + ' ago</span></span></div>' +
+            '<button type="button" class="btn sm" data-act="attach" data-id="' + esc(x.id) + '" data-key="attach:' + esc(x.id) + '">Attach</button></li>';
+        }).join("") + "</ul>"
+      : '<p class="picker-empty">Every T3 thread is attached.</p>';
+    return '<div class="picker" id="picker" role="dialog" aria-label="Attach a T3 thread" tabindex="-1"' + (S.picker ? "" : " hidden") + ">" +
+      '<p class="picker-h">Unattached T3 threads</p>' + list + "</div>";
+  }
+
+  function parentsHtml(t) {
+    var infos = parentInfos(t);
+    if (!infos.length) return '<span class="meta">None</span>';
+    return '<ul class="parents">' + infos.map(function (p) {
+      var st = p.jira
+        ? '<span class="p-st">' + esc(p.jira.key) + " " + esc(p.jira.status) + LOCK + "</span>"
+        : (p.status ? '<span class="p-st">' + esc(p.status) + "</span>" : "");
+      return '<li><span class="p-kind">' + esc(p.kind) + '</span><span class="p-title">' + esc(p.title) + "</span>" + st +
+        (p.under ? '<span class="p-under">in ' + esc(p.under) + "</span>" : "") + "</li>";
+    }).join("") + "</ul>";
+  }
+
+  function linksHtml(t) {
+    if (!t.links.length) return '<p class="empty-line">No links.</p>';
+    var kinds = LINK_ORDER.slice();
+    t.links.forEach(function (l) { if (kinds.indexOf(l.kind) < 0) kinds.push(l.kind); });
+    return kinds.map(function (k) {
+      var ls = t.links.filter(function (l) { return l.kind === k; });
+      if (!ls.length) return "";
+      return '<div class="lgroup"><h3>' + esc(LINK_LABEL[k] || k) + "</h3>" + ls.map(function (l) {
+        return '<div class="lnk">' + (l.label ? '<span class="l-label">' + esc(l.label) + "</span>" : "") +
+          '<span class="l-target">' + esc(l.target) + "</span></div>";
+      }).join("") + "</div>";
+    }).join("");
+  }
+
+  function monitorsHtml(t) {
+    if (!t.monitors.length) return '<p class="empty-line">None yet. Axiom suggests targets from links, such as an open PR or a Jira item.</p>';
+    return '<ul>' + t.monitors.map(function (m) {
+      return '<li class="mon"><span class="mon-kind">' + esc(m.kind) + '</span><span class="mon-target">' + esc(m.target) +
+        '</span><span class="mon-state ' + esc(m.state) + '">' + esc(m.state) + "</span></li>";
+    }).join("") + "</ul>" +
+      '<p class="hint">Suggested targets come from links. An agent or you confirm them.</p>';
+  }
+
+  function entryHtml(t, e) {
+    var kc = KIND_CLASS[e.kind] || "k-axiom";
+    var kl = (A.entryKinds[e.kind] || {}).label || e.kind.toUpperCase();
+    // Owner kinds already say "YOU" ("YOU SAID", "YOU ALLOWED"), so don't repeat it.
+    var label = e.author === "owner" && /^YOU\b/.test(kl) ? kl : (AUTHOR[e.author] || String(e.author).toUpperCase()) + " " + kl;
+    var d = e.data || {};
+    var parts = [];
+    var thread = e.thread ? t.threads.filter(function (th) { return th.id === e.thread; })[0] : null;
+    var meta = '<span class="e-label">' + esc(label) + "</span>";
+    if (e.kind === "verification" && d.result) meta += '<span class="badge r-' + esc(d.result) + '">' + esc(d.result) + "</span>";
+    meta += '<time datetime="' + esc(e.at) + '">' + hm(e.at) + "</time>";
+    if (e.thread) meta += '<span class="e-thread">' + esc(thread ? thread.title : e.thread) + "</span>";
+
+    if (e.kind === "status change") {
+      parts.push('<p class="e-body"><span class="status-move">' + pillHtml(d.from) + '<span class="arrow" aria-hidden="true">→</span>' + pillHtml(d.to) + "</span></p>");
+    }
+    if (e.body) parts.push('<p class="e-body">' + esc(e.body) + "</p>");
+    if (d.reason) parts.push('<p class="e-data">' + esc(d.reason) + "</p>");
+    if (d.why) parts.push('<p class="e-data"><span class="k">Why</span> ' + esc(d.why) + "</p>");
+    if (d.scope) {
+      parts.push('<p class="e-data"><span class="k">Scope</span> ' + esc(d.scope) +
+        (typeof d.standing === "boolean" ? ' <span class="badge">' + (d.standing ? "standing" : "one-off") + "</span>" : "") + "</p>");
+    }
+    var refs = (e.refs || []).length
+      ? '<ul class="refs">' + e.refs.map(function (r) { return "<li>" + esc(r) + "</li>"; }).join("") + "</ul>"
+      : "";
+    return '<li class="entry ' + kc + '"><div class="e-meta">' + meta + "</div>" + parts.join("") + refs + "</li>";
+  }
+
+  function historyHtml(t) {
+    if (!t.entries.length) return '<p class="empty-line">No history yet.</p>';
+    var groups = [];
+    var byDay = {};
+    t.entries.forEach(function (e) {
+      var k = dayKey(e.at);
+      if (!byDay[k]) { byDay[k] = { label: dayLabel(e.at), items: [] }; groups.push(byDay[k]); }
+      byDay[k].items.push(e);
+    });
+    return groups.map(function (g) {
+      return '<h3 class="day">' + esc(g.label) + '</h3><ol class="hist">' + g.items.map(function (e) { return entryHtml(t, e); }).join("") + "</ol>";
+    }).join("");
+  }
+
+  function readerHtml(t) {
+    var stale = needsStalePrompt(t);
+    var attn = t.attention ? spineStatus(t) : null;
+    var h = '<div class="r-scroll"><article class="r-inner" aria-labelledby="r-title">';
+
+    h += '<div class="r-top"><span class="slug">' + esc(t.slug) + "</span>" +
+      '<button type="button" class="btn" data-act="mute" data-key="mute" aria-pressed="' + (t.muted ? "true" : "false") + '"' +
+      ' title="Muting hides notifications from this topic, questions included. Its highlight still shows until you open it.">' +
+      (t.muted ? "Muted" : "Mute topic") + "</button></div>";
+    h += '<h1 class="r-h1" id="r-title" tabindex="-1" data-fallback>' + esc(t.title) + "</h1>";
+    h += '<div class="status-row">' + pillHtml(t.status) +
+      (t.statusNote ? '<span class="status-note">' + esc(t.statusNote) + "</span>" : "") + "</div>";
+    if (!t.status) h += '<p class="hint">More than one thread, so this topic has no status of its own. Each thread shows its own status below.</p>';
+    if (t.muted) h += '<p class="hint">Muted. Notifications from this topic are hidden, questions included. Its highlight still shows until you open it.</p>';
+    if (t.attention) {
+      h += '<div class="callout s-' + esc(attn) + '"><strong>' + esc(t.attention.reason) + ":</strong> " + esc(t.attention.text) + "</div>";
+    }
+    if (stale) {
+      h += '<div class="prompt" role="group" aria-label="Mark as stale?"><p>Idle for ' + idleDays(t) + ' days. Mark as stale?</p>' +
+        '<div class="prompt-actions"><button type="button" class="btn primary" data-act="mark-stale" data-key="mark-stale">Mark stale</button>' +
+        '<button type="button" class="btn ghost" data-act="dismiss-stale" data-key="dismiss-stale">Dismiss</button></div></div>';
+    }
+
+    h += '<dl class="facts">';
+    if (t.goal) h += "<dt>Goal</dt><dd>" + esc(t.goal) + "</dd>";
+    h += "<dt>Parents</dt><dd>" + parentsHtml(t) + "</dd>";
+    h += "<dt>Created</dt><dd>" + esc(fullStamp(t.createdAt)) + "</dd>";
+    h += '<dt>Last worked</dt><dd>' + esc(fullStamp(t.lastWorkedAt)) + ' <span class="meta">' + esc(ago(t.lastWorkedAt)) + "</span></dd>";
+    h += "</dl>";
+
+    h += '<section class="sec" aria-labelledby="h-threads"><div class="sec-h">' +
+      '<div class="sec-title"><h2 id="h-threads">Threads</h2><span class="count">' + t.threads.length + "</span></div>" +
+      '<div class="picker-wrap"><button type="button" class="btn" data-act="picker" data-key="picker" aria-haspopup="dialog" aria-controls="picker" aria-expanded="' + (S.picker ? "true" : "false") + '">Attach T3 thread</button>' +
+      pickerHtml() + "</div></div>";
+    h += t.threads.length
+      ? '<ul class="threads">' + t.threads.map(threadHtml).join("") + "</ul>"
+      : '<p class="empty-line">No threads attached.</p>';
+    h += "</section>";
+
+    h += '<div class="two">';
+    h += '<section class="sec" aria-labelledby="h-links"><div class="sec-h"><div class="sec-title"><h2 id="h-links">Links</h2></div></div>' + linksHtml(t) + "</section>";
+    h += '<section class="sec" aria-labelledby="h-mons"><div class="sec-h"><div class="sec-title"><h2 id="h-mons">Monitoring targets</h2></div></div>' + monitorsHtml(t) + "</section>";
+    h += "</div>";
+
+    h += '<section class="sec" aria-labelledby="h-hist"><div class="sec-h"><div class="sec-title"><h2 id="h-hist">History</h2>' +
+      '<span class="count">' + t.entries.length + "</span></div></div>" + historyHtml(t) + "</section>";
+
+    h += "</article></div>";
+    return h;
+  }
+
+  function renderReader() {
+    var el = $("reader");
+    var key = keepFocus(el);
+    var t = selectedTopic();
+    el.innerHTML = t ? readerHtml(t) : '<p class="empty">No topic selected.</p>';
+    restoreFocus(el, key);
+  }
+
+  /* ---------- status bar ---------- */
+
+  function renderStatus() {
+    var need = topics.filter(function (t) { return inView(t, "attention"); }).length;
+    var running = topics.filter(function (t) { return inView(t, "ongoing"); }).length;
+    var unread = topics.filter(function (t) { return t.unread; }).length;
+    $("status").innerHTML =
+      '<span class="sb"><i class="sdot s-hitl" aria-hidden="true"></i>' + need + " need you</span>" +
+      '<span class="sb"><i class="sdot s-wip" aria-hidden="true"></i>' + running + " running</span>" +
+      '<span class="sb">' + unread + " unread</span>" +
+      '<span class="sb sb-end">Now ' + esc(dateShort(A.now)) + " " + esc(hm(A.now)) + "</span>" +
+      '<span class="sb">↑ ↓ move between topics</span>';
+  }
+
+  /* ---------- actions ---------- */
+
+  function dropNotifs(slug, kind) {
+    notifs = notifs.filter(function (n) { return !(n.topic === slug && n.kind === kind); });
+  }
+
+  function markStale(t) {
+    var from = t.status;
+    t.status = "stale";
+    t.staleDismissed = true;
+    t.entries.unshift({ at: A.now, author: "axiom", kind: "status change", data: { from: from, to: "stale", reason: "marked stale by you" } });
+    dropNotifs(t.slug, "stale prompt");
+  }
+
+  function attachThread(t, id) {
+    var x = A.t3Unattached.filter(function (y) { return y.id === id; })[0];
+    if (!x || !t) return;
+    attached[id] = true;
+    var st = x.status === "running" ? "wip" : "idle";
+    t.threads.push({
+      provider: "t3", id: x.id, title: x.title, status: st,
+      startedAt: x.updatedAt, endedAt: st === "idle" ? x.updatedAt : undefined, env: x.env
+    });
+    S.picker = false;
+  }
+
+  function setTheme(v) {
+    S.theme = v === "light" ? "light" : "dark";
+    root.setAttribute("data-theme", S.theme);
+    document.querySelectorAll('[data-act="theme"]').forEach(function (b) {
+      b.setAttribute("aria-pressed", String(b.getAttribute("data-value") === S.theme));
+    });
+  }
+
+  function renderAll() {
+    renderRail();
+    renderListHead();
+    renderList();
+    renderReader();
+    renderStatus();
+  }
+
+  function act(el) {
+    var a = el.getAttribute("data-act");
+    var v = el.getAttribute("data-value");
+    var t = selectedTopic();
+
+    if (a === "nav") {
+      if (v === "notifs") S.panel = "notifs";
+      else { S.mailbox = v; S.panel = "list"; }
+      S.picker = false;
+    } else if (a === "open") {
+      var target = topicBySlug(el.getAttribute("data-slug"));
+      if (!target) return;
+      S.selected = target.slug;
+      target.unread = false;
+      S.picker = false;
+    } else if (a === "mute" && t) {
+      t.muted = !t.muted;
+    } else if (a === "unmute") {
+      var u = topicBySlug(el.getAttribute("data-slug"));
+      if (u) u.muted = false;
+    } else if (a === "dismiss") {
+      var id = Number(el.getAttribute("data-id"));
+      notifs = notifs.filter(function (n) { return n.id !== id; });
+    } else if (a === "picker") {
+      S.picker = !S.picker;
+      renderReader();
+      if (S.picker) {
+        var first = $("picker").querySelector('[data-act="attach"]') || $("picker");
+        first.focus();
+      }
+      return;
+    } else if (a === "attach") {
+      attachThread(t, el.getAttribute("data-id"));
+    } else if (a === "mark-stale" && t) {
+      markStale(t);
+    } else if (a === "dismiss-stale" && t) {
+      t.staleDismissed = true;
+      dropNotifs(t.slug, "stale prompt");
+    } else if (a === "theme") {
+      setTheme(v);
+      return;
+    } else {
+      return;
+    }
+    renderAll();
+  }
+
+  /* ---------- wiring ---------- */
+
+  document.addEventListener("click", function (e) {
+    var el = e.target.closest ? e.target.closest("[data-act]") : null;
+    var fromPicker = !!e.target.closest("#picker");
+    var isPickerToggle = !!(el && el.getAttribute("data-act") === "picker");
+    if (S.picker && !fromPicker && !isPickerToggle) {
+      S.picker = false;
+      renderReader();
+    }
+    if (el) act(el);
+  });
+
+  document.addEventListener("change", function (e) {
+    var el = e.target;
+    var a = el.getAttribute && el.getAttribute("data-act");
+    if (a === "mute-kind") {
+      var k = el.getAttribute("data-value");
+      if (el.checked) mutedKinds[k] = true; else delete mutedKinds[k];
+      renderAll();
+    } else if (a === "stale-days") {
+      var n = parseInt(el.value, 10);
+      if (n >= 1) S.staleAfter = Math.min(n, 365); else el.value = String(S.staleAfter);
+      renderAll();
+    }
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && S.picker) {
+      S.picker = false;
+      renderReader();
+      var btn = $("reader").querySelector('[data-act="picker"]');
+      if (btn) btn.focus();
+    }
+  });
+
+  $("filter").addEventListener("input", function () {
+    S.query = this.value;
+    renderListHead();
+    renderList();
+  });
+
+  $("list-body").addEventListener("keydown", function (e) {
+    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+    var rows = Array.prototype.filter.call(this.querySelectorAll('[data-act="open"]'), function (n) {
+      var d = n.closest("details");
+      return !d || d.open;
+    });
+    var i = rows.indexOf(document.activeElement);
+    if (i < 0) return;
+    var next = rows[i + (e.key === "ArrowDown" ? 1 : -1)];
+    if (!next) return;
+    e.preventDefault();
+    next.focus();
+    next.click();
+  });
+
+  $("list-body").addEventListener("toggle", function (e) {
+    var d = e.target;
+    if (d && d.tagName === "DETAILS" && d.hasAttribute("data-pile")) S.openPiles[d.getAttribute("data-pile")] = d.open;
+  }, true);
+
+  /* ---------- init ---------- */
+
+  setTheme(S.theme);
+  renderAll();
+  var sel = $("list-body").querySelector('[aria-current="true"]');
+  if (sel) $("list-body").scrollTop = Math.max(0, sel.offsetTop - 140);
+})();
+</script>
+</body>
+</html>

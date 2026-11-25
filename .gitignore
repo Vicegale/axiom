@@ -1,0 +1,19 @@
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Local runtime data (the internal database lives outside git)
+/data/
+*.db
+*.sqlite
+*.sqlite-*
+
+# Env and secrets
+.env
+.env.*
+!.env.example
+
+# Scratch
+/scratch/

@@ -1,0 +1,1070 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-open="">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Axiom mockup: Mission control</title>
+<style>
+/* Shared Axiom mockup tokens. Dark is the default; light via [data-theme="light"]. */
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap");
+:root {
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", monospace;
+  --bg: #0b0c0e; --bg-dots: #1a1c20; --panel: #111316; --panel-2: #16191d; --raised: #1b1f24;
+  --line: #24282e; --line-strong: #323840;
+  --text: #e6e8eb; --text-2: #a3a9b2; --text-3: #848b95;
+  --focus: #7aa2ff;
+  /* topic statuses */
+  --st-idle: #7b838d; --st-wip: #5b9dff; --st-hitl: #ffb547; --st-monitoring: #38c6b6; --st-blocked: #c77dff;
+  --st-review: #8f8bff; --st-done: #4fbf74; --st-stale: #8a7a64; --st-error: #ff5d5d;
+  /* history entry kinds */
+  --k-note: #8b93a0; --k-decision: #f5a524; --k-finding: #ff8a3d; --k-verification: #3fcf8e; --k-owner: #ff6b9a;
+  --k-authorization: #b48cff; --k-next: #46b7ff; --k-axiom: #5c6470;
+  --radius: 6px;
+  color-scheme: dark;
+}
+[data-theme="light"] {
+  --bg: #f6f6f4; --bg-dots: #e2e2de; --panel: #ffffff; --panel-2: #fafaf8; --raised: #f0f0ed;
+  --line: #e4e4e0; --line-strong: #d2d2cc;
+  --text: #17191c; --text-2: #4e545c; --text-3: #6c727b;
+  --focus: #2f5fd0;
+  --st-idle: #7a828c; --st-wip: #2f6fe0; --st-hitl: #c27a00; --st-monitoring: #0f9488; --st-blocked: #9a46d6;
+  --st-review: #5b55e0; --st-done: #23914a; --st-stale: #8a7556; --st-error: #d93636;
+  --k-note: #6b7380; --k-decision: #b87400; --k-finding: #d1601a; --k-verification: #1d9a5f; --k-owner: #d43c72;
+  --k-authorization: #7b52d6; --k-next: #1f7fc4; --k-axiom: #8b929b;
+  color-scheme: light;
+}
+
+</style>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--text);font:400 13px/1.45 var(--font-sans);-webkit-font-smoothing:antialiased;overflow:hidden}
+[hidden]{display:none !important}
+button{font:inherit;color:inherit;background:none;border:0;padding:0;margin:0;cursor:pointer;text-align:inherit}
+:focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:3px}
+ul,ol{list-style:none;margin:0;padding:0}
+h1,h2,h3,p,dl,dd{margin:0}
+.sp{flex:1}
+.mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.trunc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.clamp2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* frame: fixed 900px tall, dot grid canvas */
+.app{width:100%;max-width:1600px;height:900px;margin:0 auto;display:flex;flex-direction:column;position:relative;overflow:hidden;background-color:var(--bg);background-image:radial-gradient(var(--bg-dots) 1px,transparent 1px);background-size:18px 18px}
+
+/* top bar */
+.top{flex:none;height:44px;display:flex;align-items:center;gap:12px;padding:0 12px 0 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+.brand{display:flex;align-items:center;gap:9px;font:600 14px/1 var(--font-sans);letter-spacing:-.01em;margin-right:6px}
+.mark{position:relative;width:13px;height:13px;border:2px solid var(--text);border-radius:2px;transform:rotate(45deg)}
+.mark::after{content:"";position:absolute;inset:2px;background:var(--focus)}
+.crumb{font:12px var(--font-mono);color:var(--text-3);white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.counts{display:flex;gap:16px;font:12px var(--font-mono);color:var(--text-3);white-space:nowrap}
+.counts b{font-weight:500;color:var(--c)}
+
+.btn{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px;border:1px solid var(--line-strong);border-radius:var(--radius);background:var(--panel-2);color:var(--text-2);font-size:12px;white-space:nowrap}
+.btn:hover{color:var(--text);border-color:var(--text-3)}
+.btn[aria-pressed="true"]{color:var(--text);border-color:var(--text-2);background:var(--raised)}
+.btn.primary{background:var(--text);color:var(--bg);border-color:var(--text)}
+.btn.primary:hover{color:var(--bg);opacity:.9}
+.btn.ghost{background:none;border-color:transparent}
+.btn.ghost:hover{background:var(--raised)}
+.btn.sm{height:22px;padding:0 8px;font-size:11.5px}
+
+/* health strip */
+.health{flex:none;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));height:34px;background:var(--panel-2);border-bottom:1px solid var(--line)}
+.hc{--c:var(--st-done);display:flex;align-items:center;gap:8px;min-width:0;padding:0 14px;border-right:1px solid var(--line);font-size:12px;color:var(--text-2)}
+.hc:last-child{border-right:0}
+.hc .dot{flex:none;width:7px;height:7px;border-radius:50%;background:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 22%,transparent)}
+.hc b{flex:none;font:600 11px var(--font-mono);color:var(--text)}
+.hc .st{flex:none;font:500 10.5px var(--font-mono);color:var(--c)}
+.hc .trunc{flex:1}
+
+/* home grid: fixed panels, no drag */
+.home{flex:1;min-height:0;display:grid;gap:10px;padding:10px;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr);grid-template-rows:minmax(0,1.15fr) minmax(0,1fr) minmax(0,1fr);grid-template-areas:"wait run watch" "wait pile act" "notif pile act"}
+.panel{position:relative;min-width:0;min-height:0;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.panel::before{content:"";position:absolute;left:0;right:0;top:0;height:2px;background:var(--accent)}
+.p-wait{grid-area:wait;--accent:var(--st-hitl)}
+.p-run{grid-area:run;--accent:var(--st-wip)}
+.p-watch{grid-area:watch;--accent:var(--st-monitoring)}
+.p-pile{grid-area:pile;--accent:var(--st-idle)}
+.p-act{grid-area:act;--accent:var(--text-3)}
+.p-notif{grid-area:notif;--accent:var(--st-review)}
+.ph{flex:none;display:flex;align-items:center;gap:8px;height:36px;padding:0 12px;border-bottom:1px solid var(--line)}
+.ph h2{font:600 12.5px var(--font-sans)}
+.ph .n{font:500 11px var(--font-mono);color:var(--text-3)}
+.pb{flex:1;min-height:0;overflow:auto;padding:8px 12px 10px}
+.pfoot{flex:none;display:flex;align-items:center;gap:8px;min-height:30px;padding:0 12px;border-top:1px solid var(--line);font:11px var(--font-mono);color:var(--text-3)}
+.empty{padding:8px 0;color:var(--text-3);font-size:12px}
+
+/* small labels */
+.kl{font:600 10px/1 var(--font-mono);letter-spacing:.07em;text-transform:uppercase;color:var(--k,var(--text-2));white-space:nowrap}
+.badge{--c:var(--text-3);display:inline-flex;align-items:center;flex:none;height:18px;padding:0 6px;border-radius:3px;font:500 10.5px/1 var(--font-mono);color:var(--c);background:color-mix(in srgb,var(--c) 14%,transparent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--c) 45%,transparent);white-space:nowrap}
+.unread-dot{flex:none;display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--focus)}
+.tlink{color:var(--text-2);min-width:0;text-align:left}
+.tlink:hover{color:var(--text);text-decoration:underline;text-underline-offset:3px}
+.tlink.unread{color:var(--text);font-weight:600}
+.tlink.unread::before{content:"";display:inline-block;width:6px;height:6px;margin-right:6px;border-radius:50%;background:var(--focus);vertical-align:1px}
+.meta{font:11px var(--font-mono);color:var(--text-3)}
+
+/* waiting cards */
+.wcard{--c:var(--st-hitl);position:relative;margin-bottom:10px;padding:12px 14px 12px 16px;border:1px solid var(--line-strong);border-left:3px solid var(--c);border-radius:var(--radius);background:var(--panel-2)}
+.wcard.unread{background:color-mix(in srgb,var(--focus) 7%,var(--panel-2))}
+.wc-top{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text-3)}
+.wc-title{margin-top:7px;font:600 15px/1.3 var(--font-sans);letter-spacing:-.005em}
+.wc-q{margin-top:7px;padding-left:10px;border-left:1px solid var(--line-strong);color:var(--text-2);max-width:60ch}
+.wc-foot{display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap}
+
+/* running, watching, piles rows */
+.row{display:flex;align-items:center;gap:10px;min-width:0;padding:6px 2px;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row .main{flex:1;min-width:0}
+.row .t1{font-weight:500}
+.row .t2{display:flex;align-items:center;gap:8px;min-width:0;font-size:11.5px;color:var(--text-3)}
+.row .t2 .tlink{flex:0 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .t2 span{white-space:nowrap}
+.prov{flex:none;display:inline-grid;place-items:center;min-width:26px;height:18px;padding:0 4px;border:1px solid var(--line-strong);border-radius:3px;font:600 10px/1 var(--font-mono);color:var(--text-2)}
+.elapsed{flex:none;font:500 12px var(--font-mono);color:var(--st-wip)}
+.wrow{padding:9px 2px;border-bottom:1px solid var(--line)}
+.wrow:last-child{border-bottom:0}
+.wr-h{display:flex;align-items:center;gap:8px;min-width:0}
+.wr-h .tlink{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mons{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+.mon{display:inline-flex;align-items:center;gap:6px;height:18px;padding:0 6px;border:1px solid var(--line-strong);border-radius:3px;font:10.5px var(--font-mono);color:var(--text-2)}
+.mon i{font-style:normal;color:var(--text-3)}
+.mon.confirmed{border-color:var(--st-monitoring);color:var(--text)}
+.mon.confirmed i{color:var(--st-monitoring)}
+.mon.suggested{border-style:dashed}
+.wr-latest{margin-top:6px;font-size:11.5px;color:var(--text-2);min-width:0}
+.wr-latest .meta{margin-right:6px}
+
+/* piles */
+.pg{--c:var(--st-idle);padding:8px 0 10px;border-bottom:1px solid var(--line)}
+.pg:last-child{border-bottom:0}
+.pg-h{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.pg-h h3{font:600 12px var(--font-sans);color:var(--c)}
+.pg-h .n{margin-left:auto;font:500 14px var(--font-mono);color:var(--text)}
+.pg li{display:flex;align-items:center;gap:8px;min-width:0;padding:3px 0;font-size:12px}
+.pg li .tlink{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pg li .sub{flex:none;font:10.5px var(--font-mono);color:var(--text-3);white-space:nowrap}
+
+/* activity feed and notifications */
+.ev{--k:var(--k-axiom);display:grid;grid-template-columns:40px minmax(0,1fr);gap:8px;padding:7px 6px;margin:0 -6px;border-bottom:1px solid var(--line);border-radius:3px}
+.ev time{font:11px var(--font-mono);color:var(--text-3);padding-top:1px}
+.ev.old{opacity:.6}
+.ev .h{display:flex;align-items:center;gap:8px;min-width:0}
+.ev .h .tlink{margin-left:auto;max-width:48%;font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ev .txt{margin-top:2px;font-size:12px;color:var(--text-2)}
+.ev.fresh{animation:freshGlow 4.5s ease-out 1}
+@keyframes freshGlow{0%{background:color-mix(in srgb,var(--k) 22%,transparent);box-shadow:inset 2px 0 0 var(--k)}100%{background:transparent;box-shadow:inset 2px 0 0 transparent}}
+.nt{padding:6px 0;border-bottom:1px solid var(--line)}
+.nt .h{display:flex;align-items:center;gap:8px;min-width:0}
+.nt .h .meta{white-space:nowrap}
+.nt .txt{margin-top:2px;font-size:12px;color:var(--text-2)}
+.nt{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:8px;align-items:center}
+.nt .h,.nt .txt{grid-column:1}
+.nt .acts{grid-column:2;grid-row:1 / span 2}
+
+/* dossier */
+.dossier{flex:1;min-height:0;display:flex;flex-direction:column}
+.dh{flex:none;padding:12px 18px 14px;background:var(--panel);border-bottom:1px solid var(--line)}
+.dh-top{display:flex;align-items:center;gap:10px}
+.dh-title{display:flex;align-items:center;gap:12px;margin-top:8px;flex-wrap:wrap}
+.dh h1{font:600 21px/1.2 var(--font-sans);letter-spacing:-.015em;outline:none}
+.dh .slug{font:11.5px var(--font-mono);color:var(--text-3)}
+.dh .note{margin-top:6px;font-size:13px}
+.dh .goal{margin-top:2px;color:var(--text-2);font-size:12.5px}
+.dmeta{display:flex;flex-wrap:wrap;gap:10px 30px;margin-top:12px}
+.dmeta dt{font:500 10.5px var(--font-mono);color:var(--text-3);margin-bottom:3px}
+.dmeta dd{font-size:12.5px;color:var(--text)}
+.plist{display:flex;flex-direction:column;gap:3px}
+.plist li{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:12.5px}
+.pk{font:500 10px var(--font-mono);color:var(--text-3)}
+.lock{display:inline-flex;color:var(--text-3)}
+.dbody{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(320px,380px)}
+.col{min-height:0;overflow:auto;padding:14px 18px 24px}
+.col.side{border-left:1px solid var(--line);background:var(--panel-2)}
+.sec{margin-bottom:18px}
+.sec-h{display:flex;align-items:center;gap:8px;margin-bottom:8px;font:600 12px var(--font-sans)}
+.sec-h .n{font:500 11px var(--font-mono);color:var(--text-3)}
+.sec-h .sp{flex:1}
+.day{font:500 11px var(--font-mono);color:var(--text-3);margin:10px 0 6px 24px}
+.tl{position:relative;padding-left:24px}
+.tl::before{content:"";position:absolute;left:10px;top:6px;bottom:6px;width:1px;background:var(--line-strong)}
+.te{position:relative;padding-bottom:14px}
+.te::before{content:"";position:absolute;left:-19px;top:4px;width:9px;height:9px;border-radius:50%;background:var(--panel);border:2px solid var(--k)}
+.te-h{display:flex;align-items:center;gap:8px;min-width:0}
+.te-h .who{font-size:11.5px;color:var(--text-3);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.te-h .tm{margin-left:auto;font:11px var(--font-mono);color:var(--text-3);flex:none}
+.te-h .kl{color:var(--k)}
+.te-b{margin-top:4px;max-width:68ch;color:var(--text)}
+.te-x{display:flex;flex-wrap:wrap;align-items:center;gap:5px 8px;margin-top:6px}
+.ref{font:500 10.5px var(--font-mono);color:var(--text-2);border:1px solid var(--line-strong);border-radius:3px;padding:1px 5px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kv{font:11px var(--font-mono);color:var(--text-3)}
+.kv span{color:var(--text-2)}
+.thr{margin-bottom:8px;padding:9px 10px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel)}
+.thr.attached{border-color:var(--focus)}
+.thr .h{display:flex;align-items:center;gap:8px;min-width:0}
+.thr .h b{font-weight:500;min-width:0}
+.thr .m{display:flex;flex-wrap:wrap;gap:3px 10px;margin-top:4px;font:11px var(--font-mono);color:var(--text-3)}
+.picker{margin-top:8px;padding:8px;border:1px dashed var(--line-strong);border-radius:var(--radius)}
+.picker li{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);min-width:0}
+.picker li:last-child{border-bottom:0}
+.picker .main{flex:1;min-width:0}
+.pm{font:10.5px var(--font-mono);color:var(--text-3)}
+.lg{margin-bottom:10px}
+.lg h3{font:500 11px var(--font-mono);color:var(--text-3);margin-bottom:3px}
+.lg li{display:flex;align-items:center;gap:8px;min-width:0;padding:4px 0;border-bottom:1px dashed var(--line);font-size:12.5px}
+.lg .lm{flex:1;min-width:0;text-align:right;font:11px var(--font-mono);color:var(--text-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:5px 0;border-bottom:1px dashed var(--line);font-size:12px}
+.mrow .mon{height:18px}
+
+/* status bar */
+.sbar{flex:none;height:26px;display:flex;align-items:center;gap:18px;padding:0 12px;background:var(--panel);border-top:1px solid var(--line);font:11px var(--font-mono);color:var(--text-3);white-space:nowrap}
+.sbl{display:flex;gap:18px;min-width:0;overflow:hidden}
+.sbl b{font-weight:500;color:var(--text-2)}
+
+/* settings dialog */
+dialog{padding:0;border:1px solid var(--line-strong);border-radius:8px;background:var(--panel);color:var(--text);width:min(460px,calc(100vw - 32px))}
+dialog::backdrop{background:color-mix(in srgb,var(--bg) 70%,transparent)}
+.dlg{display:flex;flex-direction:column}
+.dlg-h{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)}
+.dlg-h h2{flex:1;font:600 14px var(--font-sans)}
+#dlgBody{display:flex;flex-direction:column;padding:4px 14px 14px}
+.fs{min-width:0;margin:0;padding:12px 0 0;border:0;border-top:1px solid var(--line)}
+.fs:first-child{border-top:0}
+.fs legend{margin-bottom:6px;padding:0;font:500 11px var(--font-mono);color:var(--text-3)}
+.fs p{font-size:12.5px}
+.ck{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:12.5px}
+.ck input[type="checkbox"]{accent-color:var(--focus);margin:0}
+.num{width:64px;height:26px;margin:0 6px;padding:0 6px;background:var(--panel-2);color:var(--text);border:1px solid var(--line-strong);border-radius:var(--radius);font:inherit}
+.dlg-muted li{display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12.5px}
+
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation:none !important;transition:none !important}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand"><span class="mark" aria-hidden="true"></span>Axiom</div>
+    <button class="btn ghost" type="button" data-home>Dashboard</button>
+    <span class="crumb" id="crumb"></span>
+    <span class="sp"></span>
+    <div class="counts" id="counts"></div>
+    <button class="btn" type="button" data-settings>Notification settings</button>
+    <button class="btn" type="button" id="btnTheme" data-theme-toggle>Light theme</button>
+  </header>
+
+  <div class="health" id="health" role="list" aria-label="Provider health"></div>
+
+  <main class="home" id="home">
+    <section class="panel p-wait" aria-labelledby="hWait">
+      <div class="ph"><h2 id="hWait">Waiting for you</h2><span class="n" id="nWait"></span></div>
+      <div class="pb" id="wait"></div>
+    </section>
+    <section class="panel p-run" aria-labelledby="hRun">
+      <div class="ph"><h2 id="hRun">Running now</h2><span class="n" id="nRun"></span></div>
+      <div class="pb" id="run"></div>
+    </section>
+    <section class="panel p-watch" aria-labelledby="hWatch">
+      <div class="ph"><h2 id="hWatch">Watching</h2><span class="n" id="nWatch"></span></div>
+      <div class="pb" id="watch"></div>
+    </section>
+    <section class="panel p-pile" aria-labelledby="hPile">
+      <div class="ph"><h2 id="hPile">Piles</h2></div>
+      <div class="pb" id="pile"></div>
+    </section>
+    <section class="panel p-act" aria-labelledby="hAct">
+      <div class="ph"><h2 id="hAct">Activity</h2><span class="n">newest first</span></div>
+      <div class="pb" id="act"></div>
+    </section>
+    <section class="panel p-notif" aria-labelledby="hNotif">
+      <div class="ph"><h2 id="hNotif">Notifications</h2><span class="n" id="nNotif"></span><span class="sp"></span><button class="btn sm ghost" type="button" data-settings>Settings</button></div>
+      <div class="pb" id="notif"></div>
+      <div class="pfoot" id="notifFoot"></div>
+    </section>
+  </main>
+
+  <div class="dossier" id="dossier" hidden>
+    <header class="dh" id="dh"></header>
+    <div class="dbody">
+      <section class="col" id="tlCol" aria-label="History"></section>
+      <aside class="col side" id="side" aria-label="Threads, links and monitoring"></aside>
+    </div>
+  </div>
+
+  <footer class="sbar">
+    <div class="sbl" id="sbL"></div>
+    <span class="sp"></span>
+    <span class="mono" id="sbR"></span>
+  </footer>
+
+  <dialog id="settings" aria-labelledby="sTitle">
+    <form method="dialog" class="dlg">
+      <header class="dlg-h">
+        <h2 id="sTitle">Notification settings</h2>
+        <button class="btn sm ghost" type="submit" value="close">Close</button>
+      </header>
+      <div id="dlgBody"></div>
+    </form>
+  </dialog>
+</div>
+<script>
+// Shared sample data for the Axiom mockups. Realistic, taken from the owner's work log.
+// "Now" is 2026-11-25 09:40 (Lisbon). Only features from the settled spec appear here.
+window.AXIOM = {
+  now: "2026-11-25T09:40:00",
+  statuses: {
+    idle:       { label: "idle",       meaning: "Nothing is happening" },
+    wip:        { label: "wip",        meaning: "An agent is working" },
+    hitl:       { label: "hitl",       meaning: "Waiting for you" },
+    monitoring: { label: "monitoring", meaning: "Waiting on something the agent watches" },
+    blocked:    { label: "blocked",    meaning: "Waiting on something the agent can't watch" },
+    review:     { label: "review",     meaning: "A PR is in review" },
+    done:       { label: "done",       meaning: "No actions left" },
+    stale:      { label: "stale",      meaning: "You marked it stale" },
+    error:      { label: "error",      meaning: "The agent's thread hit an error" }
+  },
+  // The tracker views (01). idle / blocked / stale are their own piles; done is closed.
+  views: [
+    { id: "attention",  label: "Requires attention", statuses: ["hitl", "error"] },
+    { id: "ongoing",    label: "Ongoing",            statuses: ["wip"] },
+    { id: "monitoring", label: "Under monitoring",   statuses: ["monitoring", "review"] }
+  ],
+  piles: ["idle", "blocked", "stale", "done"],
+  entryKinds: {
+    "note":          { by: "agent|owner", label: "NOTE" },
+    "decision":      { by: "agent|owner", label: "DECIDED" },
+    "finding":       { by: "agent|owner", label: "FOUND" },
+    "verification":  { by: "agent|owner", label: "CHECKED" },
+    "owner input":   { by: "owner",       label: "YOU SAID" },
+    "authorization": { by: "owner",       label: "YOU ALLOWED" },
+    "next steps":    { by: "agent|owner", label: "NEXT" },
+    "status change": { by: "axiom",       label: "STATUS" },
+    "topic created": { by: "axiom",       label: "CREATED" },
+    "thread event":  { by: "axiom",       label: "THREAD" },
+    "git event":     { by: "axiom",       label: "GIT" },
+    "deploy event":  { by: "axiom",       label: "DEPLOY" }
+  },
+  epics: [
+    { slug: "axiom", title: "Axiom", status: "wip", jira: null },
+    { slug: "mtg-next-phase-2", title: "MTG next phase 2", jira: { key: "MTG-12", status: "In Progress" } },
+    { slug: "ahoy", title: "AHOY", status: "wip", jira: null }
+  ],
+  tickets: [
+    { slug: "mtg-214", title: "Wave I: Multiverse Reforged deck gaps (rows 59–67)", epics: ["mtg-next-phase-2"], jira: { key: "MTG-214", status: "In Progress" } },
+    { slug: "mtg-198", title: "Wave H: Commander-deck gaps (rows 53–58)", epics: ["mtg-next-phase-2"], jira: { key: "MTG-198", status: "In Review" } },
+    { slug: "ahoy-usability", title: "Usability pass", epics: ["ahoy"], status: "wip", jira: null }
+  ],
+  topics: [
+    {
+      slug: "axiom-spec", title: "Axiom: spec phase", status: "hitl",
+      statusNote: "00, 01, 08 settled; tech agreed (ADRs 0001–0005); 05 drafted; hooks tested; build plan awaiting approval",
+      goal: "A settled spec and an agreed build plan for the first tracker version",
+      parents: { epics: ["axiom"], tickets: [] },
+      createdAt: "2026-11-25T01:20:00", lastWorkedAt: "2026-11-25T09:31:00",
+      attention: { reason: "agent asked", text: "Settle 04, 05 and 06? Who builds it: this thread or slice threads?" },
+      unread: true, muted: false,
+      threads: [
+        { provider: "t3", id: "227205b0", title: "Axiom spec", status: "hitl", startedAt: "2026-11-25T01:18:00", env: "vic-desktop" },
+        { provider: "t3", id: "thread:delegated-task…b44a", title: "Axiom hook test (throwaway)", status: "done", startedAt: "2026-11-25T09:19:44", endedAt: "2026-11-25T09:19:47", env: "vic-desktop" }
+      ],
+      links: [
+        { kind: "repository", target: "~/projects/axiom" },
+        { kind: "branch", target: "main" },
+        { kind: "spec", target: "docs/spec/README.md", label: "Spec index" },
+        { kind: "spec", target: "docs/plan/v1-tracker.md", label: "Build plan" },
+        { kind: "artifact", target: "docs/design/references/relay.png", label: "Visual reference" }
+      ],
+      monitors: [],
+      entries: [
+        { at: "2026-11-25T09:31:00", author: "agent", thread: "227205b0", kind: "status change", data: { from: "wip", to: "hitl", reason: "asked: settle 04, 05, 06 and choose who builds" } },
+        { at: "2026-11-25T09:30:00", author: "agent", thread: "227205b0", kind: "next steps", body: "Settle 04, 05, 06; then build S0 (repo scaffold) and S1 (core database and rules)." },
+        { at: "2026-11-25T09:24:00", author: "owner", kind: "owner input", body: "The T3 routing rule looks okay." },
+        { at: "2026-11-25T09:22:00", author: "agent", thread: "227205b0", kind: "decision", body: "T3 is the source of truth for T3 threads. Hook events carrying T3CODE_THREAD_ID only trigger a T3 re-read.", data: { why: "Hooks fire inside T3-run sessions, so the same thread would be reported twice." } },
+        { at: "2026-11-25T09:20:00", author: "agent", thread: "227205b0", kind: "finding", body: "T3-run sessions carry T3CODE_THREAD_ID and CLAUDE_CODE_ENTRYPOINT=t3-code; T3's provider_threads payload holds the Claude session id." },
+        { at: "2026-11-25T09:19:50", author: "agent", thread: "227205b0", kind: "verification", body: "Claude Code hooks fire inside a T3-run thread: SessionStart, UserPromptSubmit, Stop, SessionEnd, at user and project scope.", data: { result: "pass" }, refs: ["thread:delegated-task…b44a"] },
+        { at: "2026-11-25T09:19:44", author: "axiom", kind: "thread event", body: "Thread started: Axiom hook test (throwaway), T3, Haiku 5.5" },
+        { at: "2026-11-25T09:05:00", author: "owner", kind: "owner input", body: "Pin the current version of T3 that Axiom is tested against." },
+        { at: "2026-11-25T09:04:00", author: "agent", thread: "227205b0", kind: "decision", body: "Pinned T3 server 0.1.11-nightly.20261118.4890, database migration 98. Warn on mismatch.", refs: ["docs/adr/0005-providers-claude-code-and-t3.md"] },
+        { at: "2026-11-25T08:40:00", author: "owner", kind: "decision", body: "Stack agreed: local server + browser, TypeScript on Node 24, SQLite, CLI writes the database directly." },
+        { at: "2026-11-25T08:10:00", author: "owner", kind: "authorization", body: "The agent may rebase my branch onto main in place to pick up recent changes. It stays local; I push.", data: { scope: "rebase onto main only, clean, no one else pushed", standing: true } },
+        { at: "2026-11-25T07:30:00", author: "agent", thread: "227205b0", kind: "finding", body: "Old work log: 4,673 log bullets in 273 topics. Verification ~37%, git/PR ~23%, thread setup ~15%. A quarter to a third is mechanical." },
+        { at: "2026-11-25T01:25:00", author: "agent", thread: "227205b0", kind: "note", body: "Scaffolded ~/projects/axiom: README, AGENTS.md, CONTEXT.md, spec index with sections 00–07, ADR template." },
+        { at: "2026-11-25T01:20:00", author: "axiom", kind: "topic created" }
+      ]
+    },
+    {
+      slug: "axiom-mockups", title: "Axiom: UI mockups", status: "wip",
+      statusNote: "Four structurally distinct mockups of the tracker in progress",
+      goal: "Pick a visual and structural direction for the first UI (S5)",
+      parents: { epics: ["axiom"], tickets: [] },
+      createdAt: "2026-11-25T09:38:00", lastWorkedAt: "2026-11-25T09:39:00",
+      unread: false, muted: false,
+      threads: [ { provider: "t3", id: "3c8e9d21", title: "Axiom mockups", status: "wip", startedAt: "2026-11-25T09:38:00", env: "vic-desktop" } ],
+      links: [ { kind: "repository", target: "~/projects/axiom" }, { kind: "spec", target: "docs/spec/09-visual-design.md", label: "Visual design" } ],
+      monitors: [],
+      entries: [
+        { at: "2026-11-25T09:39:00", author: "owner", kind: "owner input", body: "Write 4 mockups. They should be structurally distinct, not the same UI with different CSS." },
+        { at: "2026-11-25T09:38:00", author: "axiom", kind: "topic created" }
+      ]
+    },
+    {
+      slug: "mtg-wave-i", title: "MTG Wave I: Multiverse Reforged deck gaps", status: null,
+      statusNote: "Rows 59, 60 merged; 61 and 63 running; 62, 64–67 not started",
+      goal: "Every card in the Multiverse Reforged decks playable",
+      parents: { epics: [], tickets: ["mtg-214"] },
+      createdAt: "2026-11-04T02:39:00", lastWorkedAt: "2026-11-25T09:37:00",
+      unread: true, muted: true,
+      threads: [
+        { provider: "t3", id: "a91c2e07", title: "Row 61: Ninjutsu", status: "wip", startedAt: "2026-11-25T08:02:00", env: "slopfactory" },
+        { provider: "t3", id: "5d3b8f12", title: "Row 63: Mutate", status: "wip", startedAt: "2026-11-25T08:40:00", env: "slopfactory" },
+        { provider: "t3", id: "0e77aa41", title: "Row 60: Ward", status: "done", startedAt: "2026-11-24T21:10:00", endedAt: "2026-11-25T01:52:00", env: "slopfactory" },
+        { provider: "claude-code", id: "41f3c7e5", title: "Row 59 review", status: "idle", startedAt: "2026-11-24T18:00:00", endedAt: "2026-11-24T19:12:00" }
+      ],
+      links: [
+        { kind: "repository", target: "~/projects/mtg-playground" },
+        { kind: "branch", target: "feat/wave-i" },
+        { kind: "pr", target: "Advicegale/mtg-playground#203", label: "Row 60: Ward" },
+        { kind: "pr", target: "Advicegale/mtg-playground#204", label: "Row 61: Ninjutsu (draft)" },
+        { kind: "spec", target: "docs/specs/next-phase-2.md", label: "Next phase 2 spec" }
+      ],
+      monitors: [ { kind: "pr-checks", target: "Advicegale/mtg-playground#204", state: "confirmed" } ],
+      entries: [
+        { at: "2026-11-25T09:37:00", author: "agent", thread: "a91c2e07", kind: "verification", body: "Ninjutsu: 1,412 tests, typecheck and build pass; browser check of the return-unblocked flow passes.", data: { result: "pass" } },
+        { at: "2026-11-25T09:02:00", author: "axiom", kind: "git event", body: "PR #204 opened (draft), base feat/wave-i, head 3f1a9c2", refs: ["Advicegale/mtg-playground#204"] },
+        { at: "2026-11-25T08:40:00", author: "axiom", kind: "thread event", body: "Thread started: Row 63: Mutate (T3, slopfactory)" },
+        { at: "2026-11-25T01:52:00", author: "axiom", kind: "git event", body: "PR #203 merged into feat/wave-i (b7e20d4)", refs: ["Advicegale/mtg-playground#203"] },
+        { at: "2026-11-25T01:40:00", author: "agent", thread: "0e77aa41", kind: "finding", body: "Ward triggers were checked before targets locked; moved the check to the cast step (CR 702.21a)." }
+      ]
+    },
+    {
+      slug: "ahoy-usability-audit", title: "AHOY usability and design audit", status: "review",
+      statusNote: "Fixes for B1–B4, M1–M9, S1–S4 in PR #49; web + OTA deploy pending",
+      goal: "Every blocker and major from the audit fixed and deployed",
+      parents: { epics: [], tickets: ["ahoy-usability"] },
+      createdAt: "2026-11-20T14:00:00", lastWorkedAt: "2026-11-25T09:12:00",
+      unread: true, muted: false,
+      threads: [ { provider: "claude-code", id: "c2d9e310", title: "Usability fixes", status: "review", startedAt: "2026-11-22T10:00:00", endedAt: "2026-11-22T18:40:00" } ],
+      links: [
+        { kind: "repository", target: "~/projects/ahoy" },
+        { kind: "worktree", target: "~/projects/ahoy-worktrees/usability-fixes" },
+        { kind: "branch", target: "fix/usability-blockers-majors" },
+        { kind: "pr", target: "Advicegale/AHOY#49" },
+        { kind: "artifact", target: "https://claude.ai/artifact/LEBNVeDNSgCCHLkptKmrRL", label: "Audit report" }
+      ],
+      monitors: [
+        { kind: "pr-review", target: "Advicegale/AHOY#49", state: "confirmed" },
+        { kind: "pr-checks", target: "Advicegale/AHOY#49", state: "confirmed" }
+      ],
+      entries: [
+        { at: "2026-11-25T09:12:00", author: "axiom", kind: "git event", body: "Review on PR #49: approved, 1 comment (meal suggestion copy)", refs: ["Advicegale/AHOY#49"] },
+        { at: "2026-11-22T18:40:00", author: "agent", thread: "c2d9e310", kind: "status change", data: { from: "wip", to: "review", reason: "PR #49 ready for review" } },
+        { at: "2026-11-22T18:30:00", author: "agent", thread: "c2d9e310", kind: "verification", body: "All screens re-checked at 390 px and desktop; 2 date-dependent tests fail on main, unrelated.", data: { result: "partial" } }
+      ]
+    },
+    {
+      slug: "atlas-coolify-deployment", title: "Atlas Coolify deployment", status: "monitoring",
+      statusNote: "Redeployed after the LAN IP drift; watching the health check",
+      parents: { epics: [], tickets: [] },
+      createdAt: "2026-10-03T18:36:00", lastWorkedAt: "2026-11-25T08:20:00",
+      unread: true, muted: false,
+      threads: [ { provider: "claude-code", id: "77b0c1aa", title: "Coolify redeploy", status: "monitoring", startedAt: "2026-11-25T07:50:00", endedAt: "2026-11-25T08:20:00" } ],
+      links: [ { kind: "repository", target: "~/projects/atlas-trip-planner" }, { kind: "branch", target: "main" } ],
+      monitors: [ { kind: "deploy-health", target: "atlas.vicegale.com", state: "confirmed" }, { kind: "pr-checks", target: "Advicegale/atlas#88", state: "suggested" } ],
+      entries: [
+        { at: "2026-11-25T09:15:00", author: "axiom", kind: "deploy event", body: "Health check slow: 2.3 s (threshold 1.5 s)" },
+        { at: "2026-11-25T08:20:00", author: "axiom", kind: "deploy event", body: "Deployed main@25bd644 to atlas.vicegale.com" }
+      ]
+    },
+    {
+      slug: "casa-clara-math-review", title: "Casa Clara: math audit and UI review", status: "blocked",
+      statusNote: "Real FINEs show a ~1.2 pp TAEG gap; waiting on the bank's FINE documents",
+      parents: { epics: [], tickets: [] },
+      createdAt: "2026-11-19T10:00:00", lastWorkedAt: "2026-11-20T17:00:00",
+      unread: false, muted: false,
+      threads: [ { provider: "claude-code", id: "9f00b2c4", title: "FINE parser", status: "blocked", startedAt: "2026-11-20T09:00:00", endedAt: "2026-11-20T17:00:00" } ],
+      links: [ { kind: "repository", target: "~/projects/Casa-Clara-Portugal-v3" }, { kind: "branch", target: "feat/fine-parser" } ],
+      monitors: [],
+      entries: [ { at: "2026-11-20T17:00:00", author: "agent", thread: "9f00b2c4", kind: "status change", data: { from: "wip", to: "blocked", reason: "needs the bank's FINE documents" } } ]
+    },
+    {
+      slug: "godot-vr-test", title: "Godot VR test (Quest via Steam Link)", status: "wip",
+      statusNote: "Tuning the grapple course; rope solver capped at 6 m/s",
+      parents: { epics: [], tickets: [] },
+      createdAt: "2026-11-05T20:00:00", lastWorkedAt: "2026-11-25T09:36:00",
+      unread: false, muted: false,
+      threads: [ { provider: "claude-code", id: "e1c4d5f0", title: "Grapple course", status: "wip", startedAt: "2026-11-25T09:10:00" } ],
+      links: [ { kind: "repository", target: "~/projects/vr-test" }, { kind: "spec", target: "docs/specs/station.md", label: "Station spec" } ],
+      monitors: [],
+      entries: [ { at: "2026-11-25T09:36:00", author: "agent", thread: "e1c4d5f0", kind: "finding", body: "Rope snapping came from capping the whole velocity; cap only the carried part." } ]
+    },
+    {
+      slug: "prism-v02", title: "Prism v0.2 development", status: "error",
+      statusNote: "Thread crashed while regenerating the graph",
+      parents: { epics: [], tickets: [] },
+      createdAt: "2026-10-12T17:06:00", lastWorkedAt: "2026-11-25T08:55:00",
+      attention: { reason: "error", text: "Provider process exited (code 1) during graph regeneration" },
+      unread: true, muted: false,
+      threads: [ { provider: "t3", id: "c0ffee21", title: "Graph regen", status: "error", startedAt: "2026-11-25T08:30:00", endedAt: "2026-11-25T08:55:00", env: "vic-desktop" } ],
+      links: [ { kind: "repository", target: "~/projects/prism/prism-pr-review" } ],
+      monitors: [],
+      entries: [ { at: "2026-11-25T08:55:00", author: "axiom", kind: "thread event", body: "Thread ended with an error: provider process exited (code 1)" } ]
+    },
+    {
+      slug: "twitch-drops-headless", title: "Twitch Drops Miner headless on Coolify", status: "idle",
+      statusNote: "Docker packaging written locally, untested",
+      parents: { epics: [], tickets: [] },
+      createdAt: "2026-11-03T21:00:00", lastWorkedAt: "2026-11-04T01:10:00",
+      stalePrompt: true, unread: true, muted: false,
+      threads: [ { provider: "claude-code", id: "1aa2bb3c", title: "Docker packaging", status: "idle", startedAt: "2026-11-03T21:00:00", endedAt: "2026-11-04T01:10:00" } ],
+      links: [ { kind: "repository", target: "~/Documents/notes/TwitchDropsMiner" } ], monitors: [], entries: []
+    },
+    {
+      slug: "swe-test", title: "SWE aptitude diagnostic test", status: "idle",
+      statusNote: "v1 done + interactive web page; repo uncommitted",
+      parents: { epics: [], tickets: [] },
+      createdAt: "2026-11-24T19:05:00", lastWorkedAt: "2026-11-24T22:41:00",
+      unread: true, muted: false,
+      threads: [ { provider: "t3", id: "5e57e5t0", title: "SWE test", status: "idle", startedAt: "2026-11-24T19:05:00", endedAt: "2026-11-24T22:41:00", env: "vic-desktop" } ],
+      links: [ { kind: "repository", target: "~/projects/swe-test" }, { kind: "artifact", target: "https://claude.ai/artifact/SFrybe3njb9VxPGRPa8eQZ", label: "Test page" } ],
+      monitors: [], entries: []
+    },
+    {
+      slug: "mtg-deckbuilder-spec", title: "MTG deckbuilder environment", status: "idle",
+      statusNote: "Spec v1.1; 5 open decisions", parents: { epics: ["mtg-next-phase-2"], tickets: [] },
+      createdAt: "2026-10-20T12:00:00", lastWorkedAt: "2026-10-25T16:00:00",
+      staleDismissed: true, unread: false, muted: false, threads: [], links: [], monitors: [], entries: []
+    },
+    {
+      slug: "mtg-wave-h", title: "MTG Wave H orchestration", status: "stale",
+      statusNote: "Rows 53–56 merged; 57–58 not started", parents: { epics: [], tickets: ["mtg-198"] },
+      createdAt: "2026-11-01T10:00:00", lastWorkedAt: "2026-11-03T22:00:00",
+      unread: false, muted: true, threads: [], links: [], monitors: [], entries: []
+    },
+    { slug: "mtg-commander-takeover", title: "MTG PRs #163/#164 takeover", status: "review", statusNote: "Fixes pushed to both PRs; awaiting merge", parents: { epics: ["mtg-next-phase-2"], tickets: [] }, createdAt: "2026-10-30T09:00:00", lastWorkedAt: "2026-10-30T23:00:00", unread: false, muted: false, threads: [], links: [ { kind: "pr", target: "Advicegale/mtg-playground#163" }, { kind: "pr", target: "Advicegale/mtg-playground#164" } ], monitors: [ { kind: "pr-review", target: "Advicegale/mtg-playground#163", state: "confirmed" } ], entries: [] },
+    { slug: "mtg-scryfall-cache", title: "MTG Scryfall cache / faster game start", status: "done", statusNote: "Merged #147; start 8.1 s → 0.5 s", parents: { epics: ["mtg-next-phase-2"], tickets: [] }, createdAt: "2026-10-27T09:00:00", lastWorkedAt: "2026-10-27T18:00:00", unread: false, muted: false, threads: [], links: [], monitors: [], entries: [] },
+    { slug: "mtg-fps-counter", title: "MTG FPS counter / performance pass", status: "done", statusNote: "Merged #177", parents: { epics: [], tickets: [] }, createdAt: "2026-11-01T09:00:00", lastWorkedAt: "2026-11-01T20:00:00", unread: false, muted: false, threads: [], links: [], monitors: [], entries: [] },
+    { slug: "mtg-pwa-install", title: "MTG installable + fullscreen on Android", status: "done", statusNote: "Merged #126; deployed", parents: { epics: [], tickets: [] }, createdAt: "2026-10-26T09:00:00", lastWorkedAt: "2026-10-26T15:00:00", unread: false, muted: false, threads: [], links: [], monitors: [], entries: [] }
+  ],
+  notifications: [
+    { id: 1, topic: "axiom-spec",              kind: "agent asked",     at: "2026-11-25T09:31:00", body: "Settle 04, 05 and 06? Who builds it?" },
+    { id: 2, topic: "mtg-wave-i",              kind: "agent stopped",   at: "2026-11-25T09:20:00", body: "Row 60: Ward finished", muted: true },
+    { id: 3, topic: "atlas-coolify-deployment", kind: "monitor problem", at: "2026-11-25T09:15:00", body: "Health check slow: 2.3 s" },
+    { id: 4, topic: "ahoy-usability-audit",    kind: "pr review",       at: "2026-11-25T09:12:00", body: "PR #49 approved, 1 comment" },
+    { id: 5, topic: "prism-v02",               kind: "error",           at: "2026-11-25T08:55:00", body: "Provider process exited (code 1)" },
+    { id: 6, topic: "twitch-drops-headless",   kind: "stale prompt",    at: "2026-11-25T08:00:00", body: "Idle for 21 days. Mark as stale?" },
+    { id: 7, topic: "mtg-wave-i",              kind: "jira changed",    at: "2026-11-24T23:02:00", body: "MTG-214: To Do → In Progress", muted: true },
+    { id: 8, topic: "swe-test",                kind: "agent stopped",   at: "2026-11-24T22:41:00", body: "Thread SWE test went idle" }
+  ],
+  notificationSettings: {
+    kinds: ["agent stopped", "agent asked", "monitor problem", "jira changed", "pr review", "stale prompt", "error"],
+    mutedKinds: ["jira changed"],
+    mutedTopics: ["mtg-wave-i", "mtg-wave-h"],
+    staleAfterDays: 14,
+    browserNotifications: "granted"
+  },
+  // Unattached T3 threads, for the "attach a T3 thread" picker.
+  t3Unattached: [
+    { id: "8b1e44c0", title: "Atlas: weather widget polish", env: "vic-desktop", status: "ready", updatedAt: "2026-11-25T08:58:00" },
+    { id: "f3a2d901", title: "MTG Wave I orchestrator", env: "slopfactory", status: "running", updatedAt: "2026-11-25T09:38:00" },
+    { id: "02c9be77", title: "Casa Clara: amend-to-fixed what-if", env: "vic-desktop", status: "stopped", updatedAt: "2026-11-23T19:40:00" }
+  ],
+  health: {
+    server: { state: "ok", text: "Server up since 08:02 · backup 03:00" },
+    claudeCode: { state: "ok", text: "Hooks installed · last event 4 min ago" },
+    t3: { state: "ok", text: "T3 0.1.11-nightly.20261118.4890 · migration 98 · matches pin · read 3 s ago" }
+  }
+};
+
+</script>
+<script>
+(function () {
+  "use strict";
+  var A = window.AXIOM;
+  var doc = document, root = doc.documentElement;
+  var T0 = Date.now(), BASE = Date.parse(A.now);
+  var MIN = 60000, HOUR = 3600000, DAY = 86400000;
+  var LOCK = '<svg class="lock" width="11" height="11" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="5.5" width="7" height="5" rx="1" fill="none" stroke="currentColor"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5" fill="none" stroke="currentColor"/></svg>';
+  var BACK = '<svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M7.5 2.5 4 6l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>';
+
+  function $(sel) { return doc.querySelector(sel); }
+  function esc(v) {
+    return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function now() { return BASE + (Date.now() - T0); }
+  function ms(s) { return Date.parse(s); }
+  function hhmm(s) { return s.slice(11, 16); }
+  function p2(n) { return String(n).padStart(2, "0"); }
+  function rel(s) {
+    var d = now() - ms(s);
+    if (d < MIN) return "just now";
+    if (d < HOUR) return Math.floor(d / MIN) + " min ago";
+    if (d < DAY) return Math.floor(d / HOUR) + " h ago";
+    var n = Math.floor(d / DAY);
+    return n + (n === 1 ? " day ago" : " days ago");
+  }
+  function dayLabel(s) {
+    var yest = new Date(BASE - DAY);
+    var yKey = yest.getFullYear() + "-" + p2(yest.getMonth() + 1) + "-" + p2(yest.getDate());
+    var d = new Date(ms(s)).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+    if (s.slice(0, 10) === A.now.slice(0, 10)) return "Today, " + d;
+    if (s.slice(0, 10) === yKey) return "Yesterday, " + d;
+    return d;
+  }
+  function fmtElapsed(ms2) {
+    var s = Math.max(0, Math.floor(ms2 / 1000));
+    var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = s % 60;
+    return (h ? h + ":" : "") + p2(m) + ":" + p2(x);
+  }
+
+  // ---- data indexes -------------------------------------------------------
+  var TOPICS = A.topics, BY = {}, TICKET = {}, EPIC = {};
+  TOPICS.forEach(function (x) { BY[x.slug] = x; });
+  A.tickets.forEach(function (x) { TICKET[x.slug] = x; });
+  A.epics.forEach(function (x) { EPIC[x.slug] = x; });
+
+  var KCOL = { "note": "k-note", "decision": "k-decision", "finding": "k-finding", "verification": "k-verification",
+               "owner input": "k-owner", "authorization": "k-authorization", "next steps": "k-next" };
+  function kcol(kind) { return "var(--" + (KCOL[kind] || "k-axiom") + ")"; }
+  function kindLabel(e) {
+    var base = (A.entryKinds[e.kind] || {}).label || e.kind.toUpperCase();
+    if (e.author === "owner") return /^YOU\b/.test(base) ? base : "YOU " + base;
+    if (e.author === "agent") return "AGENT " + base;
+    return "AXIOM · " + base;
+  }
+  function entryText(e) {
+    if (e.body) return e.body;
+    if (e.kind === "status change") return e.data.from + " → " + e.data.to + ": " + e.data.reason;
+    return e.kind === "topic created" ? "Topic created." : e.kind;
+  }
+  var NOTIF_COL = { "agent asked": "--st-hitl", "agent stopped": "--st-idle", "monitor problem": "--st-error",
+                    "error": "--st-error", "pr review": "--st-review", "stale prompt": "--st-stale", "jira changed": "--st-monitoring" };
+
+  // ---- mutable mock state (in-memory only) -------------------------------
+  var S = {
+    open: root.dataset.open || "",
+    unread: {}, muted: {}, mutedKinds: {}, staleDismissed: {}, dismissedN: {},
+    over: {}, added: {}, attached: {}, mon: {},
+    staleDays: A.notificationSettings.staleAfterDays,
+    picker: false, freshShown: false
+  };
+  TOPICS.forEach(function (x) {
+    if (x.unread) S.unread[x.slug] = true;
+    if (x.muted || A.notificationSettings.mutedTopics.indexOf(x.slug) >= 0) S.muted[x.slug] = true;
+    if (x.staleDismissed) S.staleDismissed[x.slug] = true;
+  });
+  A.notificationSettings.mutedKinds.forEach(function (k) { S.mutedKinds[k] = true; });
+
+  function statusOf(x) { return Object.prototype.hasOwnProperty.call(S.over, x.slug) ? S.over[x.slug] : x.status; }
+  function threadsOf(x) { return x.threads.concat(S.added[x.slug] || []); }
+  function inView(x, list) {
+    var s = statusOf(x);
+    if (s === null) return threadsOf(x).some(function (th) { return !th.endedAt && list.indexOf(th.status) >= 0; });
+    return list.indexOf(s) >= 0;
+  }
+  function idleDays(x) { return Math.floor((now() - ms(x.lastWorkedAt)) / DAY); }
+  function isStalePrompt(x) { return statusOf(x) === "idle" && idleDays(x) >= S.staleDays && !S.staleDismissed[x.slug]; }
+  function byLast(a, b) { return ms(b.lastWorkedAt) - ms(a.lastWorkedAt); }
+  function unreadCount() { return Object.keys(S.unread).filter(function (k) { return S.unread[k]; }).length; }
+  function notifVisible(n) { return !S.dismissedN[n.id] && !S.muted[n.topic] && !S.mutedKinds[n.kind]; }
+  function notifHidden(n) { return !S.dismissedN[n.id] && !notifVisible(n); }
+  function monState(x, i) {
+    var key = x.slug + "#" + i;
+    return S.mon[key] || x.monitors[i].state;
+  }
+  function attentionTopics() { return TOPICS.filter(function (x) { return inView(x, ["hitl", "error"]); }); }
+  function stalePromptTopics() { return TOPICS.filter(isStalePrompt); }
+  function runningThreads() {
+    var out = [];
+    TOPICS.forEach(function (x) {
+      threadsOf(x).forEach(function (th) { if (th.status === "wip") out.push({ x: x, th: th }); });
+    });
+    return out.sort(function (a, b) { return ms(a.th.startedAt) - ms(b.th.startedAt); });
+  }
+  function scope() { return S.open && BY[S.open] ? "#dossier " : "#home "; }
+
+  // ---- shared fragments --------------------------------------------------
+  function badge(s, title) {
+    if (s == null) return '<span class="badge" style="--c:var(--text-3)" title="' + esc(title || "Several threads: each thread has its own status") + '">—</span>';
+    var m = A.statuses[s];
+    return '<span class="badge" style="--c:var(--st-' + s + ')" title="' + esc(m ? m.meaning : s) + '">' + esc(s) + '</span>';
+  }
+  function tl(x, extra) {
+    return '<button class="tlink' + (S.unread[x.slug] ? " unread" : "") + (extra ? " " + extra : "") + '" type="button" data-open="' + esc(x.slug) + '">' + esc(x.title) + '</button>';
+  }
+  function provChip(p) { return '<span class="prov" title="' + (p === "t3" ? "T3 thread" : "Claude Code session") + '">' + (p === "t3" ? "T3" : "CC") + '</span>'; }
+  function provName(p) { return p === "t3" ? "T3" : "Claude Code"; }
+  function monChip(x, i) {
+    var st = monState(x, i), m = x.monitors[i];
+    return '<span class="mon ' + st + '">' + esc(m.kind) + ' <span class="mono">' + esc(m.target) + '</span> <i>' + esc(st) + '</i></span>';
+  }
+
+  // ---- home: top, health, status bar ------------------------------------
+  function renderTop() {
+    var nWait = attentionTopics().length + stalePromptTopics().length;
+    var nRun = runningThreads().length;
+    var nWatch = TOPICS.filter(function (x) { return inView(x, ["monitoring", "review"]); }).length;
+    $("#counts").innerHTML =
+      '<span style="--c:var(--st-hitl)"><b>' + nWait + '</b> waiting</span>' +
+      '<span style="--c:var(--st-wip)"><b>' + nRun + '</b> running</span>' +
+      '<span style="--c:var(--st-monitoring)"><b>' + nWatch + '</b> watching</span>';
+    $("#crumb").textContent = S.open && BY[S.open] ? "/ " + BY[S.open].title : "";
+    var btn = $("#btnTheme");
+    var light = root.dataset.theme === "light";
+    btn.textContent = light ? "Dark theme" : "Light theme";
+    btn.setAttribute("aria-pressed", light ? "true" : "false");
+  }
+  var HF = { ok: ["--st-done", "ok"], stale: ["--st-hitl", "no update"], failing: ["--st-error", "failing"] };
+  var HL = { server: "Server", claudeCode: "Claude Code", t3: "T3" };
+  function renderHealth() {
+    $("#health").innerHTML = Object.keys(A.health).map(function (k) {
+      var h = A.health[k], f = HF[h.state] || ["--st-idle", h.state];
+      return '<div class="hc" role="listitem" style="--c:var(--' + f[0].slice(2) + ')">' +
+        '<span class="dot" aria-hidden="true"></span><b>' + esc(HL[k] || k) + '</b>' +
+        '<span class="st">' + esc(f[1]) + '</span>' +
+        '<span class="trunc" title="' + esc(h.text) + '">' + esc(h.text) + '</span></div>';
+    }).join("");
+  }
+  function renderStatus() {
+    var hidden = Object.keys(S.muted).length ? notifHiddenCount() : 0;
+    $("#sbL").innerHTML =
+      '<span><b>' + runningThreads().length + '</b> threads running</span>' +
+      '<span><b>' + unreadCount() + '</b> unread</span>' +
+      '<span><b>' + hidden + '</b> notifications hidden by mute</span>';
+  }
+  function notifHiddenCount() { return A.notifications.filter(notifHidden).length; }
+
+  // ---- home: panels -----------------------------------------------------
+  function renderWait() {
+    var attn = attentionTopics().sort(byLast);
+    var html = attn.map(function (x) {
+      var isErr = statusOf(x) === "error" || (x.attention && x.attention.reason === "error");
+      var col = isErr ? "var(--st-error)" : "var(--st-hitl)";
+      var reason = x.attention ? x.attention.reason : (isErr ? "error" : "agent asked");
+      var text = x.attention ? x.attention.text : x.statusNote;
+      return '<article class="wcard' + (S.unread[x.slug] ? " unread" : "") + '" style="--c:' + col + '">' +
+        '<div class="wc-top">' + badge(statusOf(x)) +
+          '<span class="kl" style="--k:' + col + '">' + esc(reason.toUpperCase()) + '</span>' +
+          (S.unread[x.slug] ? '<span class="unread-dot" title="Unread"></span><span class="sr">Unread</span>' : "") +
+          '<span class="sp"></span><span data-rel="' + x.lastWorkedAt + '">' + rel(x.lastWorkedAt) + '</span></div>' +
+        '<h3 class="wc-title">' + esc(x.title) + '</h3>' +
+        '<p class="wc-q">' + esc(text) + '</p>' +
+        '<div class="wc-foot"><span class="meta">' + threadsOf(x).length + ' thread' + (threadsOf(x).length === 1 ? "" : "s") + '</span><span class="sp"></span>' +
+          '<button class="btn primary sm" type="button" data-open="' + esc(x.slug) + '">Open</button>' +
+          '<button class="btn sm" type="button" aria-pressed="' + (!!S.muted[x.slug]) + '" data-mute="' + esc(x.slug) + '">' + (S.muted[x.slug] ? "Muted" : "Mute topic") + '</button>' +
+        '</div></article>';
+    }).join("");
+    var stale = stalePromptTopics().map(function (x) {
+      return '<article class="wcard" style="--c:var(--st-stale)">' +
+        '<div class="wc-top">' + badge("idle") + '<span class="kl" style="--k:var(--st-stale)">STALE PROMPT</span><span class="sp"></span><span>' + idleDays(x) + ' days idle</span></div>' +
+        '<h3 class="wc-title">' + esc(x.title) + '</h3>' +
+        '<p class="wc-q">Idle for ' + idleDays(x) + ' days. Mark as stale?</p>' +
+        '<div class="wc-foot"><span class="sp"></span>' +
+          '<button class="btn sm" type="button" data-stale-dismiss="' + esc(x.slug) + '">Dismiss</button>' +
+          '<button class="btn primary sm" type="button" data-stale-mark="' + esc(x.slug) + '">Mark stale</button>' +
+          '<button class="btn sm ghost" type="button" data-open="' + esc(x.slug) + '">Open</button>' +
+        '</div></article>';
+    }).join("");
+    var all = html + stale;
+    $("#wait").innerHTML = all || '<p class="empty">Nothing needs you.</p>';
+    $("#nWait").textContent = attn.length + stalePromptTopics().length;
+  }
+
+  function renderRun() {
+    var rs = runningThreads();
+    $("#run").innerHTML = rs.map(function (r) {
+      return '<div class="row">' + provChip(r.th.provider) +
+        '<div class="main"><div class="t1 trunc">' + esc(r.th.title) + '</div>' +
+          '<div class="t2">' + tl(r.x) + '<span>' + esc(r.th.env || "—") + '</span></div></div>' +
+        '<span class="elapsed" data-started="' + r.th.startedAt + '">' + fmtElapsed(now() - ms(r.th.startedAt)) + '</span></div>';
+    }).join("") || '<p class="empty">No thread is running.</p>';
+    $("#nRun").textContent = rs.length;
+  }
+
+  function renderWatch() {
+    var ws = TOPICS.filter(function (x) { return inView(x, ["monitoring", "review"]); }).sort(byLast);
+    $("#watch").innerHTML = ws.map(function (x) {
+      var mons = x.monitors.map(function (m, i) { return monChip(x, i); }).join("");
+      var last = x.entries.slice().sort(function (a, b) { return ms(b.at) - ms(a.at); })[0];
+      var latest = last
+        ? '<span class="meta">latest, ' + esc(rel(last.at)) + '</span> ' + esc(entryText(last))
+        : '<span class="meta">No monitor result yet.</span>';
+      return '<div class="wrow"><div class="wr-h">' + tl(x) + '<span class="sp"></span>' + badge(statusOf(x)) + '</div>' +
+        (mons ? '<div class="mons">' + mons + '</div>' : '<div class="mons"><span class="meta">No monitoring targets.</span></div>') +
+        '<p class="wr-latest clamp2">' + latest + '</p></div>';
+    }).join("") || '<p class="empty">Nothing under monitoring.</p>';
+    $("#nWatch").textContent = ws.length;
+  }
+
+  function renderActivity() {
+    var all = [];
+    TOPICS.forEach(function (x) { x.entries.forEach(function (e) { all.push({ x: x, e: e }); }); });
+    all.sort(function (a, b) { return ms(b.e.at) - ms(a.e.at); });
+    var fresh = !S.freshShown;
+    $("#act").innerHTML = all.slice(0, 40).map(function (r, i) {
+      var age = now() - ms(r.e.at);
+      var cls = "ev" + (age > 2 * HOUR ? " old" : "") + (fresh && i === 0 ? " fresh" : "");
+      return '<div class="' + cls + '" style="--k:' + kcol(r.e.kind) + '">' +
+        '<time datetime="' + r.e.at + '">' + hhmm(r.e.at) + '</time>' +
+        '<div><div class="h"><span class="kl">' + esc(kindLabel(r.e)) + '</span>' + tl(r.x) + '</div>' +
+        '<p class="txt clamp2">' + esc(entryText(r.e)) + '</p></div></div>';
+    }).join("") || '<p class="empty">No history yet.</p>';
+  }
+
+  var PILES = [
+    { id: "idle", label: "Idle", view: ["idle"], col: "--st-idle" },
+    { id: "blocked", label: "Blocked", view: ["blocked"], col: "--st-blocked" },
+    { id: "stale", label: "Stale", view: ["stale"], col: "--st-stale" },
+    { id: "done", label: "Done", view: ["done"], col: "--st-done" }
+  ];
+  function renderPiles() {
+    $("#pile").innerHTML = PILES.map(function (p) {
+      var list = TOPICS.filter(function (x) { return inView(x, p.view); }).sort(byLast);
+      var items = list.map(function (x) {
+        var sub = statusOf(x) === null
+          ? threadsOf(x).filter(function (th) { return p.view.indexOf(th.status) >= 0; }).map(function (th) { return "thread " + th.status; }).join(", ")
+          : rel(x.lastWorkedAt);
+        return '<li>' + tl(x) + '<span class="sub">' + esc(sub) + '</span></li>';
+      }).join("");
+      return '<div class="pg" style="--c:var(--' + p.col.slice(2) + ')"><div class="pg-h"><h3>' + p.label + '</h3><span class="n">' + list.length + '</span></div>' +
+        (items ? '<ul>' + items + '</ul>' : '<p class="empty">None</p>') + '</div>';
+    }).join("");
+  }
+
+  function renderNotifs() {
+    var vis = A.notifications.filter(notifVisible).sort(function (a, b) { return ms(b.at) - ms(a.at); });
+    $("#notif").innerHTML = vis.map(function (n) {
+      return '<div class="nt"><div class="h"><span class="kl" style="--k:var(' + (NOTIF_COL[n.kind] || "--text-3") + ')">' + esc(n.kind) + '</span>' +
+        tl(BY[n.topic]) + '<span class="sp"></span><span class="meta" data-rel="' + n.at + '">' + rel(n.at) + '</span></div>' +
+        '<p class="txt">' + esc(n.body) + '</p>' +
+        '<div class="acts"><button class="btn sm ghost" type="button" data-dismiss-n="' + n.id + '">Dismiss</button></div></div>';
+    }).join("") || '<p class="empty">No notifications.</p>';
+    $("#nNotif").textContent = vis.length;
+    var hid = notifHiddenCount();
+    $("#notifFoot").innerHTML = '<span>' + hid + ' hidden by mute. Topics stay highlighted.</span><span class="sp"></span>' +
+      '<button class="btn sm ghost" type="button" data-settings>Settings</button>';
+  }
+
+  function renderHome() {
+    renderWait(); renderRun(); renderWatch(); renderPiles(); renderActivity(); renderNotifs();
+    S.freshShown = true;
+  }
+
+  // ---- dossier -----------------------------------------------------------
+  function jiraOrStatus(o) {
+    if (o.jira) {
+      return '<span class="mono">' + esc(o.jira.key) + '</span><span class="meta">' + esc(o.jira.status) + '</span>' +
+        '<span class="meta lock">' + LOCK + ' Jira, locked</span>';
+    }
+    return '<span class="meta">' + esc(o.status) + ', set in Axiom</span>';
+  }
+  function parentsHTML(x) {
+    var out = [];
+    x.parents.epics.forEach(function (s) {
+      var e = EPIC[s];
+      if (e) out.push('<li><span class="pk">Epic</span><span>' + esc(e.title) + '</span>' + jiraOrStatus(e) + '</li>');
+    });
+    x.parents.tickets.forEach(function (s) {
+      var tk = TICKET[s];
+      if (tk) out.push('<li><span class="pk">Ticket</span><span>' + esc(tk.title) + '</span>' + jiraOrStatus(tk) + '</li>');
+    });
+    return out.length ? '<ul class="plist">' + out.join("") + '</ul>' : '<span class="meta">None</span>';
+  }
+  var RES = { pass: "--st-done", partial: "--st-hitl", fail: "--st-error" };
+  function entryHTML(x, e) {
+    var th = e.thread ? threadsOf(x).filter(function (q) { return q.id === e.thread; })[0] : null;
+    var who = th ? '<span class="who">in ' + esc(th.title) + '</span>' : (e.thread ? '<span class="who">thread ' + esc(e.thread) + '</span>' : "");
+    var extra = "";
+    if (e.data && e.data.result) extra += '<span class="badge" style="--c:var(' + (RES[e.data.result] || "--st-idle") + ')">' + esc(e.data.result) + '</span>';
+    if (e.data) Object.keys(e.data).forEach(function (k) {
+      if (k === "result" || k === "from" || k === "to" || k === "reason") return;
+      var v = e.data[k];
+      if (k === "standing") v = v ? "standing" : "one-off";
+      extra += '<span class="kv">' + esc(k) + ' <span>' + esc(v) + '</span></span>';
+    });
+    (e.refs || []).forEach(function (r) { extra += '<span class="ref" title="' + esc(r) + '">' + esc(r) + '</span>'; });
+    return '<li class="te" style="--k:' + kcol(e.kind) + '"><div class="te-h"><span class="kl">' + esc(kindLabel(e)) + '</span>' + who +
+      '<time class="tm" datetime="' + e.at + '">' + hhmm(e.at) + '</time></div>' +
+      '<p class="te-b">' + esc(entryText(e)) + '</p>' +
+      (extra ? '<div class="te-x">' + extra + '</div>' : "") + '</li>';
+  }
+  function renderDossier(x) {
+    var st = statusOf(x), threads = threadsOf(x), mute = !!S.muted[x.slug];
+    $("#dh").innerHTML =
+      '<div class="dh-top"><button class="btn ghost sm" type="button" data-home>' + BACK + 'Back to dashboard</button><span class="sp"></span>' +
+        '<button class="btn sm" type="button" aria-pressed="' + mute + '" data-mute="' + esc(x.slug) + '">' + (mute ? "Muted" : "Mute topic") + '</button></div>' +
+      '<div class="dh-title"><h1 id="dtitle" tabindex="-1">' + esc(x.title) + '</h1>' + badge(st) + '<span class="slug">' + esc(x.slug) + '</span></div>' +
+      (st === null ? '<p class="meta" style="margin-top:4px">Several threads are active, so each thread shows its own status.</p>' : "") +
+      (x.statusNote ? '<p class="note">' + esc(x.statusNote) + '</p>' : "") +
+      '<dl class="dmeta">' +
+        '<div><dt>Goal</dt><dd>' + (x.goal ? esc(x.goal) : '<span class="meta">No goal set</span>') + '</dd></div>' +
+        '<div><dt>Parents</dt><dd>' + parentsHTML(x) + '</dd></div>' +
+        '<div><dt>Created</dt><dd class="mono">' + esc(x.createdAt.slice(0, 10)) + ' ' + hhmm(x.createdAt) + '</dd></div>' +
+        '<div><dt>Last worked</dt><dd class="mono"><span data-rel="' + x.lastWorkedAt + '">' + rel(x.lastWorkedAt) + '</span></dd></div>' +
+      '</dl>';
+
+    var entries = x.entries.slice().sort(function (a, b) { return ms(b.at) - ms(a.at); });
+    var html = "", lastKey = null;
+    entries.forEach(function (e) {
+      var key = e.at.slice(0, 10);
+      if (key !== lastKey) {
+        if (lastKey !== null) html += "</ol>";
+        html += '<h3 class="day">' + esc(dayLabel(e.at)) + '</h3><ol class="tl">';
+        lastKey = key;
+      }
+      html += entryHTML(x, e);
+    });
+    if (lastKey !== null) html += "</ol>";
+    $("#tlCol").innerHTML = '<div class="sec-h"><h2 id="hTl">History</h2><span class="n">' + entries.length + ' entries</span><span class="sp"></span><span class="meta">Newest first</span></div>' +
+      (html || '<p class="empty">No history yet.</p>');
+
+    var threadsHTML = threads.map(function (th) {
+      return '<div class="thr' + (th.added ? " attached" : "") + '"><div class="h">' + provChip(th.provider) +
+        '<b class="trunc">' + esc(th.title) + '</b><span class="sp"></span>' + badge(th.status, "Thread status not set") + '</div>' +
+        '<div class="m"><span>' + esc(provName(th.provider)) + '</span><span>' + esc(th.id) + '</span>' +
+        (th.env ? '<span>' + esc(th.env) + '</span>' : "") +
+        (th.startedAt ? '<span>started ' + hhmm(th.startedAt) + '</span>' : "") +
+        (th.endedAt ? '<span>ended ' + hhmm(th.endedAt) + '</span>' : (th.startedAt ? '<span>still open</span>' : "")) +
+        (th.t3State ? '<span>T3 says ' + esc(th.t3State) + '</span>' : "") + '</div></div>';
+    }).join("") || '<p class="empty">No threads attached.</p>';
+    var attachable = A.t3Unattached.filter(function (q) { return !S.attached[q.id]; });
+    var pickerHTML = '<div class="picker" id="picker"' + (S.picker ? "" : " hidden") + '>' +
+      (attachable.length ? '<ul>' + attachable.map(function (q) {
+        return '<li><div class="main"><div class="trunc">' + esc(q.title) + '</div><div class="pm">' +
+          esc(q.id) + ', ' + esc(q.env) + ', T3 ' + esc(q.status) + ', updated ' + rel(q.updatedAt) + '</div></div>' +
+          '<button class="btn sm" type="button" data-attach="' + esc(q.id) + '">Attach</button></li>';
+      }).join("") + "</ul>" : '<p class="empty">No unattached T3 threads.</p>') + "</div>";
+
+    var KN = { repository: "Repository", branch: "Branch", worktree: "Worktree", pr: "Pull requests", spec: "Specs", artifact: "Artifacts" };
+    var linksHTML = Object.keys(KN).map(function (k) {
+      var ls = x.links.filter(function (l) { return l.kind === k; });
+      if (!ls.length) return "";
+      return '<div class="lg"><h3>' + KN[k] + '</h3><ul>' + ls.map(function (l) {
+        return '<li>' + (l.label
+          ? '<span class="lt">' + esc(l.label) + '</span><span class="lm">' + esc(l.target) + '</span>'
+          : '<span class="lm" style="text-align:left">' + esc(l.target) + '</span>') + '</li>';
+      }).join("") + '</ul></div>';
+    }).join("") || '<p class="empty">No links.</p>';
+
+    var monHTML = x.monitors.map(function (m, i) {
+      return '<li class="mrow">' + monChip(x, i) +
+        (monState(x, i) === "suggested" ? '<button class="btn sm" type="button" data-confirm="' + esc(x.slug + "#" + i) + '">Confirm</button>' : "") + '</li>';
+    }).join("");
+
+    $("#side").innerHTML =
+      '<section class="sec" aria-labelledby="hThr"><div class="sec-h"><h2 id="hThr">Threads</h2><span class="n">' + threads.length + '</span><span class="sp"></span>' +
+        '<button class="btn sm" type="button" aria-expanded="' + S.picker + '" aria-controls="picker" data-picker>Attach T3 thread</button></div>' +
+        threadsHTML + pickerHTML + '</section>' +
+      '<section class="sec" aria-labelledby="hLinks"><div class="sec-h"><h2 id="hLinks">Links</h2></div>' + linksHTML + '</section>' +
+      '<section class="sec" aria-labelledby="hMon"><div class="sec-h"><h2 id="hMon">Monitoring targets</h2><span class="n">' + x.monitors.length + '</span></div>' +
+        (monHTML ? "<ul>" + monHTML + "</ul>" : '<p class="empty">None yet. Axiom suggests targets from links, such as an open PR.</p>') + '</section>';
+  }
+
+  // ---- settings dialog ----------------------------------------------------
+  function mutedListHTML() {
+    var keys = Object.keys(S.muted).filter(function (k) { return S.muted[k]; });
+    if (!keys.length) return '<p class="empty">No muted topics.</p>';
+    return '<ul class="dlg-muted">' + keys.map(function (k) {
+      return '<li><span class="trunc" style="flex:1">' + esc(BY[k].title) + '</span>' +
+        '<button class="btn sm" type="button" data-unmute="' + esc(k) + '">Unmute</button></li>';
+    }).join("") + "</ul>";
+  }
+  function renderSettings() {
+    $("#dlgBody").innerHTML =
+      '<fieldset class="fs"><legend>Notification kinds</legend>' + A.notificationSettings.kinds.map(function (k) {
+        return '<label class="ck"><input type="checkbox" data-kind="' + esc(k) + '"' + (S.mutedKinds[k] ? "" : " checked") + '>' + esc(k) + '</label>';
+      }).join("") + "</fieldset>" +
+      '<fieldset class="fs"><legend>Muted topics</legend><div id="dlgMuted">' + mutedListHTML() + "</div></fieldset>" +
+      '<fieldset class="fs"><legend>Stale prompt</legend><label class="ck">Ask me to mark a topic stale after' +
+        '<input class="num" id="staleDays" type="number" min="1" max="365" value="' + S.staleDays + '">days idle</label></fieldset>' +
+      '<fieldset class="fs"><legend>Browser notifications</legend><p>Permission: <span class="mono">' +
+        esc(A.notificationSettings.browserNotifications) + "</span></p></fieldset>";
+  }
+
+  // ---- clock, render, events ----------------------------------------------
+  function tick() {
+    var n = now();
+    doc.querySelectorAll("[data-started]").forEach(function (el) { el.textContent = fmtElapsed(n - ms(el.dataset.started)); });
+    doc.querySelectorAll("[data-rel]").forEach(function (el) { el.textContent = rel(el.dataset.rel); });
+    var d = new Date(n);
+    $("#sbR").textContent = p2(d.getHours()) + ":" + p2(d.getMinutes()) + ":" + p2(d.getSeconds());
+  }
+  function render(focusSel) {
+    var topic = S.open ? BY[S.open] : null;
+    $("#home").hidden = !!topic;
+    $("#dossier").hidden = !topic;
+    if (topic) renderDossier(topic); else renderHome();
+    renderTop(); renderHealth(); renderStatus();
+    tick();
+    if (focusSel) {
+      var n = doc.querySelector(focusSel);
+      if (n) n.focus({ preventScroll: true });
+    }
+  }
+
+  doc.addEventListener("click", function (e) {
+    var el = e.target.closest("button");
+    if (!el) return;
+    var d = el.dataset, fs = null;
+    if (el.hasAttribute("data-settings")) { renderSettings(); $("#settings").showModal(); return; }
+    if (el.hasAttribute("data-theme-toggle")) {
+      root.dataset.theme = root.dataset.theme === "light" ? "dark" : "light";
+      fs = "#btnTheme";
+    } else if (d.unmute !== undefined) {
+      delete S.muted[d.unmute];
+      $("#dlgMuted").innerHTML = mutedListHTML();
+      $("#staleDays").focus();
+      renderTop(); renderNotifs(); renderWait(); renderStatus();
+      return;
+    } else if (el.hasAttribute("data-home")) {
+      S.open = ""; fs = "[data-home]";
+    } else if (d.open !== undefined) {
+      S.open = d.open; delete S.unread[d.open]; fs = "#dtitle";
+    } else if (d.mute !== undefined) {
+      if (S.muted[d.mute]) delete S.muted[d.mute]; else S.muted[d.mute] = true;
+      fs = scope() + '[data-mute="' + d.mute + '"]';
+    } else if (d.dismissN !== undefined) {
+      S.dismissedN[d.dismissN] = true; fs = "#notif [data-dismiss-n]";
+    } else if (d.staleMark !== undefined) {
+      S.over[d.staleMark] = "stale"; fs = "#wait button";
+    } else if (d.staleDismiss !== undefined) {
+      S.staleDismissed[d.staleDismiss] = true; fs = "#wait button";
+    } else if (d.confirm !== undefined) {
+      S.mon[d.confirm] = "confirmed"; fs = "#side .mrow button";
+    } else if (d.picker !== undefined) {
+      S.picker = !S.picker; fs = "#side [data-picker]";
+    } else if (d.attach !== undefined) {
+      var q = A.t3Unattached.filter(function (t3) { return t3.id === d.attach; })[0];
+      if (q && S.open) {
+        S.attached[q.id] = true;
+        (S.added[S.open] = S.added[S.open] || []).push({ provider: "t3", id: q.id, title: q.title, status: null, env: q.env, t3State: q.status, added: true });
+      }
+      S.picker = false; fs = "#side [data-picker]";
+    } else {
+      return;
+    }
+    render(fs);
+  });
+
+  $("#settings").addEventListener("change", function (e) {
+    var t2 = e.target;
+    if (t2.dataset && t2.dataset.kind) { S.mutedKinds[t2.dataset.kind] = !t2.checked; render(); }
+    else if (t2.id === "staleDays") {
+      var v = parseInt(t2.value, 10);
+      if (v >= 1) { S.staleDays = v; render(); }
+    }
+  });
+
+  if (S.open && BY[S.open]) delete S.unread[S.open];
+  render();
+  setInterval(tick, 1000);
+})();
+</script>
+</body>
+</html>

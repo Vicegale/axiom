@@ -1,0 +1,1116 @@
+<!doctype html>
+<html lang="en" data-theme="dark" data-open="axiom-spec">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Axiom: Console mockup</title>
+<style>
+/* Shared Axiom mockup tokens. Dark is the default; light via [data-theme="light"]. */
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap");
+:root {
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", monospace;
+  --bg: #0b0c0e; --bg-dots: #1a1c20; --panel: #111316; --panel-2: #16191d; --raised: #1b1f24;
+  --line: #24282e; --line-strong: #323840;
+  --text: #e6e8eb; --text-2: #a3a9b2; --text-3: #848b95;
+  --focus: #7aa2ff;
+  /* topic statuses */
+  --st-idle: #7b838d; --st-wip: #5b9dff; --st-hitl: #ffb547; --st-monitoring: #38c6b6; --st-blocked: #c77dff;
+  --st-review: #8f8bff; --st-done: #4fbf74; --st-stale: #8a7a64; --st-error: #ff5d5d;
+  /* history entry kinds */
+  --k-note: #8b93a0; --k-decision: #f5a524; --k-finding: #ff8a3d; --k-verification: #3fcf8e; --k-owner: #ff6b9a;
+  --k-authorization: #b48cff; --k-next: #46b7ff; --k-axiom: #5c6470;
+  --radius: 6px;
+  color-scheme: dark;
+}
+[data-theme="light"] {
+  --bg: #f6f6f4; --bg-dots: #e2e2de; --panel: #ffffff; --panel-2: #fafaf8; --raised: #f0f0ed;
+  --line: #e4e4e0; --line-strong: #d2d2cc;
+  --text: #17191c; --text-2: #4e545c; --text-3: #6c727b;
+  --focus: #2f5fd0;
+  --st-idle: #7a828c; --st-wip: #2f6fe0; --st-hitl: #c27a00; --st-monitoring: #0f9488; --st-blocked: #9a46d6;
+  --st-review: #5b55e0; --st-done: #23914a; --st-stale: #8a7556; --st-error: #d93636;
+  --k-note: #6b7380; --k-decision: #b87400; --k-finding: #d1601a; --k-verification: #1d9a5f; --k-owner: #d43c72;
+  --k-authorization: #7b52d6; --k-next: #1f7fc4; --k-axiom: #8b929b;
+  color-scheme: light;
+}
+
+</style>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:12px/1.45 var(--font-mono);-webkit-font-smoothing:antialiased}
+body{overflow:hidden}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--focus);outline-offset:1px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+
+/* frame: fixed 900px, grid of sidebar | main | optional drawer, status bar across */
+.app{height:900px;width:100%;display:grid;grid-template-columns:232px minmax(0,1fr);grid-template-rows:minmax(0,1fr) 24px;grid-template-areas:"side main" "status status";background:var(--bg)}
+.app.drawer-open{grid-template-columns:232px minmax(0,1fr) 304px;grid-template-areas:"side main drawer" "status status status"}
+
+/* glyph + status colour (glyph carries meaning too, colour is secondary) */
+.st-idle{--c:var(--st-idle)} .st-wip{--c:var(--st-wip)} .st-hitl{--c:var(--st-hitl)} .st-monitoring{--c:var(--st-monitoring)}
+.st-blocked{--c:var(--st-blocked)} .st-review{--c:var(--st-review)} .st-done{--c:var(--st-done)} .st-stale{--c:var(--st-stale)} .st-error{--c:var(--st-error)}
+.glyph{color:var(--c,var(--text-3));width:1.1em;display:inline-block;text-align:center;font-weight:600}
+.stword{color:var(--c,var(--text-2))}
+
+/* sidebar */
+.side{grid-area:side;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.brand{height:34px;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--line);font-weight:600;letter-spacing:.02em}
+.brand small{color:var(--text-3);font-weight:400;font-size:11px}
+.tree{flex:1;min-height:0;overflow:auto;padding:6px 0}
+.tree ul{list-style:none;margin:0;padding:0}
+.tree .lvl{padding-left:calc(var(--d,0) * 12px)}
+.node{display:flex;align-items:center;gap:6px;width:100%;height:21px;padding:0 8px 0 6px;border:0;background:none;text-align:left;color:var(--text-2);white-space:nowrap;overflow:hidden}
+.node .lbl{overflow:hidden;text-overflow:ellipsis;min-width:0}
+.node:hover{background:var(--panel-2);color:var(--text)}
+.node[aria-current="true"]{background:var(--raised);color:var(--text)}
+.node.kind-epic .lbl{color:var(--text);font-weight:600}
+.node.kind-tkt .lbl{color:var(--text)}
+.node .jk{color:var(--text-3);font-size:11px}
+.node .tail{margin-left:auto;color:var(--text-3);font-size:11px;flex:none}
+.unfiled-h{padding:8px 8px 2px 8px;color:var(--text-3);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+.lock{display:inline-flex;color:var(--text-3)}
+.views{border-top:1px solid var(--line);padding:6px 0 8px}
+.views h2{margin:0;padding:4px 12px 4px;font-size:10px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)}
+.view{display:flex;align-items:center;gap:8px;width:100%;height:23px;padding:0 12px;border:0;background:none;color:var(--text-2);text-align:left}
+.view:hover{background:var(--panel-2);color:var(--text)}
+.view[aria-pressed="true"]{background:var(--raised);color:var(--text);box-shadow:inset 2px 0 0 var(--focus)}
+.view .n{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--text-3)}
+.view .n.hot{color:var(--st-hitl)}
+
+/* main */
+.main{grid-area:main;min-width:0;min-height:0;display:flex;flex-direction:column;background-color:var(--bg);background-image:radial-gradient(var(--bg-dots) 1px,transparent 1px);background-size:16px 16px}
+.bar{height:34px;flex:none;display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px solid var(--line);background:var(--panel)}
+.bar .ctx{color:var(--text-2);white-space:nowrap}
+.bar .ctx b{color:var(--text);font-weight:600}
+.filter{height:22px;width:220px;background:var(--panel-2);border:1px solid var(--line-strong);border-radius:4px;padding:0 8px;color:var(--text)}
+.filter::placeholder{color:var(--text-3)}
+.keys{margin-left:auto;display:flex;gap:10px;color:var(--text-3);white-space:nowrap;overflow:hidden}
+.keys kbd{font:inherit;color:var(--text-2);border:1px solid var(--line-strong);border-bottom-width:2px;border-radius:3px;padding:0 4px;margin-right:3px}
+.chipx{display:inline-flex;align-items:center;gap:6px;height:20px;padding:0 6px;border:1px solid var(--line-strong);border-radius:4px;background:var(--raised);color:var(--text-2)}
+.chipx button{border:0;background:none;padding:0 2px;color:var(--text-3)}
+
+.tablewrap{flex:1;min-height:0;overflow:auto;background:color-mix(in srgb,var(--bg) 92%,transparent)}
+table.topics{width:100%;border-collapse:collapse;table-layout:fixed}
+table.topics th{position:sticky;top:0;z-index:1;background:var(--panel);text-align:left;font-weight:500;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3);height:24px;padding:0 8px;border-bottom:1px solid var(--line-strong);white-space:nowrap}
+table.topics th button{all:unset;cursor:pointer;color:inherit}
+table.topics th button:focus-visible{outline:2px solid var(--focus)}
+table.topics th[aria-sort="ascending"]::after{content:" ▲";color:var(--focus)}
+table.topics th[aria-sort="descending"]::after{content:" ▼";color:var(--focus)}
+table.topics td{height:24px;padding:0 8px;border-bottom:1px solid var(--line);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;vertical-align:middle;color:var(--text-2)}
+.c-st{width:38px;text-align:center}
+.c-slug{width:184px}
+.c-title{width:27%}
+.c-note{width:auto}
+.c-par{width:168px}
+.c-thr{width:124px}
+.c-mon{width:70px}
+.c-last{width:84px;text-align:right}
+table.topics td.c-slug{color:var(--text)}
+table.topics td.c-title{color:var(--text)}
+table.topics td.c-last{font-variant-numeric:tabular-nums}
+tr.grp th{position:static;background:var(--panel-2);color:var(--text-2);text-transform:none;letter-spacing:0;font-size:11px;height:22px;border-bottom:1px solid var(--line);padding-left:8px}
+tr.grp th .count{color:var(--text-3);margin-left:6px}
+tr.row{cursor:pointer}
+tr.row:hover td{background:var(--panel-2)}
+tr.row[aria-selected="true"] td{background:color-mix(in srgb,var(--focus) 15%,var(--panel))}
+tr.row[aria-selected="true"] td:first-child{box-shadow:inset 2px 0 0 var(--focus)}
+tr.row.unread td{background:color-mix(in srgb,var(--st-hitl) 9%,transparent)}
+tr.row.unread td.c-slug{font-weight:600}
+tr.row.unread td.c-st{box-shadow:inset 2px 0 0 var(--st-hitl)}
+tr.row.muted td.c-slug .mute{color:var(--text-3)}
+tr.row.faded td{color:var(--text-3)}
+tr.row.faded td.c-slug,tr.row.faded td.c-title{color:var(--text-2)}
+.dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--st-hitl);margin-right:6px;vertical-align:1px}
+.dot.off{visibility:hidden}
+.pill{display:inline-block;font-size:10px;line-height:14px;padding:0 4px;border:1px solid var(--line-strong);border-radius:3px;color:var(--text-3);margin-left:6px;vertical-align:1px}
+.pill.warn{color:var(--st-stale);border-color:color-mix(in srgb,var(--st-stale) 60%,transparent)}
+.prov{color:var(--text-2)} .prov b{font-weight:600;color:var(--text)}
+
+/* splitter (static) and bottom panel */
+.split{flex:none;height:9px;display:flex;align-items:center;justify-content:center;border-top:1px solid var(--line);background:var(--panel)}
+.split i{display:block;width:44px;height:3px;border-radius:2px;background:var(--line-strong)}
+.panel{flex:none;height:380px;display:flex;flex-direction:column;background:var(--panel);min-height:0}
+.phead{height:32px;flex:none;display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px solid var(--line)}
+.phead .slug{font-weight:600;color:var(--text)}
+.phead .title{color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.tabs{display:flex;gap:2px;margin-left:auto;flex:none}
+.tab{height:24px;padding:0 9px;border:1px solid transparent;border-radius:4px;background:none;color:var(--text-3)}
+.tab:hover{color:var(--text)}
+.tab[aria-selected="true"]{color:var(--text);border-color:var(--line-strong);background:var(--raised)}
+.pbody{flex:1;min-height:0;overflow:auto;padding:0 0 8px}
+.pbody section{padding:0 12px}
+.pad{padding:10px 12px}
+.banner{margin:8px 12px 0;padding:6px 10px;display:flex;align-items:center;gap:10px;border:1px solid color-mix(in srgb,var(--st-stale) 55%,transparent);border-left:3px solid var(--st-stale);background:color-mix(in srgb,var(--st-stale) 10%,transparent);border-radius:4px;color:var(--text)}
+.banner .sp{margin-left:auto;display:flex;gap:6px}
+.btn{height:22px;padding:0 8px;border:1px solid var(--line-strong);border-radius:4px;background:var(--raised);color:var(--text-2);white-space:nowrap}
+.btn:hover{color:var(--text);border-color:var(--text-3)}
+.btn.primary{color:var(--text);border-color:var(--st-stale)}
+.btn.ghost{background:none}
+.btn[aria-pressed="true"]{color:var(--text);border-color:var(--focus)}
+
+.chips{display:flex;flex-wrap:wrap;gap:4px;padding:8px 12px;border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);z-index:1}
+.chip{height:20px;padding:0 6px;border:1px solid var(--line-strong);border-radius:10px;background:none;color:var(--text-3);font-size:10px;letter-spacing:.04em;text-transform:uppercase}
+.chip[aria-pressed="true"]{color:var(--c);border-color:color-mix(in srgb,var(--c) 60%,transparent);background:color-mix(in srgb,var(--c) 12%,transparent)}
+.chip .n{color:var(--text-3);margin-left:4px}
+
+/* kind tags: caps label per kind, colour from tokens */
+.kt{--c:var(--k-axiom);display:inline-block;font-size:10px;line-height:15px;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;padding:0 5px;border:1px solid color-mix(in srgb,var(--c) 55%,transparent);border-radius:3px;color:var(--c);background:color-mix(in srgb,var(--c) 8%,transparent)}
+.kt.note{--c:var(--k-note)} .kt.decision{--c:var(--k-decision)} .kt.finding{--c:var(--k-finding)} .kt.verification{--c:var(--k-verification)}
+.kt.owner{--c:var(--k-owner)} .kt.authorization{--c:var(--k-authorization)} .kt.next{--c:var(--k-next)} .kt.axiom{--c:var(--k-axiom)}
+.chip.note{--c:var(--k-note)} .chip.decision{--c:var(--k-decision)} .chip.finding{--c:var(--k-finding)} .chip.verification{--c:var(--k-verification)}
+.chip.owner{--c:var(--k-owner)} .chip.authorization{--c:var(--k-authorization)} .chip.next{--c:var(--k-next)} .chip.axiom{--c:var(--k-axiom)}
+
+.hist{display:grid;grid-template-columns:34px 80px 112px 118px minmax(0,1fr) 150px;column-gap:10px;padding:5px 12px 5px 0;border-bottom:1px solid var(--line);align-items:start}
+.hist .ln{color:var(--text-3);text-align:right;font-variant-numeric:tabular-nums;padding-left:6px}
+.hist .tm{color:var(--text-3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.hist .au{color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hist .bd{color:var(--text);min-width:0;overflow-wrap:anywhere}
+.hist .bd .sub{display:block;color:var(--text-3);font-size:11px}
+.hist .rf{color:var(--text-3);font-size:11px;min-width:0;overflow-wrap:anywhere;text-align:right}
+.res{display:inline-block;margin-left:6px;font-size:10px;text-transform:uppercase;letter-spacing:.06em}
+.res.pass{color:var(--k-verification)} .res.partial{color:var(--st-hitl)} .res.fail{color:var(--st-error)}
+.hist.faded .bd{color:var(--text-2)}
+
+.kv{display:grid;grid-template-columns:120px minmax(0,1fr);gap:4px 12px;padding:10px 12px;margin:0}
+.kv dt{color:var(--text-3)} .kv dd{margin:0;color:var(--text);min-width:0;overflow-wrap:anywhere}
+.grpt{padding:10px 12px 2px;color:var(--text-3);font-size:10px;letter-spacing:.08em;text-transform:uppercase}
+.row2{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:4px 12px;border-bottom:1px solid var(--line);min-height:24px}
+.row2 .k{color:var(--text-3);font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+.row2 .v{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.row2 .meta{color:var(--text-3);font-size:11px;white-space:nowrap}
+.empty{padding:14px 12px;color:var(--text-3)}
+
+/* dialog-like picker (inside the panel) */
+.picker{position:absolute;inset:0;background:color-mix(in srgb,var(--bg) 70%,transparent);display:none;align-items:flex-start;justify-content:center;padding-top:60px;z-index:5}
+.picker.open{display:flex}
+.picker .box{width:520px;max-width:90%;background:var(--panel);border:1px solid var(--line-strong);border-radius:6px;box-shadow:0 12px 40px rgba(0,0,0,.35)}
+.picker header{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.picker header b{font-weight:600}
+.picker ul{list-style:none;margin:0;padding:4px 0;max-height:260px;overflow:auto}
+.picker li{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:5px 12px}
+.picker li:hover{background:var(--panel-2)}
+.picker li .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+.picker li .m{color:var(--text-3);font-size:11px;white-space:nowrap}
+.panelrel{position:relative;flex:none;height:380px;display:flex;flex-direction:column;min-height:0}
+.panelrel .panel{height:100%}
+.thrrow{display:grid;grid-template-columns:74px 72px minmax(0,1fr) 92px 210px;gap:10px;align-items:center;padding:6px 12px;border-bottom:1px solid var(--line)}
+.thrrow .pv{color:var(--text-2)} .thrrow .tt{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.thrrow .tm{color:var(--text-3);font-size:11px;white-space:nowrap}
+.thrrow.endd{color:var(--text-2)}
+.phdr{display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--line)}
+.phdr .sp{margin-left:auto}
+.mon-suggested .row2 .v{color:var(--text-2)}
+.muted-tag{color:var(--text-3);font-size:11px;border:1px solid var(--line-strong);border-radius:3px;padding:0 4px}
+
+/* status bar */
+.status{grid-area:status;display:flex;align-items:center;gap:14px;padding:0 10px;background:var(--panel-2);border-top:1px solid var(--line);color:var(--text-3);font-size:11px;white-space:nowrap;min-width:0;overflow:hidden}
+.status .hl{display:inline-flex;align-items:center;gap:6px;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.status .hl span.t{overflow:hidden;text-overflow:ellipsis;max-width:260px}
+.hdot{width:6px;height:6px;border-radius:50%;background:var(--st-done);flex:none}
+.hdot.warn{background:var(--st-hitl)} .hdot.bad{background:var(--st-error)}
+.status .sep{width:1px;height:12px;background:var(--line-strong);flex:none}
+.status .counts{color:var(--text-2)}
+.status .sp{margin-left:auto;display:flex;align-items:center;gap:8px;flex:none}
+.status .tg{height:18px;padding:0 7px;border:1px solid var(--line-strong);border-radius:3px;background:none;color:var(--text-2);font-size:11px}
+.status .tg[aria-pressed="true"]{color:var(--text);border-color:var(--focus)}
+.status .tg .badge{color:var(--st-hitl);margin-left:4px}
+
+/* notifications drawer */
+.drawer{grid-area:drawer;background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.drawer[hidden]{display:none}
+.drawer header{height:34px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--line)}
+.drawer header b{font-weight:600}
+.drawer header .sp{margin-left:auto}
+.dbody{flex:1;min-height:0;overflow:auto}
+.dsec{border-bottom:1px solid var(--line)}
+.dsec h3{margin:0;padding:8px 12px 4px;font-size:10px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:var(--text-3)}
+.note-i{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;padding:7px 12px;border-bottom:1px solid var(--line)}
+.note-i .top{display:flex;align-items:center;gap:6px;min-width:0}
+.note-i .top .sl{color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.note-i .tm{color:var(--text-3);font-size:11px;white-space:nowrap}
+.note-i .bd{grid-column:1 / 2;color:var(--text-2);overflow-wrap:anywhere}
+.note-i .x{grid-row:1 / 3;grid-column:2;align-self:start;height:20px;width:20px;border:0;background:none;color:var(--text-3)}
+.note-i .x:hover{color:var(--text)}
+.note-i button.sl{all:unset;cursor:pointer;color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.note-i button.sl:hover{text-decoration:underline;text-underline-offset:2px}
+.note-i .top .tm{margin-left:auto}
+.note-i .top .pill{margin-left:0}
+.setrow{display:flex;align-items:center;gap:8px;padding:4px 12px;color:var(--text-2)}
+.setrow label{display:flex;align-items:center;gap:8px;cursor:pointer;flex:1}
+.setrow input[type="checkbox"]{accent-color:var(--focus);margin:0}
+.setrow input[type="number"]{width:56px;height:22px;background:var(--panel-2);border:1px solid var(--line-strong);border-radius:4px;color:var(--text);padding:0 6px}
+.setrow .val{color:var(--text-3);font-size:11px}
+.mutelist{display:flex;align-items:center;gap:8px;padding:4px 12px;color:var(--text-2)}
+.mutelist .sl{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)}
+
+/* narrower desktops: drop low-value columns instead of breaking */
+@media (max-width:1360px){ .c-par{width:120px} }
+/* with the drawer open, zero the low-value columns (removing them leaves a gap under table-layout:fixed) */
+.app.drawer-open .c-par,.app.drawer-open .c-mon,.app.drawer-open col.c-par,.app.drawer-open col.c-mon{width:0;min-width:0;max-width:0;padding:0;overflow:hidden;font-size:0;border:0}
+.app.drawer-open .c-title{width:24%}
+.app.drawer-open .c-slug{width:170px}
+.app.drawer-open .c-thr{width:112px}
+.app.drawer-open .hist{grid-template-columns:30px 72px 104px 96px minmax(0,1fr)}
+.app.drawer-open .hist .rf{display:none}
+.app.drawer-open .keys{display:none}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="side" aria-label="Hierarchy and views">
+    <div class="brand">Axiom <small>console · vic</small></div>
+    <nav class="tree" aria-label="Hierarchy">
+      <ul id="tree"></ul>
+    </nav>
+    <div class="views" role="group" aria-label="Views and piles">
+      <h2>Saved views</h2>
+      <div id="views"></div>
+    </div>
+  </aside>
+
+  <main class="main" id="main">
+    <div class="bar">
+      <span class="ctx" id="ctx"></span>
+      <label class="sr" for="filter">Filter visible rows</label>
+      <input id="filter" class="filter" type="search" placeholder="filter rows  /" autocomplete="off">
+      <span id="activeFilter"></span>
+      <div class="keys" aria-label="Keyboard">
+        <span><kbd>j</kbd><kbd>k</kbd> move</span>
+        <span><kbd>enter</kbd> open</span>
+        <span><kbd>/</kbd> filter</span>
+        <span><kbd>n</kbd> notifications</span>
+        <span><kbd>t</kbd> theme</span>
+      </div>
+    </div>
+
+    <div class="tablewrap" id="tablewrap">
+      <table class="topics" id="topics" aria-label="Topics grouped by view">
+        <colgroup>
+          <col class="c-st"><col class="c-slug"><col class="c-title"><col class="c-note"><col class="c-par"><col class="c-thr"><col class="c-mon"><col class="c-last">
+        </colgroup>
+        <thead>
+          <tr>
+            <th class="c-st" scope="col"><button type="button" data-sort="status">St</button></th>
+            <th class="c-slug" scope="col"><button type="button" data-sort="slug">Slug</button></th>
+            <th class="c-title" scope="col"><button type="button" data-sort="title">Title</button></th>
+            <th class="c-note" scope="col">Status note</th>
+            <th class="c-par" scope="col">Parents</th>
+            <th class="c-thr" scope="col">Threads</th>
+            <th class="c-mon" scope="col"><button type="button" data-sort="monitors">Mon</button></th>
+            <th class="c-last" scope="col"><button type="button" data-sort="last">Last worked</button></th>
+          </tr>
+        </thead>
+      </table>
+    </div>
+
+    <div class="split" aria-hidden="true"><i></i></div>
+
+    <div class="panelrel">
+      <section class="panel" aria-label="Selected topic">
+        <div class="phead">
+          <span class="glyph" id="pGlyph"></span>
+          <span class="slug" id="pSlug"></span>
+          <span class="title" id="pTitle"></span>
+          <div class="tabs" role="tablist" aria-label="Topic panels">
+            <button class="tab" role="tab" type="button" data-tab="history" aria-selected="true">History</button>
+            <button class="tab" role="tab" type="button" data-tab="threads" aria-selected="false">Threads</button>
+            <button class="tab" role="tab" type="button" data-tab="links" aria-selected="false">Links</button>
+            <button class="tab" role="tab" type="button" data-tab="monitors" aria-selected="false">Monitors</button>
+            <button class="tab" role="tab" type="button" data-tab="overview" aria-selected="false">Overview</button>
+          </div>
+        </div>
+        <div class="pbody" id="pbody" role="tabpanel"></div>
+      </section>
+      <div class="picker" id="picker" role="dialog" aria-modal="false" aria-labelledby="pickerTitle">
+        <div class="box">
+          <header><b id="pickerTitle">Attach a T3 thread</b><span style="color:var(--text-3)">to <span id="pickerSlug"></span></span><button class="btn ghost" id="pickerClose" type="button" style="margin-left:auto">Close</button></header>
+          <ul id="pickerList"></ul>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <aside class="drawer" id="drawer" aria-label="Notifications and settings" hidden>
+    <header><b>Notifications</b><span class="sp"></span><button class="btn ghost" id="drawerClose" type="button">Close</button></header>
+    <div class="dbody">
+      <div class="dsec">
+        <h3 id="notifCount"></h3>
+        <div id="notifs"></div>
+      </div>
+      <div class="dsec" id="settings"></div>
+    </div>
+  </aside>
+
+  <footer class="status" aria-label="Status bar">
+    <div class="hl" id="health"></div>
+    <span class="sep"></span>
+    <span class="counts" id="counts"></span>
+    <div class="sp">
+      <button class="tg" id="notifToggle" type="button" aria-pressed="false">Notifications<span class="badge" id="notifBadge"></span></button>
+      <button class="tg" id="themeToggle" type="button" aria-pressed="false">Theme: dark</button>
+    </div>
+  </footer>
+</div>
+<script>
+// Shared sample data for the Axiom mockups. Realistic, taken from the owner's work log.
+// "Now" is 2026-11-25 09:40 (Lisbon). Only features from the settled spec appear here.
+window.AXIOM = {
+  now: "2026-11-25T09:40:00",
+  statuses: {
+    idle:       { label: "idle",       meaning: "Nothing is happening" },
+    wip:        { label: "wip",        meaning: "An agent is working" },
+    hitl:       { label: "hitl",       meaning: "Waiting for you" },
+    monitoring: { label: "monitoring", meaning: "Waiting on something the agent watches" },
+    blocked:    { label: "blocked",    meaning: "Waiting on something the agent can't watch" },
+    review:     { label: "review",     meaning: "A PR is in review" },
+    done:       { label: "done",       meaning: "No actions left" },
+    stale:      { label: "stale",      meaning: "You marked it stale" },
+    error:      { label: "error",      meaning: "The agent's thread hit an error" }
+  },
+  // The tracker views (01). idle / blocked / stale are their own piles; done is closed.
+  views: [
+    { id: "attention",  label: "Requires attention", statuses: ["hitl", "error"] },
+    { id: "ongoing",    label: "Ongoing",            statuses: ["wip"] },
+    { id: "monitoring", label: "Under monitoring",   statuses: ["monitoring", "review"] }
+  ],
+  piles: ["idle", "blocked", "stale", "done"],
+  entryKinds: {
+    "note":          { by: "agent|owner", label: "NOTE" },
+    "decision":      { by: "agent|owner", label: "DECIDED" },
+    "finding":       { by: "agent|owner", label: "FOUND" },
+    "verification":  { by: "agent|owner", label: "CHECKED" },
+    "owner input":   { by: "owner",       label: "YOU SAID" },
+    "authorization": { by: "owner",       label: "YOU ALLOWED" },
+    "next steps":    { by: "agent|owner", label: "NEXT" },
+    "status change": { by: "axiom",       label: "STATUS" },
+    "topic created": { by: "axiom",       label: "CREATED" },
+    "thread event":  { by: "axiom",       label: "THREAD" },
+    "git event":     { by: "axiom",       label: "GIT" },
+    "deploy event":  { by: "axiom",       label: "DEPLOY" }
+  },
+  epics: [
+    { slug: "axiom", title: "Axiom", status: "wip", jira: null },
+    { slug: "mtg-next-phase-2", title: "MTG next phase 2", jira: { key: "MTG-12", status: "In Progress" } },
+    { slug: "ahoy", title: "AHOY", status: "wip", jira: null }
+  ],
+  tickets: [
+    { slug: "mtg-214", title: "Wave I: Multiverse Reforged deck gaps (rows 59–67)", epics: ["mtg-next-phase-2"], jira: { key: "MTG-214", status: "In Progress" } },
+    { slug: "mtg-198", title: "Wave H: Commander-deck gaps (rows 53–58)", epics: ["mtg-next-phase-2"], jira: { key: "MTG-198", status: "In Review" } },
+    { slug: "ahoy-usability", title: "Usability pass", epics: ["ahoy"], status: "wip", jira: null }
+  ],
+  topics: [
+    {
+      slug: "axiom-spec", title: "Axiom: spec phase", status: "hitl",
+      statusNote: "00, 01, 08 settled; tech agreed (ADRs 0001–0005); 05 drafted; hooks tested; build plan awaiting approval",
+      goal: "A settled spec and an agreed build plan for the first tracker version",
+      parents: { epics: ["axiom"], tickets: [] },
+      createdAt: "2026-11-25T01:20:00", lastWorkedAt: "2026-11-25T09:31:00",
+      attention: { reason: "agent asked", text: "Settle 04, 05 and 06? Who builds it: this thread or slice threads?" },
+      unread: true, muted: false,
+      threads: [
+        { provider: "t3", id: "227205b0", title: "Axiom spec", status: "hitl", startedAt: "2026-11-25T01:18:00", env: "vic-desktop" },
+        { provider: "t3", id: "thread:delegated-task…b44a", title: "Axiom hook test (throwaway)", status: "done", startedAt: "2026-11-25T09:19:44", endedAt: "2026-11-25T09:19:47", env: "vic-desktop" }
+      ],
+      links: [
+        { kind: "repository", target: "~/projects/axiom" },
+        { kind: "branch", target: "main" },
+        { kind: "spec", target: "docs/spec/README.md", label: "Spec index" },
+        { kind: "spec", target: "docs/plan/v1-tracker.md", label: "Build plan" },
+        { kind: "artifact", target: "docs/design/references/relay.png", label: "Visual reference" }
+      ],
+      monitors: [],
+      entries: [
+        { at: "2026-11-25T09:31:00", author: "agent", thread: "227205b0", kind: "status change", data: { from: "wip", to: "hitl", reason: "asked: settle 04, 05, 06 and choose who builds" } },
+        { at: "2026-11-25T09:30:00", author: "agent", thread: "227205b0", kind: "next steps", body: "Settle 04, 05, 06; then build S0 (repo scaffold) and S1 (core database and rules)." },
+        { at: "2026-11-25T09:24:00", author: "owner", kind: "owner input", body: "The T3 routing rule looks okay." },
+        { at: "2026-11-25T09:22:00", author: "agent", thread: "227205b0", kind: "decision", body: "T3 is the source of truth for T3 threads. Hook events carrying T3CODE_THREAD_ID only trigger a T3 re-read.", data: { why: "Hooks fire inside T3-run sessions, so the same thread would be reported twice." } },
+        { at: "2026-11-25T09:20:00", author: "agent", thread: "227205b0", kind: "finding", body: "T3-run sessions carry T3CODE_THREAD_ID and CLAUDE_CODE_ENTRYPOINT=t3-code; T3's provider_threads payload holds the Claude session id." },
+        { at: "2026-11-25T09:19:50", author: "agent", thread: "227205b0", kind: "verification", body: "Claude Code hooks fire inside a T3-run thread: SessionStart, UserPromptSubmit, Stop, SessionEnd, at user and project scope.", data: { result: "pass" }, refs: ["thread:delegated-task…b44a"] },
+        { at: "2026-11-25T09:19:44", author: "axiom", kind: "thread event", body: "Thread started: Axiom hook test (throwaway), T3, Haiku 5.5" },
+        { at: "2026-11-25T09:05:00", author: "owner", kind: "owner input", body: "Pin the current version of T3 that Axiom is tested against." },
+        { at: "2026-11-25T09:04:00", author: "agent", thread: "227205b0", kind: "decision", body: "Pinned T3 server 0.1.11-nightly.20261118.4890, database migration 98. Warn on mismatch.", refs: ["docs/adr/0005-providers-claude-code-and-t3.md"] },
+        { at: "2026-11-25T08:40:00", author: "owner", kind: "decision", body: "Stack agreed: local server + browser, TypeScript on Node 24, SQLite, CLI writes the database directly." },
+        { at: "2026-11-25T08:10:00", author: "owner", kind: "authorization", body: "The agent may rebase my branch onto main in place to pick up recent changes. It stays local; I push.", data: { scope: "rebase onto main only, clean, no one else pushed", standing: true } },
+        { at: "2026-11-25T07:30:00", author: "agent", thread: "227205b0", kind: "finding", body: "Old work log: 4,673 log bullets in 273 topics. Verification ~37%, git/PR ~23%, thread setup ~15%. A quarter to a third is mechanical." },
+        { at: "2026-11-25T01:25:00", author: "agent", thread: "227205b0", kind: "note", body: "Scaffolded ~/projects/axiom: README, AGENTS.md, CONTEXT.md, spec index with sections 00–07, ADR template." },
+        { at: "2026-11-25T01:20:00", author: "axiom", kind: "topic created" }
+      ]
+    },
+    {
+      slug: "axiom-mockups", title: "Axiom: UI mockups", status: "wip",
+      statusNote: "Four structurally distinct mockups of the tracker in progress",
+      goal: "Pick a visual and structural direction for the first UI (S5)",
+      parents: { epics: ["axiom"], tickets: [] },
+      createdAt: "2026-11-25T09:38:00", lastWorkedAt: "2026-11-25T09:39:00",
+      unread: false, muted: false,
+      threads: [ { provider: "t3", id: "3c8e9d21", title: "Axiom mockups", status: "wip", startedAt: "2026-11-25T09:38:00", env: "vic-desktop" } ],
+      links: [ { kind: "repository", target: "~/projects/axiom" }, { kind: "spec", target: "docs/spec/09-visual-design.md", label: "Visual design" } ],
+      monitors: [],
+      entries: [
+        { at: "2026-11-25T09:39:00", author: "owner", kind: "owner input", body: "Write 4 mockups. They should be structurally distinct, not the same UI with different CSS." },
+        { at: "2026-11-25T09:38:00", author: "axiom", kind: "topic created" }
+      ]
+    },
+    {
+      slug: "mtg-wave-i", title: "MTG Wave I: Multiverse Reforged deck gaps", status: null,
+      statusNote: "Rows 59, 60 merged; 61 and 63 running; 62, 64–67 not started",
+      goal: "Every card in the Multiverse Reforged decks playable",
+      parents: { epics: [], tickets: ["mtg-214"] },
+      createdAt: "2026-11-04T02:39:00", lastWorkedAt: "2026-11-25T09:37:00",
+      unread: true, muted: true,
+      threads: [
+        { provider: "t3", id: "a91c2e07", title: "Row 61: Ninjutsu", status: "wip", startedAt: "2026-11-25T08:02:00", env: "slopfactory" },
+        { provider: "t3", id: "5d3b8f12", title: "Row 63: Mutate", status: "wip", startedAt: "2026-11-25T08:40:00", env: "slopfactory" },
+        { provider: "t3", id: "0e77aa41", title: "Row 60: Ward", status: "done", startedAt: "2026-11-24T21:10:00", endedAt: "2026-11-25T01:52:00", env: "slopfactory" },
+        { provider: "claude-code", id: "41f3c7e5", title: "Row 59 review", status: "idle", startedAt: "2026-11-24T18:00:00", endedAt: "2026-11-24T19:12:00" }
+      ],
+      links: [
+        { kind: "repository", target: "~/projects/mtg-playground" },
+        { kind: "branch", target: "feat/wave-i" },
+        { kind: "pr", target: "Advicegale/mtg-playground#203", label: "Row 60: Ward" },
+        { kind: "pr", target: "Advicegale/mtg-playground#204", label: "Row 61: Ninjutsu (draft)" },
+        { kind: "spec", target: "docs/specs/next-phase-2.md", label: "Next phase 2 spec" }
+      ],
+      monitors: [ { kind: "pr-checks", target: "Advicegale/mtg-playground#204", state: "confirmed" } ],
+      entries: [
+        { at: "2026-11-25T09:37:00", author: "agent", thread: "a91c2e07", kind: "verification", body: "Ninjutsu: 1,412 tests, typecheck and build pass; browser check of the return-unblocked flow passes.", data: { result: "pass" } },
+        { at: "2026-11-25T09:02:00", author: "axiom", kind: "git event", body: "PR #204 opened (draft), base feat/wave-i, head 3f1a9c2", refs: ["Advicegale/mtg-playground#204"] },
+        { at: "2026-11-25T08:40:00", author: "axiom", kind: "thread event", body: "Thread started: Row 63: Mutate (T3, slopfactory)" },
+        { at: "2026-11-25T01:52:00", author: "axiom", kind: "git event", body: "PR #203 merged into feat/wave-i (b7e20d4)", refs: ["Advicegale/mtg-playground#203"] },
+        { at: "2026-11-25T01:40:00", author: "agent", thread: "0e77aa41", kind: "finding", body: "Ward triggers were checked before targets locked; moved the check to the cast step (CR 702.21a)." }
+      ]
+    },
+    {
+      slug: "ahoy-usability-audit", title: "AHOY usability and design audit", status: "review",
+      statusNote: "Fixes for B1–B4, M1–M9, S1–S4 in PR #49; web + OTA deploy pending",
+      goal: "Every blocker and major from the audit fixed and deployed",
+      parents: { epics: [], tickets: ["ahoy-usability"] },
+      createdAt: "2026-11-20T14:00:00", lastWorkedAt: "2026-11-25T09:12:00",
+      unread: true, muted: false,
+      threads: [ { provider: "claude-code", id: "c2d9e310", title: "Usability fixes", status: "review", startedAt: "2026-11-22T10:00:00", endedAt: "2026-11-22T18:40:00" } ],
+      links: [
+        { kind: "repository", target: "~/projects/ahoy" },
+        { kind: "worktree", target: "~/projects/ahoy-worktrees/usability-fixes" },
+        { kind: "branch", target: "fix/usability-blockers-majors" },
+        { kind: "pr", target: "Advicegale/AHOY#49" },
+        { kind: "artifact", target: "https://claude.ai/artifact/LEBNVeDNSgCCHLkptKmrRL", label: "Audit report" }
+      ],
+      monitors: [
+        { kind: "pr-review", target: "Advicegale/AHOY#49", state: "confirmed" },
+        { kind: "pr-checks", target: "Advicegale/AHOY#49", state: "confirmed" }
+      ],
+      entries: [
+        { at: "2026-11-25T09:12:00", author: "axiom", kind: "git event", body: "Review on PR #49: approved, 1 comment (meal suggestion copy)", refs: ["Advicegale/AHOY#49"] },
+        { at: "2026-11-22T18:40:00", author: "agent", thread: "c2d9e310", kind: "status change", data: { from: "wip", to: "review", reason: "PR #49 ready for review" } },
+        { at: "2026-11-22T18:30:00", author: "agent", thread: "c2d9e310", kind: "verification", body: "All screens re-checked at 390 px and desktop; 2 date-dependent tests fail on main, unrelated.", data: { result: "partial" } }
+      ]
+    },
+    {
+      slug: "atlas-coolify-deployment", title: "Atlas Coolify deployment", status: "monitoring",
+      statusNote: "Redeployed after the LAN IP drift; watching the health check",
+      parents: { epics: [], tickets: [] },
+      createdAt: "2026-10-03T18:36:00", lastWorkedAt: "2026-11-25T08:20:00",
+      unread: true, muted: false,
+      threads: [ { provider: "claude-code", id: "77b0c1aa", title: "Coolify redeploy", status: "monitoring", startedAt: "2026-11-25T07:50:00", endedAt: "2026-11-25T08:20:00" } ],
+      links: [ { kind: "repository", target: "~/projects/atlas-trip-planner" }, { kind: "branch", target: "main" } ],
+      monitors: [ { kind: "deploy-health", target: "atlas.vicegale.com", state: "confirmed" }, { kind: "pr-checks", target: "Advicegale/atlas#88", state: "suggested" } ],
+      entries: [
+        { at: "2026-11-25T09:15:00", author: "axiom", kind: "deploy event", body: "Health check slow: 2.3 s (threshold 1.5 s)" },
+        { at: "2026-11-25T08:20:00", author: "axiom", kind: "deploy event", body: "Deployed main@25bd644 to atlas.vicegale.com" }
+      ]
+    },
+    {
+      slug: "casa-clara-math-review", title: "Casa Clara: math audit and UI review", status: "blocked",
+      statusNote: "Real FINEs show a ~1.2 pp TAEG gap; waiting on the bank's FINE documents",
+      parents: { epics: [], tickets: [] },
+      createdAt: "2026-11-19T10:00:00", lastWorkedAt: "2026-11-20T17:00:00",
+      unread: false, muted: false,
+      threads: [ { provider: "claude-code", id: "9f00b2c4", title: "FINE parser", status: "blocked", startedAt: "2026-11-20T09:00:00", endedAt: "2026-11-20T17:00:00" } ],
+      links: [ { kind: "repository", target: "~/projects/Casa-Clara-Portugal-v3" }, { kind: "branch", target: "feat/fine-parser" } ],
+      monitors: [],
+      entries: [ { at: "2026-11-20T17:00:00", author: "agent", thread: "9f00b2c4", kind: "status change", data: { from: "wip", to: "blocked", reason: "needs the bank's FINE documents" } } ]
+    },
+    {
+      slug: "godot-vr-test", title: "Godot VR test (Quest via Steam Link)", status: "wip",
+      statusNote: "Tuning the grapple course; rope solver capped at 6 m/s",
+      parents: { epics: [], tickets: [] },
+      createdAt: "2026-11-05T20:00:00", lastWorkedAt: "2026-11-25T09:36:00",
+      unread: false, muted: false,
+      threads: [ { provider: "claude-code", id: "e1c4d5f0", title: "Grapple course", status: "wip", startedAt: "2026-11-25T09:10:00" } ],
+      links: [ { kind: "repository", target: "~/projects/vr-test" }, { kind: "spec", target: "docs/specs/station.md", label: "Station spec" } ],
+      monitors: [],
+      entries: [ { at: "2026-11-25T09:36:00", author: "agent", thread: "e1c4d5f0", kind: "finding", body: "Rope snapping came from capping the whole velocity; cap only the carried part." } ]
+    },
+    {
+      slug: "prism-v02", title: "Prism v0.2 development", status: "error",
+      statusNote: "Thread crashed while regenerating the graph",
+      parents: { epics: [], tickets: [] },
+      createdAt: "2026-10-12T17:06:00", lastWorkedAt: "2026-11-25T08:55:00",
+      attention: { reason: "error", text: "Provider process exited (code 1) during graph regeneration" },
+      unread: true, muted: false,
+      threads: [ { provider: "t3", id: "c0ffee21", title: "Graph regen", status: "error", startedAt: "2026-11-25T08:30:00", endedAt: "2026-11-25T08:55:00", env: "vic-desktop" } ],
+      links: [ { kind: "repository", target: "~/projects/prism/prism-pr-review" } ],
+      monitors: [],
+      entries: [ { at: "2026-11-25T08:55:00", author: "axiom", kind: "thread event", body: "Thread ended with an error: provider process exited (code 1)" } ]
+    },
+    {
+      slug: "twitch-drops-headless", title: "Twitch Drops Miner headless on Coolify", status: "idle",
+      statusNote: "Docker packaging written locally, untested",
+      parents: { epics: [], tickets: [] },
+      createdAt: "2026-11-03T21:00:00", lastWorkedAt: "2026-11-04T01:10:00",
+      stalePrompt: true, unread: true, muted: false,
+      threads: [ { provider: "claude-code", id: "1aa2bb3c", title: "Docker packaging", status: "idle", startedAt: "2026-11-03T21:00:00", endedAt: "2026-11-04T01:10:00" } ],
+      links: [ { kind: "repository", target: "~/Documents/notes/TwitchDropsMiner" } ], monitors: [], entries: []
+    },
+    {
+      slug: "swe-test", title: "SWE aptitude diagnostic test", status: "idle",
+      statusNote: "v1 done + interactive web page; repo uncommitted",
+      parents: { epics: [], tickets: [] },
+      createdAt: "2026-11-24T19:05:00", lastWorkedAt: "2026-11-24T22:41:00",
+      unread: true, muted: false,
+      threads: [ { provider: "t3", id: "5e57e5t0", title: "SWE test", status: "idle", startedAt: "2026-11-24T19:05:00", endedAt: "2026-11-24T22:41:00", env: "vic-desktop" } ],
+      links: [ { kind: "repository", target: "~/projects/swe-test" }, { kind: "artifact", target: "https://claude.ai/artifact/SFrybe3njb9VxPGRPa8eQZ", label: "Test page" } ],
+      monitors: [], entries: []
+    },
+    {
+      slug: "mtg-deckbuilder-spec", title: "MTG deckbuilder environment", status: "idle",
+      statusNote: "Spec v1.1; 5 open decisions", parents: { epics: ["mtg-next-phase-2"], tickets: [] },
+      createdAt: "2026-10-20T12:00:00", lastWorkedAt: "2026-10-25T16:00:00",
+      staleDismissed: true, unread: false, muted: false, threads: [], links: [], monitors: [], entries: []
+    },
+    {
+      slug: "mtg-wave-h", title: "MTG Wave H orchestration", status: "stale",
+      statusNote: "Rows 53–56 merged; 57–58 not started", parents: { epics: [], tickets: ["mtg-198"] },
+      createdAt: "2026-11-01T10:00:00", lastWorkedAt: "2026-11-03T22:00:00",
+      unread: false, muted: true, threads: [], links: [], monitors: [], entries: []
+    },
+    { slug: "mtg-commander-takeover", title: "MTG PRs #163/#164 takeover", status: "review", statusNote: "Fixes pushed to both PRs; awaiting merge", parents: { epics: ["mtg-next-phase-2"], tickets: [] }, createdAt: "2026-10-30T09:00:00", lastWorkedAt: "2026-10-30T23:00:00", unread: false, muted: false, threads: [], links: [ { kind: "pr", target: "Advicegale/mtg-playground#163" }, { kind: "pr", target: "Advicegale/mtg-playground#164" } ], monitors: [ { kind: "pr-review", target: "Advicegale/mtg-playground#163", state: "confirmed" } ], entries: [] },
+    { slug: "mtg-scryfall-cache", title: "MTG Scryfall cache / faster game start", status: "done", statusNote: "Merged #147; start 8.1 s → 0.5 s", parents: { epics: ["mtg-next-phase-2"], tickets: [] }, createdAt: "2026-10-27T09:00:00", lastWorkedAt: "2026-10-27T18:00:00", unread: false, muted: false, threads: [], links: [], monitors: [], entries: [] },
+    { slug: "mtg-fps-counter", title: "MTG FPS counter / performance pass", status: "done", statusNote: "Merged #177", parents: { epics: [], tickets: [] }, createdAt: "2026-11-01T09:00:00", lastWorkedAt: "2026-11-01T20:00:00", unread: false, muted: false, threads: [], links: [], monitors: [], entries: [] },
+    { slug: "mtg-pwa-install", title: "MTG installable + fullscreen on Android", status: "done", statusNote: "Merged #126; deployed", parents: { epics: [], tickets: [] }, createdAt: "2026-10-26T09:00:00", lastWorkedAt: "2026-10-26T15:00:00", unread: false, muted: false, threads: [], links: [], monitors: [], entries: [] }
+  ],
+  notifications: [
+    { id: 1, topic: "axiom-spec",              kind: "agent asked",     at: "2026-11-25T09:31:00", body: "Settle 04, 05 and 06? Who builds it?" },
+    { id: 2, topic: "mtg-wave-i",              kind: "agent stopped",   at: "2026-11-25T09:20:00", body: "Row 60: Ward finished", muted: true },
+    { id: 3, topic: "atlas-coolify-deployment", kind: "monitor problem", at: "2026-11-25T09:15:00", body: "Health check slow: 2.3 s" },
+    { id: 4, topic: "ahoy-usability-audit",    kind: "pr review",       at: "2026-11-25T09:12:00", body: "PR #49 approved, 1 comment" },
+    { id: 5, topic: "prism-v02",               kind: "error",           at: "2026-11-25T08:55:00", body: "Provider process exited (code 1)" },
+    { id: 6, topic: "twitch-drops-headless",   kind: "stale prompt",    at: "2026-11-25T08:00:00", body: "Idle for 21 days. Mark as stale?" },
+    { id: 7, topic: "mtg-wave-i",              kind: "jira changed",    at: "2026-11-24T23:02:00", body: "MTG-214: To Do → In Progress", muted: true },
+    { id: 8, topic: "swe-test",                kind: "agent stopped",   at: "2026-11-24T22:41:00", body: "Thread SWE test went idle" }
+  ],
+  notificationSettings: {
+    kinds: ["agent stopped", "agent asked", "monitor problem", "jira changed", "pr review", "stale prompt", "error"],
+    mutedKinds: ["jira changed"],
+    mutedTopics: ["mtg-wave-i", "mtg-wave-h"],
+    staleAfterDays: 14,
+    browserNotifications: "granted"
+  },
+  // Unattached T3 threads, for the "attach a T3 thread" picker.
+  t3Unattached: [
+    { id: "8b1e44c0", title: "Atlas: weather widget polish", env: "vic-desktop", status: "ready", updatedAt: "2026-11-25T08:58:00" },
+    { id: "f3a2d901", title: "MTG Wave I orchestrator", env: "slopfactory", status: "running", updatedAt: "2026-11-25T09:38:00" },
+    { id: "02c9be77", title: "Casa Clara: amend-to-fixed what-if", env: "vic-desktop", status: "stopped", updatedAt: "2026-11-23T19:40:00" }
+  ],
+  health: {
+    server: { state: "ok", text: "Server up since 08:02 · backup 03:00" },
+    claudeCode: { state: "ok", text: "Hooks installed · last event 4 min ago" },
+    t3: { state: "ok", text: "T3 0.1.11-nightly.20261118.4890 · migration 98 · matches pin · read 3 s ago" }
+  }
+};
+
+</script>
+<script>
+(function () {
+  "use strict";
+  var A = window.AXIOM;
+  // Working copy: the shared sample data is never mutated.
+  var S = JSON.parse(JSON.stringify(A));
+  var root = document.documentElement;
+  var NOW = new Date(A.now);
+  var MIN = 6e4, HOUR = 36e5, DAY = 864e5;
+  var GLYPH = { idle: "○", wip: "●", hitl: "!", monitoring: "◎", blocked: "■", review: "◇", done: "✓", stale: "◌", error: "✕" };
+  var KCLS = {
+    "note": "note", "decision": "decision", "finding": "finding", "verification": "verification",
+    "owner input": "owner", "authorization": "authorization", "next steps": "next",
+    "status change": "axiom", "topic created": "axiom", "thread event": "axiom", "git event": "axiom", "deploy event": "axiom"
+  };
+  var PROV = { "t3": "T3", "claude-code": "CC" };
+  var PROV_LONG = { "t3": "T3", "claude-code": "Claude Code" };
+  var LINK_HEAD = { repository: "Repository", branch: "Branch", worktree: "Worktree", spec: "Specs", pr: "PRs", artifact: "Artifacts" };
+  var LINK_ORDER = ["repository", "branch", "worktree", "spec", "pr", "artifact"];
+  var STATUS_ORDER = Object.keys(A.statuses);
+  var LOCK = '<svg class="lock" width="10" height="10" viewBox="0 0 16 16" role="img" aria-label="locked to Jira"><path fill="currentColor" d="M4 7V5a4 4 0 1 1 8 0v2h1v8H3V7h1zm2 0h4V5a2 2 0 1 0-4 0v2z"/></svg>';
+  // The three views and four piles, as saved filters (01). A topic is in a view if any of its statuses qualifies.
+  var VIEWS = A.views.map(function (v) { return { id: v.id, label: v.label, st: v.statuses }; })
+    .concat(A.piles.map(function (p) { return { id: p, label: p.charAt(0).toUpperCase() + p.slice(1), st: [p] }; }));
+  var state = { view: null, q: "", sort: "last", dir: -1, open: null, tab: "history", hiddenKinds: {} };
+
+  function $(s, r) { return (r || document).querySelector(s); }
+  function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+  function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function pad(n) { return String(n).padStart(2, "0"); }
+  function ago(iso) {
+    var ms = NOW - new Date(iso), m = Math.floor(ms / MIN);
+    if (m < 60) return Math.max(m, 0) + "m";
+    var h = Math.floor(ms / HOUR);
+    if (h < 24) return h + "h";
+    return Math.floor(ms / DAY) + "d";
+  }
+  function fmt(iso) {
+    var x = new Date(iso), hm = pad(x.getHours()) + ":" + pad(x.getMinutes());
+    return x.toDateString() === NOW.toDateString() ? hm : pad(x.getMonth() + 1) + "-" + pad(x.getDate()) + " " + hm;
+  }
+  function bySlug(s) { return S.topics.filter(function (t) { return t.slug === s; })[0]; }
+  function statusesOf(t) { return t.status ? [t.status] : Array.from(new Set(t.threads.filter(function (th) { return !th.endedAt; }).map(function (th) { return th.status; }))); }
+  function inView(t, v) { return statusesOf(t).some(function (s) { return v.st.indexOf(s) >= 0; }); }
+  function isMuted(t) { return !!t.muted || S.notificationSettings.mutedTopics.indexOf(t.slug) >= 0; }
+  function kindMuted(k) { return S.notificationSettings.mutedKinds.indexOf(k) >= 0; }
+  function glyph(st) { return st ? '<span class="glyph st-' + st + '" aria-hidden="true">' + GLYPH[st] + '</span>' : '<span class="glyph" aria-hidden="true">—</span>'; }
+  function word(st) { return st ? '<span class="stword st-' + st + '">' + st + '</span>' : '<span class="stword" style="color:var(--text-3)">—</span>'; }
+  function provSummary(t) {
+    var c = {};
+    t.threads.forEach(function (th) { c[th.provider] = (c[th.provider] || 0) + 1; });
+    var parts = Object.keys(c).map(function (p) { return (PROV[p] || p) + "×" + c[p]; });
+    return parts.length ? parts.join(" ") : "—";
+  }
+  function parentTitle(kind, slug) {
+    if (kind === "epic") { var e = A.epics.filter(function (x) { return x.slug === slug; })[0]; return e ? e.title : slug; }
+    var k = S.tickets.filter(function (x) { return x.slug === slug; })[0]; return k ? k.title : slug;
+  }
+  function parentsHTML(t) {
+    var p = [];
+    t.parents.epics.forEach(function (e) { p.push('<span class="prov"><b>E</b> ' + esc(e) + '</span>'); });
+    t.parents.tickets.forEach(function (k) { p.push('<span class="prov"><b>T</b> ' + esc(k) + '</span>'); });
+    return p.length ? p.join(" ") : '<span style="color:var(--text-3)">unfiled</span>';
+  }
+  function matchQ(t) {
+    var q = state.q.trim().toLowerCase();
+    if (!q) return true;
+    return [t.slug, t.title, t.statusNote, t.parents.epics.join(" "), t.parents.tickets.join(" ")].join(" ").toLowerCase().indexOf(q) >= 0;
+  }
+  var SORTERS = {
+    status: function (t) { return t.status ? STATUS_ORDER.indexOf(t.status) : 99; },
+    slug: function (t) { return t.slug; },
+    title: function (t) { return t.title; },
+    last: function (t) { return t.lastWorkedAt; },
+    monitors: function (t) { return t.monitors.length; }
+  };
+  function sortList(list) {
+    var f = SORTERS[state.sort];
+    return list.slice().sort(function (a, b) {
+      var x = f(a), y = f(b);
+      return (x > y ? 1 : x < y ? -1 : 0) * state.dir;
+    });
+  }
+  function shownFor(v) { return sortList(S.topics.filter(function (t) { return inView(t, v) && matchQ(t); })); }
+  function activeView() { return state.view ? VIEWS.filter(function (v) { return v.id === state.view; })[0] : null; }
+
+  // ---- sidebar tree: epics -> tickets -> topics, topics also under epics directly, Unfiled last
+  function renderTree() {
+    var out = [];
+    function topicNode(t, d) {
+      out.push('<li class="lvl" style="--d:' + d + '"><button class="node" type="button" data-open="' + esc(t.slug) + '" aria-current="' + (state.open === t.slug) + '">'
+        + glyph(t.status) + '<span class="lbl">' + esc(t.slug) + '</span>'
+        + (t.unread ? '<span class="dot" style="margin:0 0 0 auto;flex:none"></span>' : '') + '</button></li>');
+    }
+    function parentNode(kind, d, obj) {
+      var tail = obj.jira
+        ? '<span class="tail"><span class="jk">' + esc(obj.jira.key) + '</span> ' + esc(obj.jira.status) + ' ' + LOCK + '</span>'
+        : '<span class="tail">' + esc(obj.status || "—") + '</span>';
+      out.push('<li class="lvl" style="--d:' + d + '"><div class="node kind-' + kind + '"><span class="glyph" style="color:var(--text-3)" aria-hidden="true">' + (kind === "epic" ? "◆" : "▪") + '</span><span class="lbl">' + esc(obj.title) + '</span>' + tail + '</div></li>');
+    }
+    A.epics.forEach(function (e) {
+      parentNode("epic", 0, e);
+      S.tickets.filter(function (k) { return k.epics.indexOf(e.slug) >= 0; }).forEach(function (k) {
+        parentNode("tkt", 1, k);
+        S.topics.filter(function (t) { return t.parents.tickets.indexOf(k.slug) >= 0; }).forEach(function (t) { topicNode(t, 2); });
+      });
+      S.topics.filter(function (t) { return t.parents.epics.indexOf(e.slug) >= 0; }).forEach(function (t) { topicNode(t, 1); });
+    });
+    S.tickets.filter(function (k) { return !k.epics.length; }).forEach(function (k) {
+      parentNode("tkt", 0, k);
+      S.topics.filter(function (t) { return t.parents.tickets.indexOf(k.slug) >= 0; }).forEach(function (t) { topicNode(t, 1); });
+    });
+    var unfiled = S.topics.filter(function (t) { return !t.parents.epics.length && !t.parents.tickets.length; });
+    if (unfiled.length) {
+      out.push('<li class="unfiled-h">Unfiled</li>');
+      unfiled.forEach(function (t) { topicNode(t, 0); });
+    }
+    $("#tree").innerHTML = out.join("");
+  }
+
+  // ---- saved views / piles with counts
+  function renderViews() {
+    var all = '<button class="view" type="button" data-view="" aria-pressed="' + (!state.view) + '"><span class="glyph" aria-hidden="true">≡</span>All topics<span class="n">' + S.topics.length + '</span></button>';
+    var rest = VIEWS.map(function (v) {
+      var n = S.topics.filter(function (t) { return inView(t, v); }).length;
+      var hot = v.id === "attention" && n ? " hot" : "";
+      return '<button class="view" type="button" data-view="' + v.id + '" aria-pressed="' + ((state.view || "") === v.id) + '"><span class="glyph st-' + v.st[0] + '" aria-hidden="true">' + GLYPH[v.st[0]] + '</span>' + esc(v.label) + '<span class="n' + hot + '">' + n + '</span></button>';
+    }).join("");
+    $("#views").innerHTML = all + rest;
+  }
+
+  // ---- topic table, grouped by view; a topic repeats in every view one of its threads qualifies for
+  function rowHTML(t) {
+    var cls = ["row"];
+    if (t.unread) cls.push("unread");
+    if (isMuted(t)) cls.push("muted");
+    if (t.status === "done") cls.push("faded");
+    var sel = state.open === t.slug;
+    var tags = (isMuted(t) ? ' <span class="pill">muted</span>' : "") + (t.stalePrompt ? ' <span class="pill warn">stale?</span>' : "");
+    var sug = t.monitors.filter(function (m) { return m.state === "suggested"; }).length;
+    var con = t.monitors.length - sug;
+    var mon = t.monitors.length ? con + (sug ? " +" + sug + "s" : "") : "—";
+    return '<tr class="' + cls.join(" ") + '" data-slug="' + esc(t.slug) + '" aria-selected="' + sel + '" tabindex="-1">'
+      + '<td class="c-st">' + glyph(t.status) + '</td>'
+      + '<td class="c-slug"><span class="dot' + (t.unread ? '' : ' off') + '"></span>' + esc(t.slug) + tags + '</td>'
+      + '<td class="c-title" title="' + esc(t.title) + '">' + esc(t.title) + '</td>'
+      + '<td class="c-note" title="' + esc(t.statusNote) + '">' + esc(t.statusNote || "") + '</td>'
+      + '<td class="c-par">' + parentsHTML(t) + '</td>'
+      + '<td class="c-thr prov">' + provSummary(t) + '</td>'
+      + '<td class="c-mon" title="confirmed +suggested">' + mon + '</td>'
+      + '<td class="c-last" title="' + esc(fmt(t.lastWorkedAt)) + '">' + ago(t.lastWorkedAt) + '</td>'
+      + '</tr>';
+  }
+  function renderTable() {
+    var table = $("#topics");
+    $$("tbody", table).forEach(function (b) { b.parentNode.removeChild(b); });
+    var groups = activeView() ? [activeView()] : VIEWS;
+    var html = "";
+    groups.forEach(function (v) {
+      var list = shownFor(v);
+      html += '<tbody data-group="' + v.id + '"><tr class="grp"><th colspan="8" scope="colgroup">' + esc(v.label) + '<span class="count">' + list.length + '</span></th></tr>';
+      html += list.length ? list.map(rowHTML).join("") : '<tr><td colspan="8" style="color:var(--text-3);height:24px;padding-left:8px">Nothing here.</td></tr>';
+      html += '</tbody>';
+    });
+    table.insertAdjacentHTML("beforeend", html);
+    $$("thead button[data-sort]").forEach(function (b) {
+      var k = b.getAttribute("data-sort");
+      b.parentNode.setAttribute("aria-sort", k === state.sort ? (state.dir > 0 ? "ascending" : "descending") : "none");
+    });
+  }
+
+  // ---- bar context and filter chips
+  function renderBar() {
+    var n = S.topics.filter(function (t) { return (!activeView() || inView(t, activeView())) && matchQ(t); }).length;
+    $("#ctx").innerHTML = 'Topics <b>' + n + '</b> of ' + S.topics.length + ' · sorted by ' + state.sort + (state.dir > 0 ? " ↑" : " ↓");
+    $("#activeFilter").innerHTML = activeView()
+      ? '<span class="chipx">view: ' + esc(activeView().label) + ' <button type="button" data-clear-view aria-label="Clear view filter">×</button></span>'
+      : "";
+  }
+
+  // ---- bottom panel: tabs for the selected topic
+  function days(t) { return Math.floor((NOW - new Date(t.lastWorkedAt)) / DAY); }
+  function entryHTML(e, n) {
+    var K = A.entryKinds[e.kind] || { label: e.kind };
+    var who = e.author === "owner" ? "you" : e.author === "axiom" ? "axiom" : "agent";
+    var thr = e.thread ? " · " + e.thread : "";
+    var d = e.data || {};
+    var body = esc(e.body || "");
+    if (e.kind === "status change") body = word(d.from) + " → " + word(d.to) + '<span class="sub">' + esc(d.reason) + '</span>';
+    if (e.kind === "authorization" && e.data) body += '<span class="sub">scope: ' + esc(d.scope) + ' · ' + (d.standing ? "standing" : "one-off") + '</span>';
+    if (e.kind === "decision" && d.why) body += '<span class="sub">why: ' + esc(d.why) + '</span>';
+    if (e.kind === "verification" && d.result) body += ' <span class="res ' + esc(d.result) + '">' + esc(d.result) + '</span>';
+    var refs = (e.refs || []).map(esc).join(" · ");
+    var old = NOW - new Date(e.at) > 2 * DAY;
+    return '<div class="hist' + (old ? " faded" : "") + '"><span class="ln">' + n + '</span><span class="tm" title="' + esc(e.at) + '">' + fmt(e.at) + '</span>'
+      + '<span><span class="kt ' + (KCLS[e.kind] || "axiom") + '">' + esc(K.label) + '</span></span>'
+      + '<span class="au">' + who + esc(thr) + '</span><span class="bd">' + body + '</span><span class="rf">' + refs + '</span></div>';
+  }
+  var TABS = {
+    history: function (t) {
+      var counts = {};
+      t.entries.forEach(function (e) { counts[e.kind] = (counts[e.kind] || 0) + 1; });
+      var chips = Object.keys(A.entryKinds).filter(function (k) { return counts[k]; }).map(function (k) {
+        return '<button class="chip ' + KCLS[k] + '" type="button" data-kind="' + esc(k) + '" aria-pressed="' + (!state.hiddenKinds[k]) + '">' + esc(A.entryKinds[k].label) + '<span class="n">' + counts[k] + '</span></button>';
+      }).join("");
+      var list = t.entries.slice().sort(function (a, b) { return b.at.localeCompare(a.at); })
+        .filter(function (e) { return !state.hiddenKinds[e.kind]; });
+      var rows = list.map(function (e, i) { return entryHTML(e, i + 1); }).join("");
+      var none = t.entries.length ? "All kinds hidden." : "No history entries yet.";
+      return '<div class="chips" role="group" aria-label="Filter history by kind">' + chips + '</div>' + (rows || '<div class="empty">' + none + '</div>');
+    },
+    threads: function (t) {
+      var rows = t.threads.map(function (th) {
+        var tm = fmt(th.startedAt) + " → " + (th.endedAt ? fmt(th.endedAt) : "open");
+        return '<div class="thrrow' + (th.endedAt ? " endd" : "") + '"><span class="pv">' + esc(PROV_LONG[th.provider] || th.provider) + '</span><span class="tm">' + esc(th.id) + '</span>'
+          + '<span class="tt" title="' + esc(th.title) + '">' + esc(th.title) + '</span><span>' + glyph(th.status) + word(th.status) + '</span>'
+          + '<span class="tm">' + tm + (th.env ? ' · ' + esc(th.env) : '') + '</span></div>';
+      }).join("");
+      return '<div class="phdr"><span class="grpt" style="padding:0">' + t.threads.length + (t.threads.length === 1 ? " thread" : " threads") + '</span>'
+        + '<button class="btn sp" type="button" data-act="attach">Attach T3 thread</button></div>'
+        + (rows || '<div class="empty">No threads attached.</div>');
+    },
+    links: function (t) {
+      if (!t.links.length) return '<div class="empty">No links.</div>';
+      var extra = Array.from(new Set(t.links.map(function (l) { return l.kind; }))).filter(function (k) { return LINK_ORDER.indexOf(k) < 0; });
+      return LINK_ORDER.concat(extra).map(function (k) {
+        var items = t.links.filter(function (l) { return l.kind === k; });
+        if (!items.length) return "";
+        return '<div class="grpt">' + esc(LINK_HEAD[k] || k) + '</div>' + items.map(function (l) {
+          return '<div class="row2"><span class="v" title="' + esc(l.target) + '">' + esc(l.target) + '</span><span class="meta">' + esc(l.label || "") + '</span></div>';
+        }).join("");
+      }).join("");
+    },
+    monitors: function (t) {
+      var con = t.monitors.filter(function (m) { return m.state === "confirmed"; });
+      var sug = t.monitors.filter(function (m) { return m.state !== "confirmed"; });
+      var row = function (m) { return '<div class="row2"><span class="v">' + esc(m.target) + '</span><span class="meta">' + esc(m.kind) + '</span></div>'; };
+      return '<div class="grpt">Confirmed · ' + con.length + '</div>' + (con.map(row).join("") || '<div class="empty">None.</div>')
+        + '<div class="grpt">Suggested by Axiom · ' + sug.length + '</div><div class="mon-suggested">' + (sug.map(row).join("") || '<div class="empty">None.</div>') + '</div>'
+        + '<div class="empty" style="padding-top:8px">Axiom suggests targets from links. An agent or you confirm them.</div>';
+    },
+    overview: function (t) {
+      var parents = t.parents.epics.map(function (e) { return 'epic ' + esc(e) + ' · ' + esc(parentTitle("epic", e)); })
+        .concat(t.parents.tickets.map(function (k) { return 'ticket ' + esc(k) + ' · ' + esc(parentTitle("tkt", k)); }));
+      var m = isMuted(t);
+      return '<dl class="kv">'
+        + '<dt>Status</dt><dd>' + word(t.status) + (t.status ? ' <span style="color:var(--text-3)">' + esc(A.statuses[t.status].meaning) + '</span>' : ' <span style="color:var(--text-3)">several threads, each has its own status</span>') + '</dd>'
+        + '<dt>Status note</dt><dd>' + esc(t.statusNote || "—") + '</dd>'
+        + '<dt>Goal</dt><dd>' + esc(t.goal || "—") + '</dd>'
+        + '<dt>Parents</dt><dd>' + (parents.join("<br>") || "unfiled") + '</dd>'
+        + (t.attention ? '<dt>Attention</dt><dd>' + esc(t.attention.reason) + ': ' + esc(t.attention.text) + '</dd>' : '')
+        + '<dt>Created</dt><dd>' + fmt(t.createdAt) + '</dd>'
+        + '<dt>Last worked</dt><dd>' + fmt(t.lastWorkedAt) + ' · ' + ago(t.lastWorkedAt) + ' ago</dd>'
+        + '<dt>Notifications</dt><dd><button class="btn" type="button" data-act="mute" aria-pressed="' + m + '">' + (m ? "Unmute topic" : "Mute topic") + '</button> '
+        + '<span style="color:var(--text-3)">' + (m ? "Muted: no notifications from this topic, system ones included. The highlight stays until you open it. Mutes never expire." : "Hides every notification from this topic. Mutes never expire.") + '</span></dd>'
+        + '</dl>';
+    }
+  };
+  function renderPanel() {
+    var t = bySlug(state.open);
+    if (!t) return;
+    $("#pGlyph").innerHTML = glyph(t.status);
+    $("#pSlug").textContent = t.slug;
+    $("#pTitle").textContent = t.title;
+    $$(".tab").forEach(function (b) { b.setAttribute("aria-selected", String(b.getAttribute("data-tab") === state.tab)); });
+    var h = "";
+    if (t.stalePrompt && !t.staleDismissed) {
+      h += '<div class="banner" role="status"><span>Idle for ' + days(t) + ' days. Mark as stale?</span>'
+        + '<span class="sp"><button class="btn primary" type="button" data-act="stale">Mark stale</button>'
+        + '<button class="btn" type="button" data-act="dismiss-stale">Dismiss</button></span></div>';
+    }
+    $("#pbody").innerHTML = h + TABS[state.tab](t);
+  }
+
+  // ---- notifications drawer and settings
+  function visibleNotifs() {
+    return S.notifications.filter(function (n) {
+      return !n.dismissed && !n.muted && !kindMuted(n.kind) && !isMuted(bySlug(n.topic));
+    }).sort(function (a, b) { return b.at.localeCompare(a.at); });
+  }
+  function renderNotifs() {
+    var all = S.notifications.filter(function (n) { return !n.dismissed; });
+    var vis = visibleNotifs();
+    $("#notifCount").textContent = "Shown · " + vis.length + (all.length > vis.length ? " · " + (all.length - vis.length) + " hidden by mute" : "");
+    $("#notifs").innerHTML = vis.length ? vis.map(function (n) {
+      return '<div class="note-i"><div class="top"><button class="sl" type="button" data-open="' + esc(n.topic) + '">' + esc(n.topic) + '</button>'
+        + '<span class="pill">' + esc(n.kind) + '</span><span class="tm">' + ago(n.at) + '</span></div>'
+        + '<span class="bd">' + esc(n.body) + '</span>'
+        + '<button class="x" type="button" data-dismiss="' + n.id + '" aria-label="Dismiss notification">×</button></div>';
+    }).join("") : '<div class="empty">Nothing needs you. Highlights stay on topics until you open them.</div>';
+  }
+  function renderSettings() {
+    var mutedList = S.topics.filter(isMuted).map(function (t) { return t.slug; });
+    $("#settings").innerHTML = '<h3>Mute kinds</h3>'
+      + S.notificationSettings.kinds.map(function (k) {
+        return '<div class="setrow"><label><input type="checkbox" data-mutekind="' + esc(k) + '"' + (kindMuted(k) ? " checked" : "") + '><span>' + esc(k) + '</span></label></div>';
+      }).join("")
+      + '<h3>Muted topics</h3>'
+      + (mutedList.map(function (s) {
+        return '<div class="mutelist"><span class="sl">' + esc(s) + '</span><button class="btn" type="button" data-unmute="' + esc(s) + '">Unmute</button></div>';
+      }).join("") || '<div class="empty">None.</div>')
+      + '<h3>Stale prompt</h3>'
+      + '<div class="setrow"><label for="staleDays">Idle days before the prompt</label><input id="staleDays" type="number" min="1" value="' + S.notificationSettings.staleAfterDays + '"></div>'
+      + '<h3>Browser notifications</h3>'
+      + '<div class="setrow"><span>Permission</span><span class="val" style="margin-left:auto">' + esc(S.notificationSettings.browserNotifications) + '</span></div>';
+  }
+  function renderDrawer() { renderNotifs(); renderSettings(); }
+
+  // ---- status bar
+  function viewById(id) { return VIEWS.filter(function (v) { return v.id === id; })[0]; }
+  function renderStatus() {
+    var H = S.health;
+    var cls = function (s) { return s === "ok" ? "" : s === "warn" ? " warn" : " bad"; };
+    $("#health").innerHTML = [H.server, H.claudeCode, H.t3].map(function (h) {
+      return '<span class="t" title="' + esc(h.text) + '"><span class="hdot' + cls(h.state) + '"></span>' + esc(h.text) + '</span>';
+    }).join('<span class="sep"></span>');
+    var att = S.topics.filter(function (t) { return inView(t, viewById("attention")); }).length;
+    var ong = S.topics.filter(function (t) { return inView(t, viewById("ongoing")); }).length;
+    var unread = S.topics.filter(function (t) { return t.unread; }).length;
+    $("#counts").textContent = S.topics.length + " topics · " + att + " need you · " + ong + " ongoing · " + unread + " unread";
+    var vis = visibleNotifs().length;
+    $("#notifBadge").textContent = vis ? " " + vis : "";
+    $("#notifToggle").setAttribute("aria-pressed", String($("#app").classList.contains("drawer-open")));
+    var light = root.getAttribute("data-theme") === "light";
+    $("#themeToggle").textContent = "Theme: " + (light ? "light" : "dark");
+    $("#themeToggle").setAttribute("aria-pressed", String(light));
+  }
+  // ---- actions
+  function select(slug, user) {
+    var t = bySlug(slug);
+    if (!t) return;
+    state.open = slug;
+    if (user) t.unread = false;   // the highlight clears only when the owner clicks or moves onto it
+    renderAll();
+  }
+  function setMuted(t, on) {
+    t.muted = on;
+    var L = S.notificationSettings.mutedTopics, i = L.indexOf(t.slug);
+    if (on && i < 0) L.push(t.slug);
+    if (!on && i >= 0) L.splice(i, 1);
+  }
+  function markStale(t) {
+    var from = t.status;
+    t.status = "stale";
+    t.stalePrompt = false;
+    t.entries.unshift({ at: A.now, author: "axiom", kind: "status change", data: { from: from, to: "stale", reason: "marked stale by you" } });
+  }
+  function dismissStale(t) { t.stalePrompt = false; t.staleDismissed = true; }
+  function attachThread(p) {
+    var t = bySlug(state.open);
+    t.threads.push({ provider: "t3", id: p.id, title: p.title, status: p.status === "running" ? "wip" : "idle", startedAt: p.updatedAt, env: p.env });
+    if (t.threads.length > 1) t.status = null;   // several threads: the topic status is null (01)
+    S.t3Unattached = S.t3Unattached.filter(function (x) { return x.id !== p.id; });
+    t.entries.unshift({ at: A.now, author: "axiom", kind: "thread event", body: "Thread attached: " + p.title + " (T3, " + p.env + ")" });
+  }
+  function openPicker() {
+    var t = bySlug(state.open);
+    $("#pickerSlug").textContent = t.slug;
+    $("#pickerList").innerHTML = S.t3Unattached.length ? S.t3Unattached.map(function (p) {
+      return '<li><span class="t" title="' + esc(p.title) + '">' + esc(p.title) + '</span><span class="m">' + esc(p.env) + ' · ' + esc(p.status) + ' · ' + ago(p.updatedAt) + ' ago</span>'
+        + '<button class="btn" type="button" data-attach="' + esc(p.id) + '">Attach</button></li>';
+    }).join("") : '<li><span class="t" style="color:var(--text-3)">No unattached T3 threads.</span></li>';
+    $("#picker").classList.add("open");
+    var first = $("#pickerList button");
+    (first || $("#pickerClose")).focus();
+  }
+  function closePicker(back) {
+    $("#picker").classList.remove("open");
+    if (back) { var b = $('[data-tab="threads"]'); if (b) b.focus(); }
+  }
+  function toggleDrawer(force) {
+    var app = $("#app");
+    var on = typeof force === "boolean" ? force : !app.classList.contains("drawer-open");
+    app.classList.toggle("drawer-open", on);
+    $("#drawer").hidden = !on;
+    renderStatus();
+    if (on) renderDrawer();
+  }
+  function toggleTheme() {
+    root.setAttribute("data-theme", root.getAttribute("data-theme") === "light" ? "dark" : "light");
+    renderStatus();
+  }
+  function renderAll() {
+    renderTree(); renderViews(); renderTable(); renderBar(); renderPanel(); renderStatus(); renderDrawer();
+  }
+
+  // ---- j/k move through visible rows; enter opens the focused row
+  function moveSel(dir) {
+    var rows = $$("#topics tr.row");
+    if (!rows.length) return;
+    var cur = rows.map(function (r) { return r.getAttribute("data-slug"); }).indexOf(state.open);
+    if (state.rowIdx >= 0 && rows[state.rowIdx] && rows[state.rowIdx].getAttribute("data-slug") === state.open) cur = state.rowIdx;
+    var next = cur < 0 ? 0 : Math.min(rows.length - 1, Math.max(0, cur + dir));
+    state.rowIdx = next;
+    select(rows[next].getAttribute("data-slug"), true);
+    var again = $$("#topics tr.row")[next];
+    if (again) { again.focus(); again.scrollIntoView({ block: "nearest" }); }
+  }
+
+  // ---- events
+  document.addEventListener("click", function (ev) {
+    var el = ev.target, t;
+    // scoped to buttons: <html data-open> would otherwise match every click
+    if ((t = el.closest("button[data-open]"))) { select(t.getAttribute("data-open"), true); return; }
+    if ((t = el.closest("tr.row"))) {
+      state.rowIdx = $$("#topics tr.row").indexOf(t);
+      select(t.getAttribute("data-slug"), true); return;
+    }
+    if ((t = el.closest("[data-view]"))) { state.view = t.getAttribute("data-view") || null; renderAll(); return; }
+    if (el.closest("[data-clear-view]")) { state.view = null; renderAll(); return; }
+    if ((t = el.closest("thead button[data-sort]"))) {
+      var k = t.getAttribute("data-sort");
+      if (state.sort === k) state.dir = -state.dir;
+      else { state.sort = k; state.dir = (k === "last" || k === "monitors") ? -1 : 1; }
+      renderAll(); return;
+    }
+    if ((t = el.closest("[data-tab]"))) { state.tab = t.getAttribute("data-tab"); renderPanel(); return; }
+    if ((t = el.closest("[data-kind]"))) {
+      var kk = t.getAttribute("data-kind");
+      state.hiddenKinds[kk] = !state.hiddenKinds[kk];
+      renderPanel(); return;
+    }
+    if ((t = el.closest("[data-act]"))) {
+      var act = t.getAttribute("data-act"), cur = bySlug(state.open);
+      if (act === "attach") { openPicker(); return; }
+      if (act === "stale") markStale(cur);
+      else if (act === "dismiss-stale") dismissStale(cur);
+      else if (act === "mute") setMuted(cur, !isMuted(cur));
+      renderAll(); return;
+    }
+    if ((t = el.closest("[data-attach]"))) {
+      var pid = t.getAttribute("data-attach");
+      var p = S.t3Unattached.filter(function (x) { return x.id === pid; })[0];
+      if (p) attachThread(p);
+      closePicker(true); renderAll(); return;
+    }
+    if (el.closest("#pickerClose")) { closePicker(true); return; }
+    if ((t = el.closest("[data-dismiss]"))) {
+      var nid = Number(t.getAttribute("data-dismiss"));
+      S.notifications.forEach(function (n) { if (n.id === nid) n.dismissed = true; });
+      renderNotifs(); renderStatus(); return;
+    }
+    if ((t = el.closest("[data-unmute]"))) { setMuted(bySlug(t.getAttribute("data-unmute")), false); renderAll(); return; }
+    if (el.closest("#notifToggle")) { toggleDrawer(); return; }
+    if (el.closest("#drawerClose")) { toggleDrawer(false); return; }
+    if (el.closest("#themeToggle")) { toggleTheme(); return; }
+  });
+  $("#filter").addEventListener("input", function (ev) { state.q = ev.target.value; renderTable(); renderBar(); });
+  document.addEventListener("change", function (ev) {
+    var t = ev.target;
+    if (t.hasAttribute && t.hasAttribute("data-mutekind")) {
+      var k = t.getAttribute("data-mutekind"), L = S.notificationSettings.mutedKinds, i = L.indexOf(k);
+      if (t.checked && i < 0) L.push(k);
+      if (!t.checked && i >= 0) L.splice(i, 1);
+      renderNotifs(); renderStatus(); renderTable();
+    } else if (t.id === "staleDays") {
+      S.notificationSettings.staleAfterDays = Math.max(1, Number(t.value) || 14);
+    }
+  });
+  document.addEventListener("keydown", function (ev) {
+    var tag = ev.target && ev.target.tagName ? ev.target.tagName.toLowerCase() : "";
+    var typing = tag === "input" || tag === "textarea";
+    if (ev.key === "Escape") {
+      if ($("#picker").classList.contains("open")) closePicker(true);
+      else if (typing) ev.target.blur();
+      else if (!$("#drawer").hidden) toggleDrawer(false);
+      return;
+    }
+    if (typing || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    if (ev.key === "/") { ev.preventDefault(); $("#filter").focus(); }
+    else if (ev.key === "j" || ev.key === "k") { ev.preventDefault(); moveSel(ev.key === "j" ? 1 : -1); }
+    else if (ev.key === "Enter" && ev.target.matches && ev.target.matches("tr.row")) { select(ev.target.getAttribute("data-slug"), true); }
+    else if (ev.key === "n") { toggleDrawer(); }
+    else if (ev.key === "t") { toggleTheme(); }
+  });
+
+  // ---- init: state comes from <html data-theme data-open>
+  function init() {
+    var want = root.getAttribute("data-open") || "axiom-spec";
+    state.open = bySlug(want) ? want : "axiom-spec";
+    root.setAttribute("data-theme", root.getAttribute("data-theme") === "light" ? "light" : "dark");
+    state.rowIdx = -1;
+    renderAll();
+  }
+  init();
+})();
+</script>
+</body>
+</html>
