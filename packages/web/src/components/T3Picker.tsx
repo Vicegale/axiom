@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { api, type T3Thread } from "../api";
 import { ago } from "../lib/time";
+import { Modal } from "./Modal";
 import "../styles/picker.css";
 
 interface Props {
@@ -22,7 +23,6 @@ export function T3Picker({ slug, now }: Props) {
   const [query, setQuery] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
-  const wrap = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
   const id = useId();
@@ -44,19 +44,9 @@ export function T3Picker({ slug, now }: Props) {
           setLoad({ kind: "error", message: e instanceof Error ? e.message : String(e) });
         }
       });
-    search.current?.focus();
     return () => {
       live = false;
     };
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: MouseEvent) => {
-      if (wrap.current && !wrap.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", away);
-    return () => document.removeEventListener("mousedown", away);
   }, [open]);
 
   const at = now ?? new Date();
@@ -75,7 +65,6 @@ export function T3Picker({ slug, now }: Props) {
       });
       setThreads((list) => list.filter((x) => x.id !== t.id));
       setOpen(false);
-      toggle.current?.focus();
     } catch (e) {
       setFailure(e instanceof Error ? e.message : String(e));
     } finally {
@@ -84,84 +73,81 @@ export function T3Picker({ slug, now }: Props) {
   }
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: Escape closes the popup from any child
-    <div
-      className="picker-wrap"
-      ref={wrap}
-      onKeyDown={(e) => {
-        if (e.key === "Escape" && open) {
-          setOpen(false);
-          toggle.current?.focus();
-        }
-      }}
-    >
+    <div className="picker-wrap">
       <button
         type="button"
         className="btn"
         ref={toggle}
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-controls={id}
+        aria-controls={open ? id : undefined}
         onClick={() => setOpen((o) => !o)}
       >
         Attach T3 thread
       </button>
       {open ? (
-        <div className="picker" id={id} role="dialog" aria-label="Attach a T3 thread">
-          <p className="picker-h">Unattached T3 threads</p>
-          <input
-            ref={search}
-            className="picker-search"
-            type="search"
-            placeholder="Search by title"
-            aria-label="Search T3 threads"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          {failure ? (
-            <p className="picker-error" role="alert">
-              {failure}
-            </p>
-          ) : null}
-          {load.kind === "loading" ? <p className="picker-empty">Loading T3 threads.</p> : null}
-          {load.kind === "error" ? (
-            <p className="picker-error" role="alert">
-              {load.message}
-            </p>
-          ) : null}
-          {load.kind === "ready" && threads.length === 0 ? (
-            <p className="picker-empty">Every T3 thread is attached.</p>
-          ) : null}
-          {load.kind === "ready" && threads.length > 0 && shown.length === 0 ? (
-            <p className="picker-empty">No threads match.</p>
-          ) : null}
-          {load.kind === "ready" && shown.length > 0 ? (
-            <ul>
-              {shown.map((t) => (
-                <li key={t.id}>
-                  <div>
-                    <span className="picker-t">{t.title}</span>
-                    <span className="picker-sub">
-                      <span>{t.id}</span>
-                      {t.environmentId ? <span>{t.environmentId}</span> : null}
-                      <span>{t.status}</span>
-                      <span>updated {ago(t.updatedAt, at)}</span>
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    className="btn sm"
-                    disabled={busy !== null}
-                    aria-label={`Attach ${t.title}`}
-                    onClick={() => void attach(t)}
-                  >
-                    Attach
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
+        <Modal className="picker" label="Attach a T3 thread" onClose={() => setOpen(false)}>
+          <div id={id} className="picker-body">
+            <div className="picker-top">
+              <p className="picker-h">Unattached T3 threads</p>
+              <button type="button" className="btn ghost sm" onClick={() => setOpen(false)}>
+                Close
+              </button>
+            </div>
+            <input
+              ref={search}
+              className="picker-search"
+              type="search"
+              placeholder="Search by title"
+              aria-label="Search T3 threads"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+            {failure ? (
+              <p className="picker-error" role="alert">
+                {failure}
+              </p>
+            ) : null}
+            {load.kind === "loading" ? <p className="picker-empty">Loading T3 threads.</p> : null}
+            {load.kind === "error" ? (
+              <p className="picker-error" role="alert">
+                {load.message}
+              </p>
+            ) : null}
+            {load.kind === "ready" && threads.length === 0 ? (
+              <p className="picker-empty">Every T3 thread is attached.</p>
+            ) : null}
+            {load.kind === "ready" && threads.length > 0 && shown.length === 0 ? (
+              <p className="picker-empty">No threads match.</p>
+            ) : null}
+            {load.kind === "ready" && shown.length > 0 ? (
+              <ul>
+                {shown.map((t) => (
+                  <li key={t.id}>
+                    <div>
+                      <span className="picker-t">{t.title}</span>
+                      <span className="picker-sub">
+                        <span>{t.id}</span>
+                        {t.environmentId ? <span>{t.environmentId}</span> : null}
+                        <span>{t.status}</span>
+                        <span>updated {ago(t.updatedAt, at)}</span>
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn sm"
+                      disabled={busy !== null}
+                      aria-label={`Attach ${t.title}`}
+                      onClick={() => void attach(t)}
+                    >
+                      Attach
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        </Modal>
       ) : null}
     </div>
   );

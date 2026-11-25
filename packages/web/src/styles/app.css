@@ -413,7 +413,6 @@ a { color: inherit; text-decoration: none; }
 }
 .entry:hover .e-del, .entry:focus-within .e-del { opacity: 0.8; }
 .e-del:hover { color: var(--st-error); opacity: 1; }
-.e-confirm { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); }
 .btn.danger { border-color: color-mix(in srgb, var(--st-error) 60%, transparent); background: color-mix(in srgb, var(--st-error) 16%, transparent); }
 .hist.roomy .entry { padding-bottom: 22px; }
 .hist.dense .entry { padding-bottom: 10px; }
