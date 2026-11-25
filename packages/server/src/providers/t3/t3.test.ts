@@ -841,22 +841,25 @@ describe("the subagent tree", () => {
     ]);
   });
 
-  it("shows the newest run's subagents, plus any still running from an earlier one", () => {
+  it("shows the newest run's subagents, any still running, and any finished in the last 30 minutes", () => {
+    const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
     t3.thread("a");
     t3.run("a", 1, "completed");
-    t3.subagent("a", "old-done", { status: "completed", runId: "run-a-1", completedAt: "x" });
+    t3.subagent("a", "old-done", { status: "completed", runId: "run-a-1", completedAt: ago(40) });
     t3.subagent("a", "old-live", { runId: "run-a-1" });
-    t3.subagent("a", "unattached-done", { status: "failed", runId: null, completedAt: "x" });
-    // A finished one with no run is not the newest run's: it is left out.
-    expect(read("a").map((s) => s.key)).toEqual(["old-done", "old-live"]);
+    t3.subagent("a", "old-recent", { status: "completed", runId: "run-a-1", completedAt: ago(5) });
+    t3.subagent("a", "unattached-done", { status: "failed", runId: null, completedAt: ago(40) });
+    // A finished one with no run, done long ago, is not the newest run's: it is left out.
+    expect(read("a").map((s) => s.key)).toEqual(["old-done", "old-live", "old-recent"]);
     t3.run("a", 2, "running");
-    t3.subagent("a", "new-done", { status: "completed", runId: "run-a-2", completedAt: "y" });
+    t3.subagent("a", "new-done", { status: "completed", runId: "run-a-2", completedAt: ago(1) });
     t3.subagent("a", "new-live", { runId: "run-a-2" });
+    // The new run: the one done 40 minutes ago leaves; the recent one stays across the turn.
     expect(
       read("a")
         .map((s) => s.key)
         .sort(),
-    ).toEqual(["new-done", "new-live", "old-live"]);
+    ).toEqual(["new-done", "new-live", "old-live", "old-recent"]);
   });
 
   it("survives broken payloads", () => {
@@ -872,16 +875,13 @@ describe("the subagent tree", () => {
     ]);
   });
 
-  it("the sync follows them: progress updates, a finished one stays, the next run clears the tree", () => {
+  it("the sync follows them: progress updates, a finished one stays, it outlives the run for 30 minutes", () => {
     t3.thread("a");
     attach("a");
     t3.run("a", 1, "running");
     t3.subagent("a", "s1", { title: "Explore", progress: "one", runId: "run-a-1" });
-    t3.subagent("a", "s2", {
-      title: "Review",
-      startedAt: "2026-11-25T09:02:00.000Z",
-      runId: "run-a-1",
-    });
+    const ago = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+    t3.subagent("a", "s2", { title: "Review", startedAt: ago(18), runId: "run-a-1" });
     provider.sync();
     expect(stored("a")).toEqual([
       ["s1", "running", "Explore", null, "one"],
@@ -897,10 +897,11 @@ describe("the subagent tree", () => {
     expect(stored("a")[0]).toEqual(["s1", "running", "Explore", null, "two"]);
     expect(provider.takeRuntimeChanged()).toBe(true);
 
+    const doneAt = ago(1);
     t3.subagent("a", "s2", {
       status: "completed",
-      completedAt: "2026-11-25T09:20:00.000Z",
-      startedAt: "2026-11-25T09:02:00.000Z",
+      completedAt: doneAt,
+      startedAt: ago(18),
       title: "Review",
       runId: "run-a-1",
     });
@@ -910,11 +911,20 @@ describe("the subagent tree", () => {
       ["s2", "done"],
     ]);
     const ended = ax.listSubagents().get(thread("a")?.id ?? 0)?.[1];
-    expect(ended?.endedAt).toBe("2026-11-25T09:20:00.000Z");
+    expect(ended?.endedAt).toBe(doneAt);
     expect(ax.listEntries("topic-a")).toHaveLength(before);
 
-    // The next run: the finished one leaves, the one still running stays.
+    // The next run: the recently finished one stays, and leaves once it ended over 30 minutes ago.
     t3.run("a", 2, "running");
+    provider.sync();
+    expect(stored("a").map((r) => r[0])).toEqual(["s1", "s2"]);
+    t3.subagent("a", "s2", {
+      status: "completed",
+      completedAt: ago(31),
+      startedAt: ago(48),
+      title: "Review",
+      runId: "run-a-1",
+    });
     provider.sync();
     expect(stored("a").map((r) => r[0])).toEqual(["s1"]);
   });

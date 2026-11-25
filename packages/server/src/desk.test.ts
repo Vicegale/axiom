@@ -255,6 +255,8 @@ if [ "$(wc -l < "$DIR/calls")" -lt 2 ]; then echo "I cannot do that"; else echo 
   });
 
   it("GET /api/desk lists a thread's subagent tree with each row's parent", async () => {
+    // A finished subagent stays listed for 30 minutes after it ends.
+    const ended = new Date(Date.now() - 60_000).toISOString();
     const a = thread("a", "s1");
     const b = thread("b", "s2");
     cli.subagentStarted(a.id, "x1", "Explore");
@@ -276,7 +278,7 @@ if [ "$(wc -l < "$DIR/calls")" -lt 2 ]; then echo "I cannot do that"; else echo 
         title: "Nested",
         parentKey: "t3-1",
         status: "failed",
-        endedAt: "2026-11-25T10:03:00.000Z",
+        endedAt: ended,
       }),
       snap({ key: "t3-3", title: "Orphan", parentKey: "not-listed" }),
     ]);
@@ -306,7 +308,7 @@ if [ "$(wc -l < "$DIR/calls")" -lt 2 ]; then echo "I cannot do that"; else echo 
         progress: null,
         status: "failed",
         startedAt: "2026-11-25T10:00:00.000Z",
-        endedAt: "2026-11-25T10:03:00.000Z",
+        endedAt: ended,
       },
       expect.objectContaining({ title: "Orphan", parentId: null }),
     ]);

@@ -392,14 +392,17 @@ describe("axiom hook", () => {
       expect(rows(s.db).map((r) => r[3])).toEqual(["done", "done"]);
     });
 
-    it("a new prompt clears the finished subagents of the last turn, not the running ones", () => {
+    it("a new prompt keeps recently finished subagents (they leave after 30 minutes)", () => {
       const s = session();
       s.attach();
       s.hook("prompt", PROMPT);
       for (const id of ["a1", "a2"]) s.hook("subagent-start", start(id));
       s.hook("subagent-stop", stopOf("a1"));
       s.hook("prompt", PROMPT);
-      expect(rows(s.db)).toEqual([["a2", null, "general-purpose", "running"]]);
+      expect(rows(s.db)).toEqual([
+        ["a1", null, "general-purpose", "done"],
+        ["a2", null, "general-purpose", "running"],
+      ]);
     });
 
     it("session-end cancels what ran; a fresh session-start clears them, a compaction does not", () => {

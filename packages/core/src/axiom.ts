@@ -14,6 +14,7 @@ import {
   type MonitorState,
   type NotificationKind,
   type Provider,
+  SUBAGENT_KEEP_MS,
   type TaskStatus,
   type TopicStatus,
   type View,
@@ -1130,14 +1131,24 @@ export class Axiom {
   }
 
   /**
-   * A new turn starts: the finished subagents of the last one go. Running ones stay (a background
-   * subagent outlives the turn that started it). Returns whether a row went.
+   * A new turn starts: queued calls go, and so do finished subagents older than SUBAGENT_KEEP_MS.
+   * Recently finished ones stay in the tree across turns (owner, 2026-11-25); running ones always
+   * stay (a background subagent outlives the turn that started it). Returns whether a row went.
    */
   startSubagentTurn(threadId: number): boolean {
     this.run("DELETE FROM subagent_call WHERE thread_id = ?", threadId);
     return (
-      this.change("DELETE FROM subagent WHERE thread_id = ? AND status <> 'running'", threadId) > 0
+      this.change(
+        "DELETE FROM subagent WHERE thread_id = ? AND status <> 'running' AND ended_at < ?",
+        threadId,
+        this.subagentCutoff(),
+      ) > 0
     );
+  }
+
+  /** Finished subagents that ended before this stay out of the tree. */
+  private subagentCutoff(): string {
+    return new Date(this.clock().getTime() - SUBAGENT_KEEP_MS).toISOString();
   }
 
   /** The session ended: whatever still ran is cancelled, and queued calls are dropped. */
@@ -1152,10 +1163,18 @@ export class Axiom {
     return this.change("DELETE FROM subagent WHERE thread_id = ?", threadId) > 0;
   }
 
-  /** The subagents of every thread's current turn, oldest first, by thread id (for the Desk). */
+  /**
+   * Every thread's running subagents and those that finished within SUBAGENT_KEEP_MS, oldest
+   * first, by thread id (for the Desk).
+   */
   listSubagents(): Map<number, Subagent[]> {
     const out = new Map<number, Subagent[]>();
-    for (const r of this.all<Row>("SELECT * FROM subagent ORDER BY started_at, id")) {
+    const rows = this.all<Row>(
+      `SELECT * FROM subagent WHERE status = 'running' OR ended_at IS NULL OR ended_at >= ?
+       ORDER BY started_at, id`,
+      this.subagentCutoff(),
+    );
+    for (const r of rows) {
       const s = camel<Subagent>(r);
       const list = out.get(s.threadId);
       if (list) list.push(s);

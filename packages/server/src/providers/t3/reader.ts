@@ -56,7 +56,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { describeToolUse, oneLine, type SubagentSnapshot } from "@axiom/core";
+import { describeToolUse, oneLine, SUBAGENT_KEEP_MS, type SubagentSnapshot } from "@axiom/core";
 
 export type T3SessionStatus =
   | "idle"
@@ -256,7 +256,8 @@ const SUBAGENTS_SQL = `SELECT subagent_id, parent_node_id, status, started_at, c
   FROM orchestration_v2_projection_subagents
   WHERE thread_id = ?2
     AND (?1 IS NULL OR run_id = ?1
-         OR (completed_at IS NULL AND status NOT IN ('completed', 'failed', 'cancelled', 'interrupted')))
+         OR (completed_at IS NULL AND status NOT IN ('completed', 'failed', 'cancelled', 'interrupted'))
+         OR completed_at >= ?3)
   ORDER BY started_at, subagent_id`;
 
 const PROJECTS_SQL = `SELECT project_id, title, workspace_root, default_model_selection_json, pinned_at
@@ -519,8 +520,13 @@ export class T3Db {
    * rest run) and under which subagent it nests (`parent_node_id` is its parent's `subagent_id`;
    * otherwise it belongs to a run node, i.e. the thread).
    */
-  subagents(threadId: string, runId: string | null = null): SubagentSnapshot[] {
-    const rows = this.db.prepare(SUBAGENTS_SQL).all(runId, threadId) as {
+  /**
+   * The thread's subagents for the Desk tree: the newest run's, any still running, and any that
+   * finished within SUBAGENT_KEEP_MS (`now` is the reader's clock; tests pass it).
+   */
+  subagents(threadId: string, runId: string | null = null, now = new Date()): SubagentSnapshot[] {
+    const since = new Date(now.getTime() - SUBAGENT_KEEP_MS).toISOString();
+    const rows = this.db.prepare(SUBAGENTS_SQL).all(runId, threadId, since) as {
       subagent_id: string;
       parent_node_id: string | null;
       status: string;

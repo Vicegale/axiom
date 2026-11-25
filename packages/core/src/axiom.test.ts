@@ -947,18 +947,24 @@ describe("the Desk: replies, summaries, arrangement", () => {
     expect(ax.keepSubagents(thread.id, [])).toBe(false);
   });
 
-  it("a new turn clears the finished subagents and keeps the running ones", () => {
+  it("keeps finished subagents for 30 minutes across turns; running ones always", () => {
     const { thread } = topicWithThread(ax);
-    for (const k of ["a1", "a2"]) ax.subagentStarted(thread.id, k, "Explore");
-    ax.subagentStopped(thread.id, "a1");
-    expect(ax.startSubagentTurn(thread.id)).toBe(true);
-    expect(
+    const keys = () =>
       ax
         .listSubagents()
         .get(thread.id)
-        ?.map((s) => s.key),
-    ).toEqual(["a2"]);
+        ?.map((s) => s.key);
+    for (const k of ["a1", "a2"]) ax.subagentStarted(thread.id, k, "Explore");
+    ax.subagentStopped(thread.id, "a1");
+    // A new turn soon after: the finished one stays in the tree.
+    clock.advanceMs(29 * 60_000);
     expect(ax.startSubagentTurn(thread.id)).toBe(false);
+    expect(keys()).toEqual(["a1", "a2"]);
+    // Past 30 minutes it leaves the list, and the next turn deletes it; the running one stays.
+    clock.advanceMs(2 * 60_000);
+    expect(keys()).toEqual(["a2"]);
+    expect(ax.startSubagentTurn(thread.id)).toBe(true);
+    expect(keys()).toEqual(["a2"]);
   });
 
   it("ending a thread cancels what still ran and keeps the rest", () => {

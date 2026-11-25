@@ -93,6 +93,9 @@ export type EntryAuthor = (typeof ENTRY_AUTHORS)[number];
 export const DEFAULT_STALE_AFTER_DAYS = 14;
 
 /** How long a `PermissionRequest` hook waits for the owner before the terminal prompt takes over. */
+/** How long a finished subagent stays in its thread's tree on the Desk (D12, owner 2026-11-25). */
+export const SUBAGENT_KEEP_MS = 30 * 60_000;
+
 export const DEFAULT_APPROVAL_TIMEOUT_SEC = 600;
 /** The hook timeout written into Claude Code's settings: the longest wait plus a margin. */
 export const APPROVAL_HOOK_TIMEOUT_SEC = 620;
