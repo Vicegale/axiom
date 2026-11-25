@@ -1,6 +1,6 @@
 # Build plan: first tracker version
 
-- Status: approved (2026-11-25)
+- Status: S0–S6 and S5b done (2026-11-25); S7 in progress
 - Created: 2026-11-25
 - Builds: 01 Tracker, 08 History, 05 Data model, 04 Providers, 06 Architecture, ADRs 0001–0005.
 - Out of scope: the proactive agent (03), Jira, the multi-task UI beyond the tracker views, Codex, export.
