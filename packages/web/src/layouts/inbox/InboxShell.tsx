@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Redirect, useLocation } from "wouter";
 import { NotificationsList, SkipLink, Splitter } from "../../components";
+import { PageSwitch } from "../../components/PageSwitch";
 import { VIEW_LABEL } from "../../lib/domain";
 import { isNarrow, useCollapsed, usePaneSize } from "../../lib/panes";
 import { effectiveTheme } from "../../lib/theme";
@@ -124,6 +125,7 @@ export function InboxShell() {
             <span className="brand-mark" aria-hidden="true" />
             Axiom
           </div>
+          <PageSwitch />
         </div>
         <ThemeSwitch
           theme={data.settings?.theme}

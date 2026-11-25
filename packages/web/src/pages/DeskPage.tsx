@@ -13,6 +13,7 @@ import { api, type DeskTopic, type Health } from "../api";
 import { SkipLink } from "../components";
 import { DeskCard } from "../components/desk/DeskCard";
 import { NewTopicDialog } from "../components/desk/NewTopicDialog";
+import { PageSwitch } from "../components/PageSwitch";
 import { useResource } from "../data/useResource";
 import { hrefs } from "../layouts/shared/routes";
 import { useShell } from "../layouts/shared/useShell";
@@ -379,12 +380,7 @@ export function DeskPage() {
         <div className="dk-bar-start">
           <span className="brand-mark" aria-hidden="true" />
           <h1>Desk</h1>
-          <nav className="dk-nav" aria-label="Pages">
-            <Link href={hrefs.all}>Tracker</Link>
-            <Link href={hrefs.desk} aria-current="page">
-              Desk
-            </Link>
-          </nav>
+          <PageSwitch />
           <span className="dk-count">{active} active</span>
         </div>
         <div className="dk-bar-end">

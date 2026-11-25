@@ -55,7 +55,6 @@ export function Rail({
   return (
     <nav className="rail" id="rail" aria-label="Mailboxes" hidden={collapsed}>
       <div className="rail-scroll">
-        <Nav href={hrefs.desk} label="Desk" extra="nav-desk" active={false} />
         <Nav
           href={hrefs.all}
           label={VIEW_LABEL.all}
