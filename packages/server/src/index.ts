@@ -12,6 +12,8 @@ import { t3Dir } from "./providers/t3/reader.js";
 export { backupDir, backupIfDue, newestBackupMs, runBackup } from "./backup.js";
 export type { InstallOptions, InstallResult } from "./install.js";
 export { DEFAULT_PORT, installService, renderUnit } from "./install.js";
+export type { MainIo as ServerCliIo } from "./main.js";
+export { main as runServerCli } from "./main.js";
 
 export interface StartServerOptions {
   dbPath?: string;
