@@ -56,8 +56,10 @@ const submit = () =>
 const chip = (name: string | RegExp) => screen.getByRole("button", { name }) as HTMLButtonElement;
 const pick = (chipName: string | RegExp, option: string) => {
   fireEvent.click(chip(chipName));
+  const re = new RegExp(`^${option}`);
   fireEvent.click(
-    screen.getByRole("menuitemradio", { name: new RegExp(`^${option}`), hidden: true }),
+    screen.queryByRole("menuitemradio", { name: re, hidden: true }) ??
+      screen.getByRole("option", { name: re, hidden: true }),
   );
 };
 const send = () =>
@@ -83,10 +85,10 @@ describe("+ New topic: T3 projects", () => {
     fireEvent.click(chip("Project: none"));
     expect(
       screen
-        .getAllByRole("menuitemradio", { hidden: true })
+        .getAllByRole("option", { hidden: true })
         .map((o) => o.textContent)
-        .filter((t) => /\/home\/u\/projects/.test(t ?? "")),
-    ).toEqual(["Foo/home/u/projects/foo", "Bare/home/u/projects/bare"]);
+        .filter((t) => /projects\//.test(t ?? "")),
+    ).toEqual(["Foo~/projects/foo", "Bare~/projects/bare"]);
     // The plain folder field is replaced by the chip once a message is written.
     expect(screen.queryByLabelText(/^Project folder/)).toBeNull();
     pick("Provider: T3", "Claude Code");
@@ -153,13 +155,28 @@ describe("+ New topic: T3 projects", () => {
     expect(chip("Model: default")).toBeTruthy();
   });
 
+  it("groups the Folder picker and shows the chosen folder's last segment", async () => {
+    await openDialog();
+    type("Title", "Fix it");
+    type(/^First message/, "Do the thing");
+    pick("Provider: T3", "Claude Code");
+    fireEvent.click(chip("Folder: none"));
+    const labels = [...document.querySelectorAll(".pp-heading")].map((h) => h.textContent);
+    expect(labels).toEqual(["T3 projects", "~/projects"]);
+    expect(screen.getAllByRole("option", { hidden: true }).at(-1)?.textContent).toBe(
+      "Type a path…",
+    );
+    pick("Folder: none", "Foo");
+    expect(chip("Folder: /home/u/projects/foo").title).toBe("/home/u/projects/foo");
+  });
+
   it("falls back to a Folder chip with the error when T3 cannot be read", async () => {
     server.t3Projects = null;
     await openDialog();
     type("Title", "Fix it");
     type(/^First message/, "Do the thing");
     expect(await screen.findByText(/Could not list T3 projects/)).toBeTruthy();
-    pick("Folder: none", "~/projects/foo");
+    pick("Folder: none", "foo");
     submit();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(server.called("POST", "/api/topics/fix-it/threads/new")[0]?.body).toMatchObject({
