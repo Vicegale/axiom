@@ -54,7 +54,7 @@ describe("Settings page", () => {
     const jira = (await screen.findByLabelText("Jira status changed")) as HTMLInputElement;
     expect(jira.checked).toBe(false);
     expect((screen.getByLabelText("Thread error") as HTMLInputElement).checked).toBe(true);
-    expect(screen.getAllByRole("checkbox")).toHaveLength(7);
+    expect(screen.getAllByRole("checkbox")).toHaveLength(8);
     fireEvent.click(screen.getByLabelText("Thread error"));
     await waitFor(() =>
       expect(server.called("PUT", "/api/settings")[0]?.body).toEqual({

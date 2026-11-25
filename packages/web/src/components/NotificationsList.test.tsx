@@ -29,3 +29,17 @@ it("says when nothing is there and how many are hidden by mutes", () => {
   expect(screen.getByText("No notifications right now.")).toBeTruthy();
   expect(screen.getByText("3 hidden by your mutes.")).toBeTruthy();
 });
+
+it("labels a Steward urgent notification as Steward", () => {
+  render(
+    <NotificationsList
+      now={new Date("2026-11-25T12:00:00")}
+      notifications={[
+        notification({ id: 2, kind: "steward urgent", topicSlug: "a", body: "Steward: CI broke" }),
+      ]}
+      onOpen={() => {}}
+    />,
+  );
+  expect(screen.getByText("Steward")).toBeTruthy();
+  expect(screen.getByText("Steward: CI broke")).toBeTruthy();
+});

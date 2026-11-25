@@ -256,6 +256,7 @@ export interface StewardItemInput {
   fingerprint?: string;
   entryId?: number;
   parentItemId?: number;
+  promotion?: StewardComplexity;
 }
 
 export interface StewardMemoryInput {
@@ -273,6 +274,10 @@ export interface ListStewardMemoryOptions {
   attachedKey?: string;
   includeRetired?: boolean;
 }
+
+/** An item with its topic's slug. */
+const ITEM_SELECT = `SELECT steward_item.*, topic.slug AS topic_slug FROM steward_item
+  LEFT JOIN topic ON topic.id = steward_item.topic_id`;
 
 const LINK_LABEL_MAX = 120;
 const LINK_DESCRIPTION_MAX = 200;
@@ -462,7 +467,7 @@ export class Axiom {
           this.run("UPDATE thread SET declared_status = ? WHERE id = ?", parsed, threadId);
         }
       }
-      this.applyTopicStatus(t, parsed, reason, threadId);
+      this.applyTopicStatus(t, parsed, reason, threadId, actor.kind === "steward");
       return this.topicRow(t.id);
     });
   }
@@ -489,22 +494,32 @@ export class Axiom {
     });
   }
 
-  /** Writes the new status (and a `status change` entry) if it differs from the current one. */
+  /**
+   * Writes the new status (and a `status change` entry) if it differs from the current one.
+   * Returns the entry's id, or null when nothing changed. A change by Steward is marked as its own:
+   * the entry's author is `steward` and its data says `by: "steward"` (03, Tidying).
+   */
   private applyTopicStatus(
     t: Topic,
     to: TopicStatus | null,
     reason: string | undefined,
     threadId: number | null,
-  ): void {
-    if (t.status === to) return;
+    bySteward = false,
+  ): number | null {
+    if (t.status === to) return null;
     this.run("UPDATE topic SET status = ? WHERE id = ?", to, t.id);
-    this.insertEntry({
+    return this.insertEntry({
       topicId: t.id,
-      author: "axiom",
+      author: bySteward ? "steward" : "axiom",
       threadId,
       kind: "status change",
       body: `${t.status ?? "none"} -> ${to ?? "none"}${reason ? `: ${reason}` : ""}`,
-      data: { from: t.status, to, ...(reason ? { reason } : {}) },
+      data: {
+        from: t.status,
+        to,
+        ...(reason ? { reason } : {}),
+        ...(bySteward ? { by: "steward" } : {}),
+      },
     });
   }
 
@@ -2590,7 +2605,7 @@ export class Axiom {
   // -- items, suggestions, actions
 
   private itemRow(id: number): StewardItem {
-    const row = this.get<Row>("SELECT * FROM steward_item WHERE id = ?", id);
+    const row = this.get<Row>(`${ITEM_SELECT} WHERE steward_item.id = ?`, id);
     if (!row) throw new AxiomError("not-found", `Steward item not found: ${id}`);
     return camel<StewardItem>(row);
   }
@@ -2599,6 +2614,9 @@ export class Axiom {
     this.stewardWriter(actor, "add a Steward item");
     parseWith(stewardItemKindSchema, input.kind, "item kind");
     if (input.level !== undefined) parseWith(stewardLevelSchema, input.level, "item level");
+    if (input.promotion !== undefined) {
+      parseWith(stewardComplexitySchema, input.promotion, "promotion");
+    }
     if (!input.title.trim()) throw new AxiomError("validation", "a Steward item needs a title");
     return this.tx(() => {
       const topicId = input.topic === undefined ? null : this.topicRow(input.topic).id;
@@ -2607,8 +2625,8 @@ export class Axiom {
         this.run(
           `INSERT INTO steward_item
              (wake_id, kind, topic_id, level, title, body, signal, source, fingerprint, entry_id,
-              parent_item_id, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              parent_item_id, promotion, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           input.wakeId ?? null,
           input.kind,
           topicId,
@@ -2620,6 +2638,7 @@ export class Axiom {
           input.fingerprint ?? null,
           input.entryId ?? null,
           input.parentItemId ?? null,
+          input.promotion ?? null,
           this.iso(),
         ),
       );
@@ -2634,15 +2653,15 @@ export class Axiom {
     const where: string[] = [];
     const params: unknown[] = [];
     if (filter.state !== undefined) {
-      where.push("state = ?");
+      where.push("steward_item.state = ?");
       params.push(filter.state);
     }
     if (filter.topic !== undefined) {
-      where.push("topic_id = ?");
+      where.push("steward_item.topic_id = ?");
       params.push(this.topicRow(filter.topic).id);
     }
     return this.all<Row>(
-      `SELECT * FROM steward_item ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY id`,
+      `${ITEM_SELECT} ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY steward_item.id`,
       ...params,
     ).map((r) => camel<StewardItem>(r));
   }
@@ -2650,7 +2669,7 @@ export class Axiom {
   /** The newest item about this subject, in any state (a dismissed one is not raised again). */
   findStewardItemByFingerprint(fingerprint: string): StewardItem | null {
     const row = this.get<Row>(
-      "SELECT * FROM steward_item WHERE fingerprint = ? ORDER BY id DESC LIMIT 1",
+      `${ITEM_SELECT} WHERE steward_item.fingerprint = ? ORDER BY steward_item.id DESC LIMIT 1`,
       fingerprint,
     );
     return row ? camel<StewardItem>(row) : null;
@@ -2799,6 +2818,281 @@ export class Axiom {
             filter.itemId,
           );
     return rows.map((r) => this.actionRow(r.id));
+  }
+
+  // -- Steward's results (ST3): findings, tidying, topic updates and the owner's reactions
+
+  /** What a level raises: urgent a `steward urgent` notification, attention a `monitor problem`. */
+  private notifyFinding(topicId: number, level: StewardLevel | null, title: string): void {
+    if (level === "urgent") {
+      this.insertNotification(topicId, null, "steward urgent", `Steward: ${title}`);
+    } else if (level === "attention") {
+      // The existing "a monitor found a problem" mechanism of 01: the topic is highlighted and
+      // the notification says why.
+      this.insertNotification(topicId, null, "monitor problem", `Steward: ${title}`);
+    }
+  }
+
+  /**
+   * A finding: an item, and for a finding on a topic a `finding` history entry by Steward linked
+   * from the item. An `urgent` or `attention` finding on a topic also raises its notification.
+   */
+  recordStewardFinding(
+    input: {
+      wakeId?: number;
+      topic?: TopicRef;
+      level: StewardLevel;
+      signal?: string;
+      title: string;
+      body?: string;
+      fingerprint?: string;
+      promotion?: StewardComplexity;
+    },
+    actor: Actor,
+  ): StewardItem {
+    this.stewardWriter(actor, "record a finding");
+    return this.tx(() => {
+      const item = this.addStewardItem(
+        {
+          kind: "finding",
+          title: input.title,
+          level: input.level,
+          ...(input.wakeId !== undefined ? { wakeId: input.wakeId } : {}),
+          ...(input.topic !== undefined ? { topic: input.topic } : {}),
+          ...(input.signal ? { signal: input.signal } : {}),
+          ...(input.body ? { body: input.body } : {}),
+          ...(input.fingerprint ? { fingerprint: input.fingerprint } : {}),
+          ...(input.promotion ? { promotion: input.promotion } : {}),
+        },
+        actor,
+      );
+      if (item.topicId === null) return item;
+      const entryId = this.insertEntry({
+        topicId: item.topicId,
+        author: "steward",
+        kind: "finding",
+        body: item.body ? `${item.title}\n\n${item.body}` : item.title,
+        data: input.signal ? { subtype: input.signal } : undefined,
+      });
+      this.run("UPDATE steward_item SET entry_id = ? WHERE id = ?", entryId, item.id);
+      this.notifyFinding(item.topicId, input.level, item.title);
+      return this.itemRow(item.id);
+    });
+  }
+
+  /**
+   * The same finding seen again while still open: its text, level and promotion are refreshed
+   * instead of a second item being added. A changed level is also written to the topic's history,
+   * and a rise to `urgent` or `attention` raises that notification.
+   */
+  refreshStewardFinding(
+    id: number,
+    input: {
+      wakeId?: number;
+      level: StewardLevel;
+      title: string;
+      body?: string;
+      promotion?: StewardComplexity;
+    },
+    actor: Actor,
+  ): StewardItem {
+    this.stewardWriter(actor, "update a finding");
+    return this.tx(() => {
+      const item = this.itemRow(id);
+      if (item.state !== "open") {
+        throw new AxiomError("conflict", `a ${item.state} item cannot be updated`);
+      }
+      const title = input.title.trim() || item.title;
+      this.run(
+        `UPDATE steward_item SET title = ?, body = ?, level = ?, promotion = ?,
+           wake_id = COALESCE(?, wake_id) WHERE id = ?`,
+        title,
+        input.body ?? item.body,
+        input.level,
+        input.promotion ?? item.promotion,
+        input.wakeId ?? null,
+        id,
+      );
+      if (item.level !== input.level && item.topicId !== null) {
+        this.insertEntry({
+          topicId: item.topicId,
+          author: "steward",
+          kind: "finding",
+          body: `Steward changed the level of "${title}" from ${item.level ?? "none"} to ${input.level}.`,
+          data: item.signal ? { subtype: item.signal } : undefined,
+        });
+        const rank = { info: 0, attention: 1, urgent: 2 } as const;
+        const was = item.level === null ? -1 : rank[item.level];
+        if (rank[input.level] > was) this.notifyFinding(item.topicId, input.level, title);
+      }
+      return this.itemRow(id);
+    });
+  }
+
+  /**
+   * Steward changes a status by a mechanical rule (03, Tidying): through the normal status path,
+   * marked as Steward's in the history entry, with an info item for the view and an action that
+   * can be undone.
+   */
+  stewardTidyStatus(
+    input: {
+      wakeId?: number;
+      topic: TopicRef;
+      to: TopicStatus;
+      reason: string;
+      title: string;
+      body?: string;
+      fingerprint?: string;
+    },
+    actor: Actor,
+  ): { item: StewardItem; action: StewardAction } {
+    this.stewardWriter(actor, "tidy a topic");
+    const to = parseWith(topicStatusSchema, input.to, "status");
+    const denied = manualStatusError({ kind: "steward" }, to);
+    if (denied) throw new AxiomError("permission", denied);
+    return this.tx(() => {
+      const t = this.topicRow(input.topic);
+      const entryId = this.applyTopicStatus(t, to, input.reason, null, true);
+      if (entryId === null) throw new AxiomError("conflict", `${t.slug} is already ${to}`);
+      const item = this.addStewardItem(
+        {
+          kind: "finding",
+          topic: t.id,
+          level: "info",
+          signal: "tidy",
+          title: input.title,
+          body: input.body ?? input.reason,
+          entryId,
+          ...(input.wakeId !== undefined ? { wakeId: input.wakeId } : {}),
+          ...(input.fingerprint ? { fingerprint: input.fingerprint } : {}),
+        },
+        actor,
+      );
+      const action = this.recordStewardAction(
+        { itemId: item.id, kind: "status change", data: { topic: t.slug, from: t.status, to } },
+        actor,
+      );
+      return { item, action };
+    });
+  }
+
+  /**
+   * Puts back what a `status change` action changed, but only while the topic is still at the
+   * status Steward set (otherwise the owner or an agent has moved on: refused, with the reason).
+   */
+  undoStewardAction(id: number, actor: Actor): StewardAction {
+    ownerOnly(actor, "undo a Steward action");
+    return this.tx(() => {
+      const a = this.actionRow(id);
+      if (a.undoneAt !== null) throw new AxiomError("conflict", `action ${id} is already undone`);
+      if (a.kind !== "status change") {
+        throw new AxiomError("validation", `a "${a.kind}" action cannot be undone yet`);
+      }
+      const d = a.data as { topic: string; from: TopicStatus | null; to: TopicStatus };
+      const t = this.topicRow(d.topic);
+      if (t.status !== d.to) {
+        throw new AxiomError(
+          "conflict",
+          `cannot undo: Steward set ${t.slug} to ${d.to}, but it is now ${t.status ?? "none"}`,
+        );
+      }
+      this.applyTopicStatus(t, d.from, "undid Steward's change", null);
+      const undone = this.markStewardActionUndone(id, actor);
+      const item = this.itemRow(a.itemId);
+      if (item.state === "open") this.updateStewardItem(item.id, { state: "undone" }, actor);
+      return undone;
+    });
+  }
+
+  /**
+   * Steward changes a topic's goal or status note (from an answer or a clear fact). The change
+   * goes through the normal update, with a `note` entry by Steward saying why, and an info item.
+   * Returns null when nothing differs.
+   */
+  stewardUpdateTopic(
+    input: {
+      wakeId?: number;
+      topic: TopicRef;
+      goal?: string;
+      statusNote?: string;
+      because: string;
+    },
+    actor: Actor,
+  ): StewardItem | null {
+    this.stewardWriter(actor, "update a topic");
+    return this.tx(() => {
+      const t = this.topicRow(input.topic);
+      const goal = input.goal?.trim();
+      const note = input.statusNote?.trim();
+      const parts: string[] = [];
+      const changes: { goal?: string; statusNote?: string } = {};
+      if (goal && goal !== t.goal) {
+        changes.goal = goal;
+        parts.push(`goal: "${goal}"${t.goal ? ` (was: "${t.goal}")` : ""}`);
+      }
+      if (note && note !== t.statusNote) {
+        changes.statusNote = note;
+        parts.push(`status note: "${note}"${t.statusNote ? ` (was: "${t.statusNote}")` : ""}`);
+      }
+      if (parts.length === 0) return null;
+      this.updateTopic(t.id, changes, actor);
+      const what =
+        changes.goal && changes.statusNote
+          ? "goal and status note"
+          : changes.goal
+            ? "goal"
+            : "status note";
+      const body = `Steward updated the ${what}: ${parts.join("; ")}. Why: ${input.because.trim()}`;
+      const entryId = this.insertEntry({
+        topicId: t.id,
+        author: "steward",
+        kind: "note",
+        body,
+      });
+      return this.addStewardItem(
+        {
+          kind: "finding",
+          topic: t.id,
+          level: "info",
+          signal: "topic update",
+          title: `Updated the ${what} of ${t.slug}`,
+          body: `${parts.join("; ")}. Why: ${input.because.trim()}`,
+          entryId,
+          ...(input.wakeId !== undefined ? { wakeId: input.wakeId } : {}),
+        },
+        actor,
+      );
+    });
+  }
+
+  /** The owner answers a question: the item becomes `answered` and keeps the answer. */
+  answerStewardQuestion(id: number, text: string, actor: Actor): StewardItem {
+    ownerOnly(actor, "answer a Steward question");
+    const item = this.itemRow(id);
+    if (item.kind !== "question") {
+      throw new AxiomError("validation", "only a question can be answered");
+    }
+    return this.updateStewardItem(id, { state: "answered", answer: text }, actor);
+  }
+
+  /**
+   * The owner dismisses an item. A finding that wrote a history entry gets a note there too, which
+   * is how Steward knows not to raise it again.
+   */
+  dismissStewardItem(id: number, actor: Actor): StewardItem {
+    ownerOnly(actor, "dismiss a Steward item");
+    return this.tx(() => {
+      const item = this.updateStewardItem(id, { state: "dismissed" }, actor);
+      if (item.topicId !== null && item.entryId !== null && item.kind === "finding") {
+        this.insertEntry({
+          topicId: item.topicId,
+          author: "owner",
+          kind: "note",
+          body: `Dismissed Steward's finding: ${item.title}`,
+        });
+      }
+      return item;
+    });
   }
 
   // -- memory

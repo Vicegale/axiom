@@ -86,7 +86,7 @@ export interface GatherInput {
   blindSpots: StewardBlindSpot[];
 }
 
-function prFacts(s: PrSnapshot): string[] {
+export function prFacts(s: PrSnapshot): string[] {
   const f = [
     `${s.state.toLowerCase()}${s.draft ? " (draft)" : ""}, ${s.headRef} into ${s.baseRef}`,
     `checks: ${s.failedChecks.length} failed${s.failedChecks.length ? ` (${s.failedChecks.join(", ")})` : ""}, ${s.pendingChecks} pending, ${s.passedChecks} passed`,

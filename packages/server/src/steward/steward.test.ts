@@ -122,9 +122,18 @@ describe("the timer wake", () => {
     await s.settle();
     expect(ax.listStewardWakes()).toHaveLength(2);
     expect(claude.runs()).toBe(2);
-    expect(ax.listStewardRuns().every((r) => r.stage === "gather" && r.status === "done")).toBe(
-      true,
-    );
+    // Each wake ran stage 1 then stage 2.
+    expect(
+      ax
+        .listStewardRuns()
+        .map((r) => [r.stage, r.status])
+        .sort(),
+    ).toEqual([
+      ["decide", "done"],
+      ["decide", "done"],
+      ["gather", "done"],
+      ["gather", "done"],
+    ]);
   });
 
   it("coalesces wakes requested during a wake into one follow-up", async () => {

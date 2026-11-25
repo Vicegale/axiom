@@ -171,6 +171,7 @@ What Steward reads, decides and does. Findings and Steward's changes to topics a
 | state | `open`, then `answered`, `dismissed`, `adopted`, `discarded` or `undone`. |
 | answer | The owner's answer to a question. |
 | entry_id | The history entry it wrote, if any. |
+| promotion | The complexity (`simple`, `medium`, `hard`) stage 2 rated a task it asked to promote; the promotion step acts on it (added 2026-11-25, ST3). |
 | parent_item_id | A suggestion's finding (a prepared fix sits inside its finding). |
 | created_at, resolved_at | |
 
@@ -209,6 +210,7 @@ What Steward reads, decides and does. Findings and Steward's changes to topics a
 ## Decisions
 
 - 2026-11-25: Steward's tables, the `steward` author and the `steward urgent` notification kind added for 03 (owner OK). 05 stays settled.
+- 2026-11-25: `steward_item.promotion` added (migration 0012, ST3). A `status change` entry made by Steward has author `steward` and `by: "steward"` in its data.
 
 - 2026-11-25: SQLite ([ADR 0003](../adr/0003-sqlite-storage.md)), at `~/.local/share/axiom/axiom.db`, with migrations in the repo and a daily backup copy.
 - 2026-11-25: A thread belongs to exactly one topic. It can mention other topics (a `topic` ref on its entries).

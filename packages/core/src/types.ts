@@ -341,8 +341,12 @@ export interface StewardItem {
   answer: string | null;
   entryId: number | null;
   parentItemId: number | null;
+  /** The complexity stage 2 rated a task it asked to promote (ST6 acts on it). */
+  promotion: StewardComplexity | null;
   createdAt: string;
   resolvedAt: string | null;
+  /** The topic's slug, for the views. */
+  topicSlug: string | null;
 }
 
 export interface StewardSuggestion {

@@ -1,25 +1,41 @@
 import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
-/** A fake `claude`: records argv and stdin, prints `stdout` (after `sleep` seconds). */
+/** What a quiet stage 2 says. */
+export const QUIET_DECISION = {
+  brief: "Nothing needs you.",
+  findings: [],
+  questions: [],
+  topicUpdates: [],
+  memory: [],
+};
+
+/**
+ * A fake `claude`: records argv and stdin per stage, prints `stdout` for stage 1 (gather) and
+ * `decideOut` for stage 2 (decide, told apart by its prompt), after `sleep` seconds.
+ */
 export function fakeClaude(
   dir: string,
   stdout: string,
-  opts: { sleep?: number; exit?: number; sleepAfter?: boolean } = {},
+  opts: { sleep?: number; exit?: number; sleepAfter?: boolean; decideOut?: string } = {},
 ) {
   const folder = join(dir, "fake-claude");
   mkdirSync(folder, { recursive: true });
-  writeFileSync(join(folder, "out"), stdout);
+  writeFileSync(join(folder, "out.gather"), stdout);
+  writeFileSync(join(folder, "out.decide"), opts.decideOut ?? envelope(QUIET_DECISION));
   const path = join(folder, "claude");
   writeFileSync(
     path,
     `#!/bin/sh
 DIR="${folder}"
-for a in "$@"; do printf '%s\\n' "$a"; done > "$DIR/argv"
-cat > "$DIR/stdin"
-echo x >> "$DIR/runs"
+for a in "$@"; do printf '%s\\n' "$a"; done > "$DIR/argv.tmp"
+cat > "$DIR/stdin.tmp"
+if grep -q "stage 2 (decide)" "$DIR/stdin.tmp"; then S=decide; else S=gather; fi
+mv "$DIR/argv.tmp" "$DIR/argv.$S"
+mv "$DIR/stdin.tmp" "$DIR/stdin.$S"
+echo x >> "$DIR/runs.$S"
 ${opts.sleep && !opts.sleepAfter ? `sleep ${opts.sleep}` : ""}
-cat "$DIR/out"
+cat "$DIR/out.$S"
 ${opts.sleep && opts.sleepAfter ? `sleep ${opts.sleep}` : ""}
 ${opts.exit ? `exit ${opts.exit}` : ""}
 `,
@@ -32,12 +48,15 @@ ${opts.exit ? `exit ${opts.exit}` : ""}
       return "";
     }
   };
+  type Stage = "gather" | "decide";
   return {
     path,
-    setOut: (s: string) => writeFileSync(join(folder, "out"), s),
-    argv: () => read("argv").trimEnd().split("\n"),
-    stdin: () => read("stdin"),
-    runs: () => read("runs").split("\n").filter(Boolean).length,
+    /** The reply of stage 1 (gather). */
+    setOut: (s: string) => writeFileSync(join(folder, "out.gather"), s),
+    setDecide: (s: string) => writeFileSync(join(folder, "out.decide"), s),
+    argv: (stage: Stage = "gather") => read(`argv.${stage}`).trimEnd().split("\n"),
+    stdin: (stage: Stage = "gather") => read(`stdin.${stage}`),
+    runs: (stage: Stage = "gather") => read(`runs.${stage}`).split("\n").filter(Boolean).length,
   };
 }
 

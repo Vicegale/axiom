@@ -13,9 +13,11 @@ import {
   classifyConnectors,
   type SourceAvailability,
 } from "./connectors.js";
+import { applyDecision, buildDecideInput, runDecide } from "./decide.js";
 import { buildGatherInput, runGather } from "./gather.js";
 import { PrPoller } from "./pr.js";
 import { StageError } from "./runner.js";
+import { runTidy } from "./tidy.js";
 
 /**
  * Steward's scheduler (03, Decisions "Wakes"): a timer wake every `wakeIntervalMin` inside working
@@ -299,8 +301,12 @@ export class Steward {
       actor,
     );
     this.o.bus?.emit();
-    const end = (status: "done" | "failed" | "cut short", error?: string): StewardWake => {
-      const w = ax.finishStewardWake(wake.id, { status, error }, actor);
+    const end = (
+      status: "done" | "failed" | "cut short",
+      error?: string,
+      brief?: string,
+    ): StewardWake => {
+      const w = ax.finishStewardWake(wake.id, { status, error, brief }, actor);
       this.o.bus?.emit();
       return w;
     };
@@ -334,8 +340,26 @@ export class Steward {
         sources,
         blindSpots: spots,
       });
-      await runGather({ ctx: { ax, cli: this.cli(), env: this.o.env }, wake, input });
-      return end("done");
+      const ctx = { ax, cli: this.cli(), env: this.o.env };
+      // Stage 1. If it fails the wake ends here: stage 2 has nothing to read.
+      await runGather({ ctx, wake, input });
+
+      // Mechanical tidying in code, then stage 2 decides on what is left.
+      const tidied = runTidy(ax, { wakeId: wake.id, now, topic: req.topic });
+      const gathered = ax.getStewardWake(wake.id);
+      const reply = await runDecide({
+        ctx,
+        wake: gathered,
+        input: buildDecideInput(ax, { wake: gathered, now, tidied, topic: req.topic }),
+      });
+      const applied = applyDecision(ax, gathered, reply, spots);
+      return end(
+        "done",
+        applied.problems.length
+          ? `${applied.problems.length} result(s) could not be applied: ${applied.problems.join("; ")}`
+          : undefined,
+        reply.brief,
+      );
     } catch (e) {
       if (e instanceof StageError)
         return end(e.code === "cap" || e.code === "timeout" ? "cut short" : "failed", e.message);

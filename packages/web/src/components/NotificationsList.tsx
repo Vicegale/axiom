@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import type { AxiomNotification } from "../api";
-import { NOTIF_STATUS } from "../lib/domain";
+import { NOTIF_LABEL, NOTIF_STATUS } from "../lib/domain";
 import { stamp } from "../lib/time";
 
 interface Props {
@@ -24,7 +24,7 @@ export function NotificationsList({ notifications, titleOf, hiddenCount = 0, now
           {notifications.map((n) => (
             <li key={n.id} className={`notif s-${NOTIF_STATUS[n.kind] ?? "idle"}`}>
               <div className="n-head">
-                <span className="n-kind">{n.kind}</span>
+                <span className="n-kind">{NOTIF_LABEL[n.kind] ?? n.kind}</span>
                 <time dateTime={n.createdAt}>{stamp(n.createdAt, at)}</time>
               </div>
               <Link

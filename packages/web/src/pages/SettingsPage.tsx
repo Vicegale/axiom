@@ -166,6 +166,7 @@ const KIND_LABEL: Record<NotificationKind, string> = {
   "pr review": "PR review arrived",
   "stale prompt": "Stale prompt",
   error: "Thread error",
+  "steward urgent": "Steward found something urgent",
 };
 
 function StaleDays({ days, onSave }: { days: number; onSave: (n: number) => void }) {

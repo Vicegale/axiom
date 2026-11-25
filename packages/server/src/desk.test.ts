@@ -608,12 +608,22 @@ describe("Desk API", () => {
 });
 
 it("leaves no temp folders behind", async () => {
-  const before = readdirSync(tmpdir()).filter((n) => n.startsWith("axiom-summary-")).length;
-  const th = thread();
-  cli.setThreadReply(th.id, "reply");
-  await start({ claudeCli: claudeSaying(GOOD) });
-  await until(() => state(th.id).summaryNow !== null);
-  expect(readdirSync(tmpdir()).filter((n) => n.startsWith("axiom-summary-")).length).toBe(before);
+  // A private temp dir: counting `axiom-summary-*` in the shared one also counts the folders of
+  // other test files, other test runs and the live app, which made this test flaky.
+  const saved = process.env.TMPDIR;
+  const own = mkdtempSync(join(tmpdir(), "axiom-desk-tmp-"));
+  process.env.TMPDIR = own;
+  try {
+    const th = thread();
+    cli.setThreadReply(th.id, "reply");
+    await start({ claudeCli: claudeSaying(GOOD) });
+    await until(() => state(th.id).summaryNow !== null);
+    expect(readdirSync(own).filter((n) => n.startsWith("axiom-summary-"))).toEqual([]);
+  } finally {
+    if (saved === undefined) delete process.env.TMPDIR;
+    else process.env.TMPDIR = saved;
+    rmSync(own, { recursive: true, force: true });
+  }
 });
 
 describe("reply images", () => {

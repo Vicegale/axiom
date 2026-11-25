@@ -7,6 +7,9 @@ import {
   type Epic,
   notificationKindSchema,
   providerSchema,
+  STEWARD_ITEM_KINDS,
+  STEWARD_ITEM_STATES,
+  STEWARD_LEVELS,
   type Subagent,
   type Thread,
   type Ticket,
@@ -684,6 +687,57 @@ export function createApp(ctx: AppContext): Hono {
     return c.json(ax.listStewardWakes(Number.isInteger(n) && n > 0 ? Math.min(n, 100) : 20));
   });
   app.get("/api/steward/prs", (c) => c.json(ax.listStewardPrs()));
+
+  // The Steward view's data (ST3; the UI is ST4). Items are filterable by state (default open),
+  // kind, level and topic, and `group` splits them by kind, level or topic.
+  app.get("/api/steward/items", (c) => {
+    const q = c.req.query();
+    const state = parse(z.enum(STEWARD_ITEM_STATES).default("open"), q.state);
+    const kind = q.kind === undefined ? undefined : parse(z.enum(STEWARD_ITEM_KINDS), q.kind);
+    const level = q.level === undefined ? undefined : parse(z.enum(STEWARD_LEVELS), q.level);
+    const group =
+      q.group === undefined ? undefined : parse(z.enum(["kind", "level", "topic"]), q.group);
+    const items = ax
+      .listStewardItems({ state, ...(q.topic ? { topic: q.topic } : {}) })
+      .filter((i) => (kind ? i.kind === kind : true) && (level ? i.level === level : true));
+    if (!group) return c.json(items);
+    const out: Record<string, typeof items> = {};
+    for (const i of items) {
+      const key = (group === "kind" ? i.kind : group === "level" ? i.level : i.topicSlug) ?? "none";
+      const list = out[key] ?? [];
+      list.push(i);
+      out[key] = list;
+    }
+    return c.json(out);
+  });
+
+  // The latest wake that wrote a brief.
+  app.get("/api/steward/brief", (c) => {
+    const w = ax.listStewardWakes(50).find((x) => x.brief !== null);
+    return c.json(
+      w
+        ? { wakeId: w.id, brief: w.brief, at: w.endedAt ?? w.startedAt, status: w.status }
+        : { wakeId: null, brief: null, at: null, status: null },
+    );
+  });
+
+  app.get("/api/steward/actions", (c) => c.json(ax.listStewardActions()));
+
+  app.post("/api/steward/items/:id/answer", async (c) => {
+    const body = parse(z.strictObject({ text: z.string().trim().min(1) }), await json(c));
+    const id = intParam(c.req.param("id"), "item id");
+    return c.json(write(() => ax.answerStewardQuestion(id, body.text, owner)));
+  });
+
+  app.post("/api/steward/items/:id/dismiss", (c) => {
+    const id = intParam(c.req.param("id"), "item id");
+    return c.json(write(() => ax.dismissStewardItem(id, owner)));
+  });
+
+  app.post("/api/steward/actions/:id/undo", (c) => {
+    const id = intParam(c.req.param("id"), "action id");
+    return c.json(write(() => ax.undoStewardAction(id, owner)));
+  });
 
   app.get("/api/settings", (c) => c.json(readSettings()));
 

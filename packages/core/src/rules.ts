@@ -124,7 +124,7 @@ export function topicStatusFromThreads(threads: readonly ThreadState[]): TopicSt
 export function manualStatusError(actor: Actor, status: TopicStatus): string | null {
   if (actor.kind === "owner") return null;
   if (status === "stale") return "only the owner can set a topic to stale";
-  if (actor.kind === "agent" && status === "wip") {
+  if ((actor.kind === "agent" || actor.kind === "steward") && status === "wip") {
     return "agents cannot set wip by hand; it is set automatically while a thread runs";
   }
   return null;

@@ -72,6 +72,8 @@ export const entryDataSchemas: Record<EntryKind, z.ZodType> = {
       from: topicStatusSchema.nullable(),
       to: topicStatusSchema.nullable(),
       reason: z.string().optional(),
+      /** Set when Steward made the change (03: every change Steward makes is marked as its own). */
+      by: z.literal("steward").optional(),
     }),
     z.strictObject({
       task: taskKeySchema,

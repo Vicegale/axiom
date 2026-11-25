@@ -33,6 +33,7 @@ export const NOTIFICATION_KINDS = [
   "pr review",
   "stale prompt",
   "error",
+  "steward urgent",
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -114,6 +115,12 @@ export const NOTIF_STATUS: Record<NotificationKind, TopicStatus> = {
   error: "error",
   "stale prompt": "stale",
   "jira changed": "monitoring",
+  "steward urgent": "hitl",
+};
+
+/** How the notifications list names a kind; a kind not listed shows as it is. */
+export const NOTIF_LABEL: Partial<Record<NotificationKind, string>> = {
+  "steward urgent": "Steward",
 };
 
 export const LINK_ORDER = ["project", "repository", "branch", "worktree", "pr", "spec", "artifact"];
