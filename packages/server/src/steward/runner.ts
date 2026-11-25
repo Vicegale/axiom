@@ -43,6 +43,11 @@ export interface StageToolOptions {
    * here, gather still starts the user's connectors but cannot use them.
    */
   mcpServers?: string[];
+  /**
+   * Gather only: single connector tools to allow, by full name (`mcp__<server>__<tool>`). Used
+   * instead of a whole server when the stage must not be able to post, send or change anything.
+   */
+  mcpTools?: string[];
   /** Folders outside `cwd` the read-only tools may read (for example a repository). */
   addDirs?: string[];
 }
@@ -69,7 +74,11 @@ export function stageArgs(
   switch (stage) {
     case "gather": {
       // Read-only tools plus the user's MCP connectors: no --strict-mcp-config here.
-      const allowed = [...READ_ONLY_TOOLS, ...(tools.mcpServers ?? []).map((s) => `mcp__${s}`)];
+      const allowed = [
+        ...READ_ONLY_TOOLS,
+        ...(tools.mcpServers ?? []).map((s) => `mcp__${s}`),
+        ...(tools.mcpTools ?? []),
+      ];
       return [
         ...base,
         "--tools",

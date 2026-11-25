@@ -10,6 +10,8 @@ import { ChangeBus } from "./events.js";
 import { T3Provider } from "./providers/t3/provider.js";
 import { t3Dir } from "./providers/t3/reader.js";
 import { defaultT3Cli, T3ReplyFetcher } from "./providers/t3/replies.js";
+import { findGh } from "./steward/gh.js";
+import { Steward, type StewardOptions } from "./steward/scheduler.js";
 import { findClaude, SummaryWorker } from "./summaries.js";
 
 export { backupDir, backupIfDue, newestBackupMs, runBackup } from "./backup.js";
@@ -40,6 +42,11 @@ export interface StartServerOptions {
   summaryRetryMs?: number;
   /** How long a detached `claude -p` reply is watched for an early failure (default 1.5 s). */
   sendGraceMs?: number;
+  /** Steward (03): the `gh` binary, and test hooks for its clock (default `findGh()`, 30 s). */
+  ghCli?: string;
+  stewardTickMs?: number;
+  stewardHeartbeatGapMs?: number;
+  stewardConnectors?: StewardOptions["connectors"];
   /** Replaces `fetch` for calls to T3's MCP endpoint (tests). */
   fetchImpl?: typeof fetch;
 }
@@ -125,6 +132,17 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
     now,
   });
   summaries.start();
+  const steward = new Steward({
+    ax,
+    bus,
+    claudeCli: options.claudeCli ?? findClaude(),
+    ghCli: options.ghCli ?? findGh(),
+    now,
+    tickMs: options.stewardTickMs,
+    heartbeatGapMs: options.stewardHeartbeatGapMs,
+    connectors: options.stewardConnectors,
+  });
+  steward.start();
   const timer = setInterval(maintain, options.maintenanceMs ?? HOUR_MS);
 
   const host = options.host ?? "127.0.0.1";
@@ -141,6 +159,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
     clearInterval(t3Timer);
     unsubscribeT3();
     summaries.stop();
+    steward.stop();
     bus.stop();
     ax.close();
     throw e;
@@ -155,6 +174,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
       clearInterval(t3Timer);
       unsubscribeT3();
       summaries.stop();
+      steward.stop();
       bus.stop();
       for (const end of [...streams]) end();
       await new Promise<void>((resolve) => {

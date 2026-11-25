@@ -165,13 +165,17 @@ describe("wakes and runs", () => {
     clock.advanceMs(60_000);
     const done = ax.finishStewardWake(
       w.id,
-      { status: "done", brief: "All quiet", blindSpots: ["Slack unreachable"] },
+      {
+        status: "done",
+        brief: "All quiet",
+        blindSpots: [{ kind: "source unreachable", text: "Slack unreachable" }],
+      },
       steward,
     );
     expect(done).toMatchObject({
       status: "done",
       brief: "All quiet",
-      blindSpots: ["Slack unreachable"],
+      blindSpots: [{ kind: "source unreachable", text: "Slack unreachable" }],
       endedAt: "2026-01-01T00:01:00.000Z",
     });
     expect(ax.runningStewardWake()).toBeNull();

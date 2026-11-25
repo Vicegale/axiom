@@ -677,6 +677,14 @@ export function createApp(ctx: AppContext): Hono {
     approvalTimeoutSec: ax.getSetting("approvalTimeoutSec"),
   });
 
+  // Steward's recent wakes with their blind spots and what stage 1 gathered (newest first), and
+  // the PRs it watches with their latest snapshot and signals.
+  app.get("/api/steward/wakes", (c) => {
+    const n = Number(c.req.query("limit") ?? 20);
+    return c.json(ax.listStewardWakes(Number.isInteger(n) && n > 0 ? Math.min(n, 100) : 20));
+  });
+  app.get("/api/steward/prs", (c) => c.json(ax.listStewardPrs()));
+
   app.get("/api/settings", (c) => c.json(readSettings()));
 
   app.put("/api/settings", async (c) => {

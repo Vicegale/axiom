@@ -89,12 +89,14 @@ import type {
   Ref,
   RuntimePatch,
   StewardAction,
+  StewardBlindSpot,
   StewardCapCheck,
   StewardChat,
   StewardItem,
   StewardMemory,
   StewardMessage,
   StewardModelUsage,
+  StewardPrRecord,
   StewardRun,
   StewardSuggestion,
   StewardWake,
@@ -104,6 +106,7 @@ import type {
   Task,
   TaskDetail,
   Thread,
+  ThreadStop,
   Ticket,
   TokenCounts,
   Topic,
@@ -215,7 +218,9 @@ export type DeepPartial<T> = {
 export interface StewardWakeFinish {
   status: Exclude<StewardStatus, "running">;
   brief?: string;
-  blindSpots?: string[];
+  /** Left as stored when absent. */
+  blindSpots?: StewardBlindSpot[];
+  gathered?: unknown;
   error?: string;
 }
 
@@ -2224,15 +2229,16 @@ export class Axiom {
   private wakeRow(id: number): StewardWake {
     const row = this.get<Row>("SELECT * FROM steward_wake WHERE id = ?", id);
     if (!row) throw new AxiomError("not-found", `Steward wake not found: ${id}`);
-    const w = camel<StewardWake & { blindSpots: string | null }>(row);
+    const w = camel<StewardWake & { blindSpots: string | null; gathered: string | null }>(row);
     return {
       ...w,
-      blindSpots: w.blindSpots === null ? [] : (JSON.parse(w.blindSpots) as string[]),
+      blindSpots: w.blindSpots === null ? [] : (JSON.parse(w.blindSpots) as StewardBlindSpot[]),
+      gathered: w.gathered === null ? null : JSON.parse(w.gathered),
     };
   }
 
   startStewardWake(
-    input: { trigger: StewardWakeTrigger; triggerDetail?: string },
+    input: { trigger: StewardWakeTrigger; triggerDetail?: string; lookBackFrom?: string },
     actor: Actor,
   ): StewardWake {
     this.stewardWriter(actor, "start a wake");
@@ -2240,10 +2246,12 @@ export class Axiom {
     return this.tx(() =>
       this.wakeRow(
         this.run(
-          "INSERT INTO steward_wake (trigger, trigger_detail, started_at, status) VALUES (?, ?, ?, 'running')",
+          `INSERT INTO steward_wake (trigger, trigger_detail, started_at, status, look_back_from)
+           VALUES (?, ?, ?, 'running', ?)`,
           input.trigger,
           input.triggerDetail ?? null,
           this.iso(),
+          input.lookBackFrom ?? null,
         ),
       ),
     );
@@ -2257,17 +2265,170 @@ export class Axiom {
         throw new AxiomError("conflict", `Steward wake ${id} is already ${w.status}`);
       }
       this.run(
-        `UPDATE steward_wake SET status = ?, ended_at = ?, brief = ?, blind_spots = ?, error = ?
+        `UPDATE steward_wake SET status = ?, ended_at = ?, brief = COALESCE(?, brief),
+           blind_spots = COALESCE(?, blind_spots), gathered = COALESCE(?, gathered), error = ?
          WHERE id = ?`,
         input.status,
         this.iso(),
         input.brief ?? null,
         input.blindSpots ? JSON.stringify(input.blindSpots) : null,
+        input.gathered === undefined ? null : JSON.stringify(input.gathered),
         input.error ?? null,
         id,
       );
       return this.wakeRow(id);
     });
+  }
+
+  /** Stores the blind-spot checklist of a running wake (run in code before stage 1). */
+  setStewardWakeBlindSpots(id: number, spots: StewardBlindSpot[], actor: Actor): StewardWake {
+    this.stewardWriter(actor, "record blind spots");
+    return this.tx(() => {
+      this.wakeRow(id);
+      this.run("UPDATE steward_wake SET blind_spots = ? WHERE id = ?", JSON.stringify(spots), id);
+      return this.wakeRow(id);
+    });
+  }
+
+  /** Stores what stage 1 gathered, for stage 2 to read. */
+  setStewardWakeGathered(id: number, gathered: unknown, actor: Actor): StewardWake {
+    this.stewardWriter(actor, "record the gathered activity");
+    return this.tx(() => {
+      this.wakeRow(id);
+      this.run("UPDATE steward_wake SET gathered = ? WHERE id = ?", JSON.stringify(gathered), id);
+      return this.wakeRow(id);
+    });
+  }
+
+  // -- scheduler state, watched PRs and stops (ST2)
+
+  /**
+   * Notes that the scheduler is alive and enabled. Returns when it has been continuously
+   * enabled since: a heartbeat older than `gapMs` (or none) starts a new stretch, which is how a
+   * wake knows Steward was off (or the server down) in between.
+   */
+  stewardHeartbeat(gapMs: number): string {
+    return this.tx(() => {
+      const now = this.iso();
+      const get = (k: string) =>
+        this.get<{ value: string }>("SELECT value FROM steward_state WHERE key = ?", k)?.value;
+      const beat = get("heartbeat");
+      let since = get("enabledSince");
+      if (!since || !beat || Date.parse(now) - Date.parse(beat) > gapMs) since = now;
+      const put = (k: string, v: string) =>
+        this.run(
+          "INSERT INTO steward_state (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+          k,
+          v,
+        );
+      put("heartbeat", now);
+      put("enabledSince", since);
+      return since;
+    });
+  }
+
+  /** Steward is off: the next stretch of being on starts fresh (a wake then looks back 24 hours). */
+  clearStewardHeartbeat(): void {
+    this.run("DELETE FROM steward_state WHERE key IN ('heartbeat', 'enabledSince')");
+  }
+
+  private prRecordRow(row: Row): StewardPrRecord {
+    const r = camel<
+      Omit<StewardPrRecord, "snapshot" | "active" | "fired"> & {
+        snapshot: string;
+        active: string;
+        fired: string;
+      }
+    >(row);
+    return {
+      ...r,
+      snapshot: JSON.parse(r.snapshot),
+      active: JSON.parse(r.active) as Record<string, string>,
+      fired: JSON.parse(r.fired) as StewardPrRecord["fired"],
+    };
+  }
+
+  getStewardPr(repo: string, number: number): StewardPrRecord | null {
+    const row = this.get<Row>(
+      "SELECT * FROM steward_pr_snapshot WHERE repo = ? AND number = ?",
+      repo,
+      number,
+    );
+    return row ? this.prRecordRow(row) : null;
+  }
+
+  listStewardPrs(): StewardPrRecord[] {
+    return this.all<Row>("SELECT * FROM steward_pr_snapshot ORDER BY repo, number").map((r) =>
+      this.prRecordRow(r),
+    );
+  }
+
+  /** Stores the latest poll of a PR (the first time creates the row, keeping `firstSeenAt`). */
+  saveStewardPr(
+    input: {
+      repo: string;
+      number: number;
+      state: string;
+      snapshot: unknown;
+      active: Record<string, string>;
+      fired: StewardPrRecord["fired"];
+    },
+    actor: Actor,
+  ): StewardPrRecord {
+    this.stewardWriter(actor, "record a PR snapshot");
+    return this.tx(() => {
+      const at = this.iso();
+      this.run(
+        `INSERT INTO steward_pr_snapshot (repo, number, state, snapshot, active, fired, first_seen_at, polled_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT (repo, number) DO UPDATE SET state = excluded.state,
+           snapshot = excluded.snapshot, active = excluded.active, fired = excluded.fired,
+           polled_at = excluded.polled_at`,
+        input.repo,
+        input.number,
+        input.state,
+        JSON.stringify(input.snapshot),
+        JSON.stringify(input.active),
+        JSON.stringify(input.fired.slice(-20)),
+        at,
+        at,
+      );
+      return this.getStewardPr(input.repo, input.number) as StewardPrRecord;
+    });
+  }
+
+  /** The newest entry id (0 when there are none): the starting point for `listThreadStopsSince`. */
+  lastEntryId(): number {
+    return this.get<{ id: number | null }>("SELECT MAX(id) AS id FROM entry")?.id ?? 0;
+  }
+
+  /**
+   * Thread stops recorded after entry `afterEntryId` (hooks and the T3 sync both write a
+   * `thread event` entry with event `stopped`), with the topic's status now.
+   */
+  listThreadStopsSince(afterEntryId: number): ThreadStop[] {
+    return this.all<Row>(
+      `SELECT entry.id AS entry_id, entry.at, entry.thread_id, topic.id AS topic_id,
+              topic.slug AS topic_slug, topic.status AS topic_status,
+              topic.steward_enabled AS steward_enabled
+       FROM entry JOIN topic ON topic.id = entry.topic_id
+       WHERE entry.id > ? AND entry.kind = 'thread event'
+         AND json_extract(entry.data, '$.event') = 'stopped'
+       ORDER BY entry.id`,
+      afterEntryId,
+    ).map((r) => {
+      const t = camel<Omit<ThreadStop, "stewardEnabled"> & { stewardEnabled: number }>(r);
+      return { ...t, stewardEnabled: !!t.stewardEnabled };
+    });
+  }
+
+  /** Every link of one kind with its topic (for example all PRs Steward may watch). */
+  listLinksOfKind(kind: LinkKind): (Link & { topicSlug: string })[] {
+    return this.all<Row>(
+      `SELECT link.*, topic.slug AS topic_slug FROM link JOIN topic ON topic.id = link.topic_id
+       WHERE link.kind = ? ORDER BY link.id`,
+      kind,
+    ).map((r) => camel<Link & { topicSlug: string }>(r));
   }
 
   getStewardWake(id: number): StewardWake {

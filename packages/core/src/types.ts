@@ -254,6 +254,40 @@ export interface Approval {
 // Steward (spec 03, 05)
 // ---------------------------------------------------------------------------
 
+/** Something Steward cannot see or does not know well enough to judge (03, blind spots). */
+export interface StewardBlindSpot {
+  /** For example `source unreachable`, `pr without topic`, `no goal`, `no monitor target`. */
+  kind: string;
+  text: string;
+  topic?: string;
+  ref?: string;
+}
+
+/** The latest poll of a watched PR and the signals raised on it (ST2). */
+export interface StewardPrRecord {
+  repo: string;
+  number: number;
+  state: string;
+  /** The facts of the last poll; the server owns the shape. */
+  snapshot: unknown;
+  /** The signals active now, as {signal: key}. */
+  active: Record<string, string>;
+  fired: { signal: string; at: string; detail: string }[];
+  firstSeenAt: string;
+  polledAt: string;
+}
+
+/** A thread stop seen in the history (a `thread event` entry with event `stopped`). */
+export interface ThreadStop {
+  entryId: number;
+  at: string;
+  threadId: number | null;
+  topicId: number;
+  topicSlug: string;
+  topicStatus: TopicStatus | null;
+  stewardEnabled: boolean;
+}
+
 export interface StewardWake {
   id: number;
   trigger: StewardWakeTrigger;
@@ -262,7 +296,11 @@ export interface StewardWake {
   endedAt: string | null;
   status: StewardStatus;
   brief: string | null;
-  blindSpots: string[];
+  blindSpots: StewardBlindSpot[];
+  /** What stage 1 gathered (JSON), for stage 2. Null until gather has finished. */
+  gathered: unknown | null;
+  /** The point in time this wake read changes from. */
+  lookBackFrom: string | null;
   error: string | null;
 }
 

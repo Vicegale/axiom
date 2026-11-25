@@ -132,8 +132,9 @@ export const stewardSettingsSchema = z.strictObject({
 });
 export type StewardSettings = z.infer<typeof stewardSettingsSchema>;
 
+/** Steward starts off: the owner turns it on (it spends tokens). */
 export const DEFAULT_STEWARD_SETTINGS: StewardSettings = {
-  enabled: true,
+  enabled: false,
   workingHours: { start: "09:00", end: "19:00", days: [1, 2, 3, 4, 5] },
   wakeIntervalMin: 30,
   ghPollIntervalMin: 10,
