@@ -6,6 +6,7 @@ import {
   type Epic,
   notificationKindSchema,
   providerSchema,
+  taskStatusSchema,
   type Ticket,
   TOPIC_STATUSES,
   type TopicDetail,
@@ -62,6 +63,7 @@ function intParam(value: string, what: string): number {
 
 const bodies = {
   status: z.strictObject({ status: topicStatusSchema, reason: z.string().optional() }),
+  taskStatus: z.strictObject({ status: taskStatusSchema }),
   mute: z.strictObject({ muted: z.boolean() }),
   thread: z.strictObject({
     provider: providerSchema,
@@ -169,6 +171,7 @@ export function createApp(ctx: AppContext): Hono {
       statusNote: s.statusNote,
       goal: s.goal,
       muted: s.muted,
+      taskCounts: s.taskCounts,
       views: s.views,
       highlighted: s.highlighted,
       stalePrompt: hasOpenStalePrompt(s.id),
@@ -272,6 +275,15 @@ export function createApp(ctx: AppContext): Hono {
       .reverse()
       .slice(0, limit);
     return c.json(entries);
+  });
+
+  app.get("/api/topics/:slug/tasks", (c) => c.json(ax.listTasks(c.req.param("slug"))));
+
+  app.post("/api/topics/:slug/tasks/:key/status", async (c) => {
+    const body = parse(bodies.taskStatus, await json(c));
+    const slug = c.req.param("slug");
+    const key = c.req.param("key");
+    return c.json(write(() => ax.setTaskStatus(slug, key, body.status, owner)));
   });
 
   app.post("/api/topics/:slug/open", (c) => {
