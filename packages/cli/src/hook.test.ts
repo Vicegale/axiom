@@ -181,6 +181,55 @@ describe("axiom hook", () => {
     expect(s.log()).toBe("");
   });
 
+  it("a stop while subagents still run keeps the thread wip; the next stop without them stops", () => {
+    const s = session();
+    s.attach();
+    s.hook("prompt", PROMPT);
+    const waiting = payload("Stop", {
+      background_tasks: [
+        { id: "a1", type: "subagent", status: "running", agent_type: "general-purpose" },
+        { id: "b1", type: "shell", status: "running", command: "npm run dev" },
+      ],
+    });
+    s.hook("stop", waiting);
+    expect(s.topic().status).toBe("wip");
+    expect(s.notifications()).toEqual([]);
+    s.hook("prompt", PROMPT); // re-invoked when the subagent finished
+    const onlyShell = payload("Stop", {
+      background_tasks: [{ id: "b1", type: "shell", status: "running", command: "npm run dev" }],
+    });
+    s.hook("stop", onlyShell);
+    expect(s.topic().status).toBe("idle");
+    expect(s.notifications()).toContain("agent stopped");
+  });
+
+  it("inside an attached T3 session, a stop with running subagents is recorded and keeps it wip", () => {
+    const s = session();
+    s.exec(["topic", "new", "demo", "--title", "Demo"]);
+    s.exec(["thread", "attach", "demo", "--provider", "t3", "--id", "t3-sub"]);
+    const t3 = { T3CODE_THREAD_ID: "t3-sub" };
+    const waiting = payload("Stop", {
+      background_tasks: [{ id: "a1", type: "subagent", status: "running" }],
+    });
+    s.hook("stop", waiting, t3);
+    const ax = openDatabase(s.db);
+    try {
+      const th = ax.findThread({ provider: "t3", providerThreadId: "t3-sub" });
+      expect(th && ax.runningSubagents(th.id)).toBe(1);
+      expect(s.topic().status).toBe("wip"); // restored even though nothing set it before
+    } finally {
+      ax.close();
+    }
+    s.hook("stop", STOP, t3);
+    const ax2 = openDatabase(s.db);
+    try {
+      const th = ax2.findThread({ provider: "t3", providerThreadId: "t3-sub" });
+      expect(th && ax2.runningSubagents(th.id)).toBe(0);
+    } finally {
+      ax2.close();
+    }
+  });
+
   it("does nothing inside a T3 session (T3CODE_THREAD_ID set)", () => {
     const s = session();
     s.attach();

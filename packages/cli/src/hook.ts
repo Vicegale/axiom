@@ -38,6 +38,19 @@ function logFailure(env: NodeJS.ProcessEnv, event: string, error: unknown): void
   }
 }
 
+/** Running subagents listed in a Stop payload's `background_tasks` (background shells don't count). */
+export function runningSubagentCount(p: HookPayload): number {
+  const tasks = (p as { background_tasks?: unknown }).background_tasks;
+  if (!Array.isArray(tasks)) return 0;
+  return tasks.filter(
+    (t) =>
+      typeof t === "object" &&
+      t !== null &&
+      (t as { type?: unknown }).type === "subagent" &&
+      (t as { status?: unknown }).status === "running",
+  ).length;
+}
+
 /** A permission request, as opposed to an idle reminder or any other notification. */
 function isPermissionRequest(p: HookPayload): boolean {
   if (p.notification_type !== undefined) return p.notification_type === "permission_prompt";
@@ -59,11 +72,33 @@ export function runHook(
       throw new Error(`unknown hook event "${event}"`);
     // T3 is the source of truth for T3 threads: do not record this session as a Claude Code
     // thread. If the T3 thread is attached, ask the server to re-read it now.
+    const raw = (options.readStdin ?? (() => readFileSync(0, "utf8")))();
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      throw new Error("hook payload is not a JSON object");
+    }
+    const payload = parsed as HookPayload;
+    const subagents = runningSubagentCount(payload);
+
     const t3ThreadId = env.T3CODE_THREAD_ID;
     if (t3ThreadId) {
       const axiom = openDatabase(options.db ?? defaultDatabasePath(env));
       try {
-        if (axiom.findThread({ provider: "t3", providerThreadId: t3ThreadId })) {
+        const thread = axiom.findThread({ provider: "t3", providerThreadId: t3ThreadId });
+        if (thread) {
+          if (event === "stop") {
+            axiom.setRunningSubagents(thread.id, subagents);
+            // The T3 sync may have seen the finished run first and stopped the thread already.
+            if (
+              subagents > 0 &&
+              thread.endedAt === null &&
+              axiom.getThread(thread.id).status !== "wip"
+            ) {
+              axiom.threadWorking(thread.id);
+            }
+          } else if (event === "session-end") {
+            axiom.setRunningSubagents(thread.id, 0);
+          }
           axiom.requestProviderRefresh("t3");
         }
       } finally {
@@ -71,13 +106,6 @@ export function runHook(
       }
       return 0;
     }
-
-    const raw = (options.readStdin ?? (() => readFileSync(0, "utf8")))();
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      throw new Error("hook payload is not a JSON object");
-    }
-    const payload = parsed as HookPayload;
     const sessionId = payload.session_id || env.CLAUDE_CODE_SESSION_ID;
     if (!sessionId) throw new Error("hook payload has no session_id");
 
@@ -98,9 +126,13 @@ export function runHook(
           }
           break;
         case "stop":
-          axiom.threadStopped(thread.id);
+          // Waiting on running subagents is not stopping: the thread stays wip until it is
+          // re-invoked and stops again with none left.
+          axiom.setRunningSubagents(thread.id, subagents);
+          if (subagents === 0) axiom.threadStopped(thread.id);
           break;
         case "session-end":
+          axiom.setRunningSubagents(thread.id, 0);
           axiom.threadEnded(thread.id, payload.reason);
           break;
       }

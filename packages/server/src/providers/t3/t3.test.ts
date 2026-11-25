@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { type Actor, type Axiom, openDatabase } from "@axiom/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { T3_VERSION, T3Fixture } from "../../test-t3.js";
-import { T3Provider } from "./provider.js";
+import { decide, T3Provider } from "./provider.js";
 import { readT3Meta, T3Db } from "./reader.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -322,5 +322,32 @@ describe("version pin and health", () => {
     await sleep(5);
     provider.sync();
     expect(provider.refreshRequested()).toBe(false);
+  });
+});
+
+describe("decide with running subagents", () => {
+  const base = {
+    id: 1,
+    topicId: 1,
+    provider: "t3",
+    providerThreadId: "x",
+    environmentId: null,
+    title: null,
+    status: "wip",
+    declaredStatus: null,
+    waitingOnOwner: false,
+    startedAt: "2026-01-01T00:00:00.000Z",
+    endedAt: null,
+  } as unknown as Parameters<typeof decide>[0];
+  const ready = {
+    status: "ready",
+    pendingRequests: [],
+    removed: false,
+    updatedAt: "2026-01-01T00:00:01.000Z",
+    lastError: null,
+  } as unknown as Parameters<typeof decide>[1];
+  it("does not stop a wip thread while its subagents run", () => {
+    expect(decide(base, ready, 1)).toBeNull();
+    expect(decide(base, ready, 0)).toEqual({ kind: "stopped" });
   });
 });
