@@ -145,7 +145,14 @@ export class FakeServer {
       return this.json({
         server: { startedAt: T0, version: "0.0.0", dbPath: "/x", lastBackupAt: null },
         claudeCode: { lastEventAt: null },
-        t3: { state: "not-configured" },
+        t3: {
+          state: "ok",
+          lastReadAt: T0,
+          serverVersion: "0.1.11-nightly.20261118.4890",
+          migration: 98,
+          pinned: { serverVersion: "0.1.11-nightly.20261118.4890", migration: 98 },
+          detail: null,
+        },
       });
     }
     if (method === "GET" && path === "/api/tickets") return this.json([]);
