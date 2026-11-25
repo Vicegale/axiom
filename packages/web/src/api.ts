@@ -299,6 +299,21 @@ export interface NewThreadBody extends SendBody {
   cwd?: string;
 }
 
+export interface Workspace {
+  path: string;
+  label: string;
+  source: "axiom" | "projects";
+}
+
+export interface NewTopicBody {
+  slug?: string;
+  title: string;
+  goal?: string;
+  epic?: string;
+  ticket?: string;
+  repository?: string;
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
@@ -371,6 +386,9 @@ export const api = {
   composeOptions: () => request<ComposeOptions>("GET", "/api/compose/options"),
   sendToThread: (id: number, body: SendBody) =>
     request<{ ok: true }>("POST", `/api/threads/${id}/send`, body),
+  createTopic: (body: NewTopicBody) =>
+    request<{ slug: string; title: string }>("POST", "/api/topics", body),
+  workspaces: () => request<Workspace[]>("GET", "/api/workspaces"),
   newThread: (slug: string, body: NewThreadBody) =>
     request<Thread>("POST", `/api/topics/${enc(slug)}/threads/new`, body),
 };

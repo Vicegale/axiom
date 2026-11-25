@@ -370,7 +370,7 @@ describe("the Desk", () => {
     await waitFor(() => expect(server.called("POST", "/api/topics/charlie/open")).toHaveLength(1));
   });
 
-  it("shows the bell count and provider health, and has a disabled New topic placeholder", async () => {
+  it("shows the bell count and provider health, and has an enabled New topic button", async () => {
     server.notifications = [notification({ id: 1, topicSlug: "charlie" })];
     start();
     await screen.findByRole("article", { name: "Alpha" });
@@ -379,7 +379,7 @@ describe("the Desk", () => {
     expect(await screen.findByText("T3 ready")).toBeTruthy();
     expect(
       (screen.getByRole("button", { name: "+ New topic" }) as HTMLButtonElement).disabled,
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it("refetches on a server change and keeps the open reply", async () => {
