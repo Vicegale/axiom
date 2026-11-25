@@ -203,7 +203,7 @@ export interface SendingOptions {
   graceMs?: number;
 }
 
-const firstLine = (text: string) => text.trim().split("\n")[0]?.trim() ?? "".slice(0, 120);
+const firstLine = (text: string) => (text.trim().split("\n")[0] ?? "").trim().slice(0, 120);
 
 export function registerSendRoutes(app: Hono, o: SendingOptions): void {
   const { ax, bus } = o;
