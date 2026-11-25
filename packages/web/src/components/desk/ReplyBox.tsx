@@ -244,7 +244,11 @@ export function ReplyBox({
   const draftLine = text.trim().split("\n")[0] ?? "";
 
   const targetOptions: ChipOption[] = [
-    ...threads.map((t) => ({ value: String(t.id), label: label(t), hint: t.provider })),
+    ...threads.map((t) => ({
+      value: String(t.id),
+      label: label(t),
+      hint: t.provider === "t3" ? "T3" : "Claude Code",
+    })),
     {
       value: NEW,
       label: "New thread",
