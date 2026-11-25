@@ -8,6 +8,7 @@ export type Route =
   | { kind: "doc"; slug: string; linkId: number; path: string | undefined }
   | { kind: "notifications" }
   | { kind: "settings" }
+  | { kind: "desk" }
   | { kind: "unknown" };
 
 export const hrefs = {
@@ -21,6 +22,7 @@ export const hrefs = {
     }`,
   notifications: "/notifications",
   settings: "/settings",
+  desk: "/desk",
 };
 
 /** The current location as one of the app's routes. */
@@ -32,6 +34,7 @@ export function useAppRoute(): Route {
   const search = useSearch();
   const [isNotifs] = useRoute("/notifications");
   const [isSettings] = useRoute("/settings");
+  const [isDesk] = useRoute("/desk");
   if (isAll) return { kind: "all" };
   if (isView && viewParams && isViewId(viewParams.view)) {
     return { kind: "view", view: viewParams.view };
@@ -47,5 +50,6 @@ export function useAppRoute(): Route {
   if (isTopic && topicParams) return { kind: "topic", slug: topicParams.slug };
   if (isNotifs) return { kind: "notifications" };
   if (isSettings) return { kind: "settings" };
+  if (isDesk) return { kind: "desk" };
   return { kind: "unknown" };
 }

@@ -1,0 +1,101 @@
+/* The Desk (02): a grid of topic cards. Tokens from tokens.css; the Mana-free tracker palette. */
+.dk-app {
+  display: grid; grid-template-rows: 2.75rem minmax(0, 1fr);
+  height: 100vh; height: 100dvh; overflow: hidden; background: var(--bg);
+}
+.dk-app.has-banner { grid-template-rows: 2.75rem auto minmax(0, 1fr); }
+.dk-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap;
+  padding: 0 0.875rem; min-height: 2.75rem; background: var(--panel); border-bottom: 1px solid var(--line);
+}
+.dk-bar-start, .dk-bar-end { display: flex; align-items: center; gap: 0.625rem; min-width: 0; }
+.dk-bar-start h1 { font-size: 0.9375rem; font-weight: 600; letter-spacing: -0.01em; }
+.dk-nav { display: flex; gap: 2px; }
+.dk-nav a { padding: 0.25rem 0.5rem; border-radius: var(--radius); color: var(--text-2); font-size: 0.75rem; text-decoration: none; }
+.dk-nav a:hover { color: var(--text); }
+.dk-nav a[aria-current="page"] { color: var(--text); background: var(--raised); }
+.dk-count { font-size: 0.75rem; color: var(--meta); }
+.dk-bell { position: relative; text-decoration: none; }
+.dk-badge {
+  position: absolute; top: -0.125rem; right: -0.25rem; min-width: 1rem; height: 1rem; padding: 0 0.25rem;
+  display: grid; place-items: center; border-radius: 0.5rem; font: 600 0.625rem/1 var(--font-mono);
+  background: var(--st-hitl); color: #1a1200;
+}
+.dk-health { display: flex; gap: 0.75rem; font-size: 0.75rem; color: var(--text-2); }
+.dk-health li { display: inline-flex; align-items: center; gap: 0.375rem; white-space: nowrap; }
+.dk-health .hd { width: 0.4375rem; height: 0.4375rem; border-radius: 50%; background: var(--st-done); }
+.dk-health [data-state="warn"] .hd { background: var(--st-hitl); }
+.dk-new { background: var(--focus); border-color: var(--focus); color: #fff; }
+.dk-new:disabled { opacity: 0.55; cursor: not-allowed; }
+.dk-hidden-btn:disabled { opacity: 0.6; cursor: default; }
+.dk-pop {
+  position: fixed; inset: auto; margin: 0; padding: 0.625rem; max-height: 22rem; overflow: auto;
+  border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--panel-2); color: var(--text);
+}
+.dk-pop ul { display: grid; gap: 0.375rem; margin-top: 0.375rem; }
+.dk-pop li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.dk-pop li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.dk-main { min-height: 0; overflow: auto; padding: 0.75rem; scrollbar-gutter: stable; outline: none; }
+.dk-grid { display: grid; gap: 0.75rem; align-items: start; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.dk-app[data-per-row="1"] .dk-grid { grid-template-columns: minmax(0, 1fr); }
+.dk-app[data-per-row="2"] .dk-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.dk-app[data-per-row="4"] .dk-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.dk-app[data-per-row="n"] .dk-grid { grid-template-columns: repeat(auto-fill, minmax(21rem, 1fr)); }
+@media (max-width: 900px) {
+  .dk-app .dk-grid { grid-template-columns: minmax(0, 1fr); }
+  .dk-perrow { display: none; }
+  .dk-health { display: none; }
+}
+
+.dk-card {
+  display: flex; flex-direction: column; gap: 0.5rem; min-width: 0; padding: 0.75rem;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 0.5rem;
+}
+.dk-card.hl { border-color: var(--st-hitl); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--st-hitl) 45%, transparent); }
+.dk-card.moving { border-color: var(--focus); box-shadow: 0 0.5rem 1.5rem rgb(0 0 0 / 0.35); }
+.dk-grid[data-sorting="true"] { user-select: none; }
+.dk-head { display: flex; align-items: flex-start; gap: 0.5rem; }
+.dk-title { flex: 1 1 0; min-width: 0; font-size: 0.875rem; font-weight: 600; line-height: 1.3; overflow-wrap: anywhere; }
+.dk-title a { color: var(--text); text-decoration: none; }
+.dk-title a:hover { text-decoration: underline; }
+.dk-pills { display: inline-flex; gap: 0.25rem; }
+.dk-tools { display: inline-flex; margin-left: auto; }
+.dk-tools .icon-btn { text-decoration: none; }
+.dk-move { cursor: grab; touch-action: none; }
+.dk-move[data-moving="true"] { cursor: grabbing; color: var(--focus); border-color: var(--focus); }
+.dk-fav.on { color: var(--st-hitl); }
+.dk-fav.on svg { fill: currentColor; }
+.dk-meta { display: flex; flex-wrap: wrap; gap: 0.25rem 0.875rem; font-size: 0.75rem; color: var(--meta); }
+.dk-thread { display: flex; align-items: center; gap: 0.5rem; min-width: 0; font-size: 0.75rem; color: var(--meta); }
+.dk-thread select {
+  flex: 1; min-width: 0; height: 1.5rem; padding: 0 0.375rem; background: var(--raised);
+  border: 1px solid var(--control); border-radius: 0.1875rem; color: var(--text);
+}
+.dk-thread-one { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dk-run { display: flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; color: var(--text-2); }
+.dk-rundot { width: 0.4375rem; height: 0.4375rem; border-radius: 50%; background: var(--c, var(--text-3)); }
+.dk-label { font: 500 0.625rem/1 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--meta); margin-bottom: 0.25rem; }
+.dk-now { padding: 0.5rem 0.625rem; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); }
+.dk-now-text { color: var(--text); overflow-wrap: anywhere; }
+.dk-next { margin-top: 0.375rem; font-weight: 600; color: color-mix(in srgb, var(--st-hitl) var(--ink-mix), var(--text)); overflow-wrap: anywhere; }
+.dk-next span { font: 500 0.625rem/1 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; margin-right: 0.375rem; }
+.dk-note, .dk-reply-none { font-size: 0.75rem; color: var(--meta); font-style: italic; }
+.dk-reply-toggle {
+  display: flex; justify-content: space-between; gap: 0.5rem; width: 100%; padding: 0.25rem 0;
+  background: none; border: 0; border-top: 1px solid var(--line); color: var(--text-2); font-size: 0.75rem; cursor: pointer;
+}
+.dk-reply-toggle:hover { color: var(--text); }
+.dk-md { max-height: 22rem; overflow: auto; padding: 0.5rem 0.625rem; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); overflow-wrap: anywhere; }
+.dk-md > :first-child { margin-top: 0; }
+.dk-md > :last-child { margin-bottom: 0; }
+.dk-foot { display: flex; gap: 0.5rem; }
+.dk-replybox { padding: 0.625rem; border: 1px dashed var(--line-strong); border-radius: var(--radius); display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; color: var(--text-2); }
+@media (forced-colors: active) {
+  .dk-card, .dk-now, .dk-md { border: 1px solid CanvasText; }
+  .dk-card.hl { border-width: 2px; }
+}
+/* The reply renders with the document viewer's prose styles, tightened for a card. */
+.dk-md.dv-prose { font-size: 0.8125rem; line-height: 1.55; }
+.dk-md.dv-prose :is(h2, h3, h4, h5, h6) { margin: 0.875rem 0 0.375rem; font-size: 0.875rem; padding: 0; border: 0; }
+.dk-md.dv-prose p, .dk-md.dv-prose ul, .dk-md.dv-prose ol, .dk-md.dv-prose pre { margin-bottom: 0.625rem; }

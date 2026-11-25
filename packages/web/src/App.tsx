@@ -1,16 +1,19 @@
-import { Router } from "wouter";
+import { Router, useRoute } from "wouter";
 import { LiveAnnouncer } from "./components";
 import { DataProvider, useAxiom } from "./data/DataProvider";
 import { BoardShell } from "./layouts/board/BoardShell";
 import { ConsoleShell } from "./layouts/console/ConsoleShell";
 import { InboxShell } from "./layouts/inbox/InboxShell";
+import { DeskPage } from "./pages/DeskPage";
 
 /** The layout the owner chose on the settings page. Every layout shares the routes, so switching
  *  keeps the open topic. */
 function Layout() {
+  const [onDesk] = useRoute("/desk");
   const { settings, error } = useAxiom();
   // Wait for the setting rather than flashing Inbox first; if settings cannot load, use Inbox.
   if (!settings && !error) return <div className="boot" aria-busy="true" />;
+  if (onDesk) return <DeskPage />;
   switch (settings?.layout) {
     case "board":
       return <BoardShell />;

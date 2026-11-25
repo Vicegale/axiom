@@ -220,6 +220,12 @@ export function ConsoleShell() {
               <span className={`n${v === "attention" && count(v) ? " hot" : ""}`}>{count(v)}</span>
             </Link>
           ))}
+          <Link href={hrefs.desk} className="cs-view">
+            <span className="cs-glyph" aria-hidden="true">
+              ▦
+            </span>
+            Desk
+          </Link>
           <Link
             href={hrefs.settings}
             className="cs-view cs-settings-link"

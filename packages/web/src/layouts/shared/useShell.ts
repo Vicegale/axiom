@@ -54,9 +54,11 @@ export function useShell() {
           ? "Notifications"
           : route.kind === "settings"
             ? "Settings"
-            : route.kind === "view"
-              ? VIEW_LABEL[route.view]
-              : VIEW_LABEL.all;
+            : route.kind === "desk"
+              ? "Desk"
+              : route.kind === "view"
+                ? VIEW_LABEL[route.view]
+                : VIEW_LABEL.all;
   useDocumentTitle(heading, needYou);
 
   /** Marks the topic opened (clears its highlight and notifications) without navigating. */

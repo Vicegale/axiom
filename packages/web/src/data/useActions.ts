@@ -26,6 +26,9 @@ export function useActions() {
     () => ({
       open: (slug: string) => run(() => api.open(slug)),
       setMuted: (slug: string, muted: boolean) => run(() => api.mute(slug, muted)),
+      setFavorite: (slug: string, on: boolean) => run(() => api.setFavorite(slug, on)),
+      setDeskHidden: (slug: string, hidden: boolean) => run(() => api.setDeskHidden(slug, hidden)),
+      setDeskOrder: (slugs: string[]) => run(() => api.setDeskOrder(slugs)),
       markStale: (slug: string) => run(() => api.markStale(slug)),
       dismissStalePrompt: (slug: string) => run(() => api.dismissStalePrompt(slug)),
       setTaskStatus: (slug: string, key: string, status: TaskStatus) =>
