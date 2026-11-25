@@ -1,5 +1,9 @@
 import { useEffect, useId, useState } from "react";
 
+function panelColor(): string {
+  return getComputedStyle(document.documentElement).getPropertyValue("--panel").trim() || "#111316";
+}
+
 type State = { svg: string } | { error: string } | null;
 
 /**
@@ -23,6 +27,8 @@ export function Mermaid({ source, theme }: { source: string; theme: "dark" | "li
           securityLevel: "strict",
           theme: theme === "dark" ? "dark" : "default",
           fontFamily: "inherit",
+          // Labels on edges sit on the diagram box, whatever the theme's own grey is.
+          themeVariables: { edgeLabelBackground: panelColor() },
         });
         const { svg } = await mermaid.render(id, source);
         if (live) setState({ svg });

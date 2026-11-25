@@ -133,7 +133,7 @@ dialog.bd-doc { padding: 0; }
 .bd-doc-row { flex: none; padding: 0.75rem 1.25rem 0.5rem; }
 .bd-doc > .dv { flex: 1; min-height: 0; }
 dialog.bd-sheet[data-wide="true"] { width: 100vw; border-left: 0; }
-.cs-panel.cs-doc { flex: 1 1 auto; height: auto; max-height: none; }
+.cs-app[data-wide="true"] .cs-panel.cs-doc { flex: 1 1 auto; height: auto; max-height: none; }
 .cs-app[data-wide="true"] .cs-bar, .cs-app[data-wide="true"] .cs-tablewrap, .cs-app[data-wide="true"] .splitter.cs-split { display: none; }
 .cs-doc .dv { font-size: 0.8125rem; }
 

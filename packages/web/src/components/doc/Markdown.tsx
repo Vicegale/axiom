@@ -18,6 +18,9 @@ import { Mermaid } from "./Mermaid";
  *  added after sanitising, so the document cannot supply them. */
 const schema = {
   ...defaultSchema,
+  // Footnote ids and links already carry remark's `user-content-` prefix; clobbering would double
+  // it. Ids the author wrote are removed first (see `stripAuthorIds`) so none can clobber.
+  clobberPrefix: "",
   attributes: {
     ...defaultSchema.attributes,
     ul: [...(defaultSchema.attributes?.ul ?? []), ["className", "contains-task-list"]],
@@ -26,9 +29,25 @@ const schema = {
   },
 };
 
+type HastNode = { type: string; properties?: Record<string, unknown>; children?: HastNode[] };
+
+/** Drops `id` from raw HTML in the document, keeping only the ids the Markdown renderer itself
+ *  makes for footnotes (heading slugs are added later, after sanitising). */
+function stripAuthorIds() {
+  const walk = (node: HastNode) => {
+    const id = node.properties?.id;
+    if (typeof id === "string" && !/^(user-content-|footnote-label$)/.test(id)) {
+      delete node.properties?.id;
+    }
+    for (const child of node.children ?? []) walk(child);
+  };
+  return walk;
+}
+
 const REMARK = [remarkGfm];
 const REHYPE = [
   rehypeRaw,
+  stripAuthorIds,
   [rehypeSanitize, schema],
   rehypeSlug,
   [

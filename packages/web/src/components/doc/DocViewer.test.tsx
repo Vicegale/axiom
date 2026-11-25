@@ -42,6 +42,7 @@ Footnote here[^1].
 
 <script>alert(1)</script>
 <img src="x" onerror="alert(2)">
+<a id="clobber">x</a>
 `;
 
 function doc(over: Partial<DocData> = {}): DocData {
@@ -112,6 +113,9 @@ describe("rendering", () => {
     expect(a.querySelector("del")?.textContent).toBe("gone");
     expect(within(a).getByRole("link", { name: "https://auto.example.com/link" })).toBeTruthy();
     expect(a.querySelector("[data-footnotes]")?.textContent).toContain("The note.");
+    // The reference points at a note that exists (sanitising must not break the ids).
+    const ref = a.querySelector("a[data-footnote-ref]") as HTMLAnchorElement;
+    expect(a.querySelector(`[id="${ref.getAttribute("href")?.slice(1)}"]`)).toBeTruthy();
   });
 
   it("highlights code with the mono block and no language guessing", async () => {
@@ -128,6 +132,7 @@ describe("rendering", () => {
     expect(a.querySelector("script")).toBeNull();
     expect(a.innerHTML).not.toContain("onerror");
     expect(a.innerHTML).not.toContain("alert(");
+    expect(document.getElementById("clobber")).toBeNull();
   });
 
   it("gives headings anchors and builds the table of contents from h2 and h3", async () => {
