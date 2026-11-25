@@ -1,65 +1,32 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Redirect, useLocation } from "wouter";
+import { useEffect, useMemo, useState } from "react";
+import { Redirect } from "wouter";
 import { NotificationsList } from "../../components";
-import { useAxiom } from "../../data/DataProvider";
-import { useActions } from "../../data/useActions";
-import { VIEW_LABEL, type ViewId } from "../../lib/domain";
-import { useBrowserNotifications } from "../../lib/notify";
-import { useTheme } from "../../lib/theme";
+import { VIEW_LABEL } from "../../lib/domain";
+import { effectiveTheme } from "../../lib/theme";
 import { SettingsPage } from "../../pages/SettingsPage";
+import { hrefs } from "../shared/routes";
+import { isTyping, useShell } from "../shared/useShell";
 import { type Active, Rail } from "./Rail";
 import { Reader } from "./Reader";
-import { hrefs, useAppRoute } from "./routes";
 import { StatusBar } from "./StatusBar";
 import { TopicList, visibleTopics } from "./TopicList";
 
-function useNow(intervalMs = 30_000): Date {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const id = setInterval(() => setNow(new Date()), intervalMs);
-    return () => clearInterval(id);
-  }, [intervalMs]);
-  return now;
-}
-
 /** The Inbox layout: rail, middle list, right reading pane. */
 export function InboxShell() {
-  const data = useAxiom();
-  const actions = useActions();
-  const route = useAppRoute();
-  const [, navigate] = useLocation();
-  const now = useNow();
+  const {
+    data,
+    actions,
+    route,
+    now,
+    list,
+    selected,
+    topics,
+    notifications,
+    titleOf,
+    openTopic,
+    goTopic,
+  } = useShell();
   const [query, setQuery] = useState("");
-  const [lastList, setLastList] = useState<"all" | ViewId>("all");
-
-  useTheme(data.settings?.theme);
-
-  const listRoute: "all" | ViewId | null =
-    route.kind === "all" ? "all" : route.kind === "view" ? route.view : null;
-  useEffect(() => {
-    if (listRoute) setLastList(listRoute);
-  }, [listRoute]);
-  // A topic route keeps the list you came from on screen.
-  const list = listRoute ?? lastList;
-  const selected = route.kind === "topic" ? route.slug : undefined;
-
-  const topics = data.topics ?? [];
-  const notifications = data.notifications ?? [];
-  const titleOf = useMemo(() => {
-    const m = new Map(topics.map((t) => [t.slug, t.title]));
-    return (slug: string) => m.get(slug);
-  }, [topics]);
-
-  const openTopic = useCallback((slug: string) => void actions.open(slug), [actions]);
-
-  useBrowserNotifications({
-    notifications: data.notifications,
-    titleOf: (slug) => titleOf(slug) ?? slug,
-    onOpen: (slug) => {
-      openTopic(slug);
-      navigate(hrefs.topic(slug));
-    },
-  });
 
   // Arrow keys walk the visible list (outside text fields).
   const ordered = useMemo(() => visibleTopics(topics, list, query), [topics, list, query]);
@@ -67,21 +34,17 @@ export function InboxShell() {
     if (route.kind === "settings" || route.kind === "notifications") return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-      const el = e.target as HTMLElement | null;
-      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      if (isTyping(e)) return;
       if (!ordered.length) return;
       e.preventDefault();
       const i = ordered.findIndex((t) => t.slug === selected);
       const next = e.key === "ArrowDown" ? Math.min(i + 1, ordered.length - 1) : Math.max(i - 1, 0);
       const target = ordered[i === -1 ? 0 : next];
-      if (target && target.slug !== selected) {
-        openTopic(target.slug);
-        navigate(hrefs.topic(target.slug));
-      }
+      if (target && target.slug !== selected) goTopic(target.slug);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [ordered, selected, route.kind, navigate, openTopic]);
+  }, [ordered, selected, route.kind, goTopic]);
 
   if (route.kind === "unknown") return <Redirect to={hrefs.all} replace />;
 
@@ -155,10 +118,7 @@ export function InboxShell() {
                   titleOf={titleOf}
                   hiddenCount={data.hiddenCount}
                   now={now}
-                  onOpen={(slug) => {
-                    openTopic(slug);
-                    navigate(hrefs.topic(slug));
-                  }}
+                  onOpen={goTopic}
                 />
               ) : data.topics ? (
                 <TopicList
@@ -189,12 +149,7 @@ function ThemeSwitch({
   theme: "dark" | "light" | "system" | undefined;
   onPick: (t: "dark" | "light") => void;
 }) {
-  const effective =
-    theme === "system" || theme === undefined
-      ? typeof matchMedia === "function" && matchMedia("(prefers-color-scheme: light)").matches
-        ? "light"
-        : "dark"
-      : theme;
+  const effective = effectiveTheme(theme);
   return (
     // biome-ignore lint/a11y/useSemanticElements: a fieldset would restyle the segmented control
     <div className="seg" role="group" aria-label="Theme">

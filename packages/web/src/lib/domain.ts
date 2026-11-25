@@ -115,3 +115,29 @@ export const LINK_LABEL: Record<string, string> = {
   spec: "Specs",
   artifact: "Artifacts",
 };
+
+/** What each status means, for lane subtitles and the topic overview. */
+export const STATUS_MEANING: Record<TopicStatus, string> = {
+  idle: "Nothing is happening",
+  wip: "An agent is working",
+  hitl: "Waiting for you",
+  monitoring: "Waiting on something the agent watches",
+  blocked: "Waiting on something the agent can't watch",
+  review: "A PR is in review",
+  done: "No actions left",
+  stale: "You marked it stale",
+  error: "The agent's thread hit an error",
+};
+
+/** The Console's status glyphs: the shape carries the meaning, colour is secondary. */
+export const STATUS_GLYPH: Record<TopicStatus, string> = {
+  idle: "○",
+  wip: "●",
+  hitl: "!",
+  monitoring: "◎",
+  blocked: "■",
+  review: "◇",
+  done: "✓",
+  stale: "◌",
+  error: "✕",
+};

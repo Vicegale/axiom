@@ -26,13 +26,17 @@ function open() {
 }
 
 describe("Settings page", () => {
-  it("offers Inbox, with Board and Console disabled as coming soon", async () => {
+  it("offers all three layouts and saves the choice", async () => {
     open();
     const inbox = (await screen.findByLabelText("Inbox")) as HTMLInputElement;
     expect(inbox.checked).toBe(true);
-    expect((screen.getByLabelText(/Board/) as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByLabelText(/Console/) as HTMLInputElement).disabled).toBe(true);
-    expect(screen.getAllByText("coming soon")).toHaveLength(2);
+    expect((screen.getByLabelText("Board") as HTMLInputElement).disabled).toBe(false);
+    expect((screen.getByLabelText("Console") as HTMLInputElement).disabled).toBe(false);
+    expect(screen.queryByText("coming soon")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Board"));
+    await waitFor(() =>
+      expect(server.called("PUT", "/api/settings")[0]?.body).toEqual({ layout: "board" }),
+    );
   });
 
   it("saves the theme", async () => {

@@ -13,7 +13,7 @@ import {
 } from "../../lib/domain";
 import { ago } from "../../lib/time";
 import { inView, matchesQuery, sectionOf, spineStatus } from "../../lib/topics";
-import { hrefs } from "./routes";
+import { hrefs } from "../shared/routes";
 
 interface Props {
   view: "all" | ViewId;

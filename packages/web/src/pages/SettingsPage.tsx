@@ -5,10 +5,10 @@ import { useActions } from "../data/useActions";
 import { NOTIFICATION_KINDS, type NotificationKind } from "../lib/domain";
 import { browserPermission, type PermissionState } from "../lib/notify";
 
-const LAYOUTS: { id: Settings["layout"]; label: string; ready: boolean }[] = [
-  { id: "inbox", label: "Inbox", ready: true },
-  { id: "board", label: "Board", ready: false },
-  { id: "console", label: "Console", ready: false },
+const LAYOUTS: { id: Settings["layout"]; label: string }[] = [
+  { id: "inbox", label: "Inbox" },
+  { id: "board", label: "Board" },
+  { id: "console", label: "Console" },
 ];
 const THEMES: { id: Settings["theme"]; label: string }[] = [
   { id: "dark", label: "Dark" },
@@ -52,17 +52,15 @@ export function SettingsPage() {
           <h3>Layout</h3>
           <div className="opt-list" role="radiogroup" aria-label="Layout">
             {LAYOUTS.map((l) => (
-              <label key={l.id} className="opt" data-disabled={!l.ready}>
+              <label key={l.id} className="opt">
                 <input
                   type="radio"
                   name="layout"
                   value={l.id}
-                  disabled={!l.ready}
                   checked={settings.layout === l.id}
                   onChange={() => void actions.saveSettings({ layout: l.id })}
                 />
                 <span>{l.label}</span>
-                {l.ready ? null : <span className="soon">coming soon</span>}
               </label>
             ))}
           </div>
