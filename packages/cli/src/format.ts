@@ -117,7 +117,10 @@ export function topicText(t: TopicDetail, monitors: MonitorView[], history: Entr
   out.push("", "Links");
   out.push(
     ...(t.links.length
-      ? t.links.map((l) => `  #${l.id} ${l.kind}  ${l.target}${l.label ? `  (${l.label})` : ""}`)
+      ? t.links.flatMap((l) => [
+          `  #${l.id} ${l.kind}  ${l.target}${l.label ? `  (${l.label})` : ""}`,
+          ...(l.description ? [`      ${l.description}`] : []),
+        ])
       : ["  (none)"]),
   );
   out.push("", "Monitor targets");

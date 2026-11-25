@@ -98,9 +98,9 @@ describe("opening", () => {
     const links = ax.getTopic("t").links;
     expect(links).toHaveLength(1);
     expect(links[0]).toMatchObject({ label: "A", description: null });
-    expect(ax.updateLink("t", links[0].id, { description: "d" }, { kind: "owner" }).description).toBe(
-      "d",
-    );
+    expect(
+      ax.updateLink("t", links[0].id, { description: "d" }, { kind: "owner" }).description,
+    ).toBe("d");
     ax.close();
   });
 
