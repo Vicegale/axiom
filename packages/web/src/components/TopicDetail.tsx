@@ -266,7 +266,40 @@ function ThreadRow({ thread: th, now }: { thread: Thread; now: Date }) {
       <time className="th-time">
         {stamp(th.startedAt, now)} → {end}
       </time>
+      <ThreadOpen thread={th} />
     </li>
+  );
+}
+
+/** "Open in T3" (a real link), or "Copy resume command" for a direct Claude Code session. */
+function ThreadOpen({ thread: th }: { thread: Thread }) {
+  const [copied, setCopied] = useState(false);
+  const open = th.open;
+  if (!open) return <span className="th-open" />;
+  if (open.kind === "url") {
+    return (
+      <a className="btn sm th-open" href={open.url} target="_blank" rel="noreferrer">
+        Open in T3
+      </a>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="btn sm th-open"
+      title={open.command}
+      onClick={() => {
+        void navigator.clipboard?.writeText(open.command).then(
+          () => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1600);
+          },
+          () => undefined,
+        );
+      }}
+    >
+      {copied ? "Copied" : "Copy resume command"}
+    </button>
   );
 }
 

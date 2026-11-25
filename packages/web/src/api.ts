@@ -83,6 +83,8 @@ export interface Thread {
   startedAt: string;
   endedAt: string | null;
   endReason: string | null;
+  /** How to open the thread: T3's web UI, or the command that resumes a Claude Code session. */
+  open?: { kind: "url"; url: string } | { kind: "command"; command: string } | null;
 }
 
 export interface LinkItem {

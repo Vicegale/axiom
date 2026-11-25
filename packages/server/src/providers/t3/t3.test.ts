@@ -364,3 +364,21 @@ describe("decide with running subagents", () => {
     expect(decide(base, ready, 0)).toEqual({ kind: "stopped" });
   });
 });
+
+describe("threadUrl", () => {
+  it("links to T3's web UI when its port and environment are known", () => {
+    const dir = mkdtempSync(join(tmpdir(), "axiom-t3url-"));
+    try {
+      const ax2 = openDatabase(join(dir, "a.db"));
+      const p = new T3Provider({ ax: ax2, dir });
+      expect(p.threadUrl("x", null)).toBeNull();
+      writeFileSync(join(dir, "server-runtime.json"), JSON.stringify({ port: 3773 }));
+      writeFileSync(join(dir, "environment-id"), "env-1");
+      expect(p.threadUrl("th:1", null)).toBe("http://127.0.0.1:3773/env-1/th%3A1");
+      expect(p.threadUrl("th", "env-2")).toBe("http://127.0.0.1:3773/env-2/th");
+      ax2.close();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

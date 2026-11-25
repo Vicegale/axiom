@@ -73,6 +73,17 @@ export class T3Provider {
   /** When the last sync began (epoch ms): a refresh request newer than this triggers another. */
   private lastSyncAt = 0;
 
+  /**
+   * Where a T3 thread opens in T3's own web UI (`http://127.0.0.1:<port>/<environment>/<thread>`),
+   * or null when T3's port is unknown.
+   */
+  threadUrl(threadId: string, environmentId: string | null): string | null {
+    const meta = readT3Meta(this.dir);
+    const env = environmentId ?? meta.environmentId;
+    if (!meta.port || !env) return null;
+    return `http://127.0.0.1:${meta.port}/${encodeURIComponent(env)}/${encodeURIComponent(threadId)}`;
+  }
+
   constructor(options: T3ProviderOptions) {
     this.ax = options.ax;
     this.dir = options.dir;

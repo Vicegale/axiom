@@ -115,6 +115,22 @@ describe("topics", () => {
     expect(missing.body).toEqual({ error: { code: "not-found", message: expect.any(String) } });
   });
 
+  it("tells the UI how to open each thread", async () => {
+    topic("a");
+    const cc = cli.attachThread(
+      "a",
+      { provider: "claude-code", providerThreadId: "sess-1" },
+      owner,
+    );
+    cli.attachThread("a", { provider: "t3", providerThreadId: "t3-1" }, owner);
+    let threads = (await api("/api/topics/a")).body.threads;
+    expect(threads[0].open).toEqual({ kind: "command", command: "claude --resume sess-1" });
+    expect(threads[1].open).toBeNull(); // T3 is not readable in tests: no port to link to
+    cli.setThreadCwd(cc.id, "/home/me/it's here");
+    threads = (await api("/api/topics/a")).body.threads;
+    expect(threads[0].open.command).toBe("cd '/home/me/it'\\''s here' && claude --resume sess-1");
+  });
+
   it("lists entries newest first with limit and before", async () => {
     topic("a");
     for (const n of [1, 2, 3]) cli.addEntry("a", { kind: "note", body: `n${n}` }, owner);
