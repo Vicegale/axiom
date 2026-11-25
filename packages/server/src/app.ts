@@ -87,6 +87,58 @@ function parent(kind: "ticket" | "epic", p: Ticket | Epic) {
   };
 }
 
+export interface Attention {
+  reason: "agent asked" | "error";
+  text: string;
+  at: string;
+}
+
+const ATTENTION_STATUSES: readonly string[] = ["hitl", "error"];
+
+/**
+ * Why a topic is in "requires attention": the latest waiting-on-owner or error thread event, or a
+ * manual status change to hitl/error with its reason when that is newer. Survives the owner
+ * opening the topic (which dismisses the notification).
+ */
+function attentionOf(
+  ax: Axiom,
+  topic: { slug: string; status: string | null; openThreadStatuses: readonly string[] },
+): Attention | null {
+  const needs =
+    topic.status === null
+      ? topic.openThreadStatuses.some((s) => ATTENTION_STATUSES.includes(s))
+      : ATTENTION_STATUSES.includes(topic.status);
+  if (!needs) return null;
+  let best: Attention | null = null;
+  for (const e of ax.listEntries(topic.slug)) {
+    const data = (e.data ?? {}) as { event?: string; to?: string | null; reason?: string };
+    if (
+      e.kind === "thread event" &&
+      (data.event === "waiting on owner" || data.event === "error")
+    ) {
+      best = {
+        reason: data.event === "error" ? "error" : "agent asked",
+        text: (e.body ?? "")
+          .replace(/^Waiting on the owner:\s*/, "")
+          .replace(/^Thread error:\s*/, ""),
+        at: e.at,
+      };
+    } else if (
+      e.kind === "status change" &&
+      data.to &&
+      ATTENTION_STATUSES.includes(data.to) &&
+      !data.reason?.startsWith("thread ")
+    ) {
+      best = {
+        reason: data.to === "error" ? "error" : "agent asked",
+        text: data.reason ?? "",
+        at: e.at,
+      };
+    }
+  }
+  return best;
+}
+
 export function createApp(ctx: AppContext): Hono {
   const { ax, bus } = ctx;
   const app = new Hono();
@@ -118,6 +170,7 @@ export function createApp(ctx: AppContext): Hono {
       views: s.views,
       highlighted: s.highlighted,
       stalePrompt: hasOpenStalePrompt(s.id),
+      attention: attentionOf(ax, { ...s, openThreadStatuses: s.openThreadStatuses }),
       parents: [
         ...d.tickets.map((t) => parent("ticket", t)),
         ...d.epics.map((e) => parent("epic", e)),
@@ -138,6 +191,7 @@ export function createApp(ctx: AppContext): Hono {
     return {
       ...d,
       stalePrompt: hasOpenStalePrompt(d.id),
+      attention: attentionOf(ax, d),
       parents: [
         ...d.tickets.map((t) => parent("ticket", t)),
         ...d.epics.map((e) => parent("epic", e)),

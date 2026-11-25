@@ -14,7 +14,8 @@
     "lint": "biome check",
     "format": "biome format --write",
     "typecheck": "tsc -b && npm -w @axiom/web run typecheck",
-    "dev": "npm -w @axiom/web run dev"
+    "dev": "npm -w @axiom/web run dev",
+    "seed:demo": "node --import tsx scripts/seed-demo.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.9",
