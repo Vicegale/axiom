@@ -303,18 +303,23 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
           <fieldset className="nt-start">
             <legend>First thread</legend>
             <div className="nt-row">
-              {/* biome-ignore lint/a11y/useSemanticElements: matches the Desk's other segmented controls */}
-              <div className="seg" role="group" aria-label="Provider">
-                {PROVIDERS.map((p) => (
-                  <button
-                    key={p.value}
-                    type="button"
-                    aria-pressed={provider === p.value}
-                    onClick={() => pickProvider(p.value)}
-                  >
-                    {p.label}
-                  </button>
-                ))}
+              <div className="nt-field">
+                <span className="nt-label" id={id("prov")}>
+                  Provider
+                </span>
+                {/* biome-ignore lint/a11y/useSemanticElements: matches the Desk's other segmented controls */}
+                <div className="seg" role="group" aria-labelledby={id("prov")}>
+                  {PROVIDERS.map((p) => (
+                    <button
+                      key={p.value}
+                      type="button"
+                      aria-pressed={provider === p.value}
+                      onClick={() => pickProvider(p.value)}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
               </div>
               <div className="nt-field">
                 <label htmlFor={id("model")}>Model</label>
