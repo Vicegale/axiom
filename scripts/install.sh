@@ -2,11 +2,13 @@
 # Installs Axiom from this checkout, on Linux or macOS. Safe to re-run: it is also the update step
 # (after `git pull`). Written for bash 3.2, the version macOS ships.
 #
-#   scripts/install.sh [--yes] [--no-hooks] [--no-service] [--no-skill] [--bin-dir DIR]
+#   scripts/install.sh [--yes] [--no-hooks] [--no-allow-agents] [--no-service] [--no-skill] [--bin-dir DIR]
 #
-#   --yes         answer yes to both questions: add the hooks, run the server as a service
+#   --yes         answer yes to every question: hooks, agent access, service
 #   --hooks       add Axiom's hooks to ~/.claude/settings.json without asking (a backup is made)
 #   --no-hooks    leave ~/.claude/settings.json alone
+#   --allow-agents     let agents run `axiom` without asking (Claude Code allow rule, Codex sandbox)
+#   --no-allow-agents  leave agents' permissions alone
 #   --service     run the server now and at every login (systemd / launchd) without asking
 #   --no-service  don't set up the service (start it by hand: axiom server)
 #   --no-skill    don't install the axiom skill (~/.claude/skills, and ~/.codex or ~/.agents if present)
@@ -19,13 +21,16 @@ set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_DIR="$HOME/.local/bin"
 HOOKS="ask"
+ACCESS="ask"
 SKILL=1
 SERVICE="ask"
 PORT="${AXIOM_PORT:-4477}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --yes | -y) HOOKS="yes" SERVICE="yes" ;;
+    --yes | -y) HOOKS="yes" ACCESS="yes" SERVICE="yes" ;;
+    --allow-agents) ACCESS="yes" ;;
+    --no-allow-agents) ACCESS="no" ;;
     --hooks) HOOKS="yes" ;;
     --no-hooks) HOOKS="no" ;;
     --service) SERVICE="yes" ;;
@@ -37,7 +42,7 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     -h | --help)
-      sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
@@ -173,6 +178,32 @@ if [ "$HOOKS" = yes ]; then
   "$AXIOM" hooks install | sed 's/^/  /'
 else
   warn "skipped; run 'axiom hooks install' later (undo with 'axiom hooks uninstall')"
+fi
+
+# ---- agent access ---------------------------------------------------------------------------
+step "Agent access to the axiom CLI"
+# What `axiom agents allow` would change; nothing to ask when it's all in place already.
+PENDING="$("$AXIOM" --json agents allow --dry-run | node -e '
+  let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
+    const d = JSON.parse(s);
+    const out = [];
+    if (d.claude.changed) out.push("Claude Code");
+    if (d.codex && d.codex.changed) out.push("Codex");
+    console.log(out.join(" and "));
+  });')"
+if [ -z "$PENDING" ]; then
+  ok "agents can already run axiom without asking"
+else
+  echo "  Agents run axiom many times per task. Without this, $PENDING ask you each time"
+  echo "  (Claude Code: an allow rule for 'Bash(axiom *)'; Codex: its sandbox may write Axiom's data folder)."
+  if [ "$ACCESS" = ask ]; then
+    if ask "Let agents run axiom without asking? Backups are made first."; then ACCESS=yes; else ACCESS=no; fi
+  fi
+  if [ "$ACCESS" = yes ]; then
+    "$AXIOM" agents allow | sed 's/^/  /'
+  else
+    warn "skipped; run 'axiom agents allow' later (undo with 'axiom agents disallow')"
+  fi
 fi
 
 # ---- server ---------------------------------------------------------------------------------

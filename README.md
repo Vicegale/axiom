@@ -50,14 +50,15 @@ cd axiom
 scripts/install.sh
 ```
 
-The installer checks the requirements, builds Axiom, puts `axiom` and `axiom-server` on your PATH (in `~/.local/bin`; it tells you if that folder isn't on PATH yet), and installs the `axiom` skill for your agents: in `~/.claude/skills` for Claude Code (and T3 Code's Claude threads), and in `~/.codex/skills` and `~/.agents/skills` when those tools' folders exist. It then asks two questions:
+The installer checks the requirements, builds Axiom, puts `axiom` and `axiom-server` on your PATH (in `~/.local/bin`; it tells you if that folder isn't on PATH yet), and installs the `axiom` skill for your agents: in `~/.claude/skills` for Claude Code (and T3 Code's Claude threads), and in `~/.codex/skills` and `~/.agents/skills` when those tools' folders exist. It then asks three questions:
 
 1. **Add Axiom's hooks to Claude Code?** They let Axiom see your Claude Code sessions, show their live step, and route their permission prompts to the Desk. Your settings file is backed up first.
-2. **Start the server now and at every login?** This sets it up as a user service (systemd on Linux, launchd on macOS).
+2. **Let agents run `axiom` without asking?** Agents call the CLI many times per task. This adds a `Bash(axiom *)` allow rule to Claude Code, and lets Codex's sandbox write Axiom's data folder (`writable_roots` in `~/.codex/config.toml`). Both files are backed up first; `axiom agents disallow` undoes it. Skipped when it's already in place.
+3. **Start the server now and at every login?** This sets it up as a user service (systemd on Linux, launchd on macOS).
 
 Then open **http://127.0.0.1:4477**.
 
-Run `scripts/install.sh --help` for the options: `--yes` answers yes to both questions, `--hooks` / `--no-hooks` and `--service` / `--no-service` answer one of them, and `--bin-dir` changes where the commands go.
+Run `scripts/install.sh --help` for the options: `--yes` answers yes to every question; `--hooks` / `--no-hooks`, `--allow-agents` / `--no-allow-agents` and `--service` / `--no-service` answer one of them, and `--bin-dir` changes where the commands go.
 
 **Updating:** `git pull && scripts/install.sh`. The service restarts on the new build; restart a server you started by hand. The app shows a banner when the server is older than the build.
 
@@ -92,6 +93,7 @@ Axiom reads T3 Code's own database (`~/.t3/userdata`, or `AXIOM_T3_DIR`) but nev
 
 ```sh
 axiom hooks uninstall
+axiom agents disallow
 systemctl --user disable --now axiom.service                 # Linux, if you set up the service
 launchctl bootout gui/$(id -u)/local.axiom.server             # macOS, if you set up the service
 rm ~/.local/bin/axiom ~/.local/bin/axiom-server

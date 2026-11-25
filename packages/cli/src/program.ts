@@ -1,9 +1,11 @@
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   AXIOM_VERSION,
   AxiomError,
+  defaultDatabasePath,
   type EntryKind,
   LINK_KINDS,
   PROVIDERS,
@@ -19,10 +21,24 @@ import {
   type WorkItemStatus,
 } from "@axiom/core";
 import { Argument, Command, CommanderError, Option } from "commander";
+import {
+  allowCliIn,
+  CLAUDE_ALLOW_RULE,
+  codexAllowRoot,
+  codexDisallowRoot,
+  codexSandboxMode,
+  disallowCliFrom,
+} from "./agent-access.js";
 import { Context, currentThreadId, UsageError } from "./context.js";
 import { entryText, table, topicTable, topicText, when } from "./format.js";
 import { HOOK_EVENTS, runHook } from "./hook.js";
-import { installInto, readSettings, uninstallFrom, writeSettings } from "./hooks-settings.js";
+import {
+  installInto,
+  readSettings,
+  uninstallFrom,
+  writeSettings,
+  writeTextWithBackup,
+} from "./hooks-settings.js";
 
 /** What a handler returns: text for people, data for `--json`. */
 interface Output {
@@ -738,6 +754,79 @@ export function buildProgram(env: NodeJS.ProcessEnv, write: (s: string) => void)
   hooksCommand("uninstall", "remove Axiom's hooks from Claude Code settings", (s) =>
     uninstallFrom(s),
   );
+
+  // ---- agents ----------------------------------------------------------------
+  const agents = sub(program, "agents", "let agents run the axiom CLI without asking");
+  const agentsCommand = (allow: boolean) =>
+    sub(
+      agents,
+      allow ? "allow" : "disallow",
+      allow
+        ? "allow `axiom` in Claude Code and Axiom's data folder in Codex's sandbox (with backups)"
+        : "undo `axiom agents allow`",
+    )
+      .option("--settings <path>", "Claude Code settings (default: ~/.claude/settings.json)")
+      .option(
+        "--codex-config <path>",
+        "Codex config (default: ~/.codex/config.toml, if ~/.codex exists)",
+      )
+      .option("--dry-run", "say what would change and write nothing")
+      .action(
+        run((ctx, _args, o) => {
+          const lines: string[] = [];
+          const data: Record<string, unknown> = {};
+
+          const claudePath = resolve(o.settings ?? join(homedir(), ".claude", "settings.json"));
+          const current = readSettings(claudePath);
+          const next = allow ? allowCliIn(current) : disallowCliFrom(current);
+          const claudeChanged = JSON.stringify(next) !== JSON.stringify(current);
+          let claudeBackup: string | undefined;
+          if (claudeChanged && !o.dryRun)
+            claudeBackup = writeSettings(claudePath, current, next).backup;
+          data.claude = { path: claudePath, changed: claudeChanged, backup: claudeBackup ?? null };
+          lines.push(
+            `Claude Code: ${
+              claudeChanged
+                ? `${o.dryRun ? (allow ? "would add" : "would remove") : allow ? "added" : "removed"} ${CLAUDE_ALLOW_RULE} ${allow ? "to" : "from"} permissions.allow in ${claudePath}`
+                : `${CLAUDE_ALLOW_RULE} is ${allow ? "already" : "not"} allowed in ${claudePath}`
+            }${claudeBackup ? ` (backup: ${claudeBackup})` : ""}`,
+          );
+
+          const codexHome = join(homedir(), ".codex");
+          const codexPath = o.codexConfig
+            ? resolve(o.codexConfig)
+            : existsSync(codexHome)
+              ? join(codexHome, "config.toml")
+              : null;
+          if (codexPath === null) {
+            lines.push("Codex: not installed (no ~/.codex); skipped");
+            data.codex = null;
+          } else {
+            const toml = existsSync(codexPath) ? readFileSync(codexPath, "utf8") : "";
+            const dataDir = dirname(resolve(ctx.options.db ?? defaultDatabasePath(env)));
+            const mode = codexSandboxMode(toml);
+            const edit = allow ? codexAllowRoot(toml, dataDir) : codexDisallowRoot(toml, dataDir);
+            let backup: string | undefined;
+            if (edit.changed && !o.dryRun) backup = writeTextWithBackup(codexPath, edit.text);
+            data.codex = {
+              path: codexPath,
+              sandboxMode: mode ?? null,
+              changed: edit.changed,
+              backup: backup ?? null,
+            };
+            const fullAccess =
+              mode === "danger-full-access"
+                ? " (Codex runs with full access here, so this only matters for workspace-write sessions)"
+                : "";
+            lines.push(
+              `Codex: ${o.dryRun && edit.changed ? "would have " : ""}${edit.note} in ${codexPath}${fullAccess}${backup ? ` (backup: ${backup})` : ""}`,
+            );
+          }
+          return { data, text: lines.join("\n") };
+        }),
+      );
+  agentsCommand(true);
+  agentsCommand(false);
 
   return program;
 }

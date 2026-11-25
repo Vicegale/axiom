@@ -111,9 +111,22 @@ export function uninstallFrom(settings: Json): Json {
   return out;
 }
 
-function stamp(d: Date): string {
+export function stamp(d: Date): string {
   const p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+
+/** Writes `text` to `path`, copying the existing file to `<path>.axiom-backup-<stamp>` first. */
+export function writeTextWithBackup(path: string, text: string): string | undefined {
+  let backup: string | undefined;
+  if (existsSync(path)) {
+    backup = `${path}.axiom-backup-${stamp(new Date())}`;
+    copyFileSync(path, backup);
+  } else {
+    mkdirSync(dirname(path), { recursive: true });
+  }
+  writeFileSync(path, text);
+  return backup;
 }
 
 /** Writes `next` to `path`, copying the existing file to `<path>.axiom-backup-<stamp>` first. */
