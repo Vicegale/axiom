@@ -399,7 +399,7 @@ function Links({ links, slug }: { links: readonly LinkItem[]; slug: string }) {
       })}
       {artifacts.length ? (
         <div className="lline">
-          <span className="lkind" aria-hidden="true" />
+          <span className="lkind">artifact</span>
           <ArtifactsMenu links={artifacts} slug={slug} />
         </div>
       ) : null}

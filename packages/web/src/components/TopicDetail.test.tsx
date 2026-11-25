@@ -272,7 +272,8 @@ describe("TopicDetail", () => {
     const lines = [...container.querySelectorAll(".lline")];
     expect(lines).toHaveLength(2);
     expect(lines[0]?.textContent).toContain("feat/x");
-    expect(lines[1]?.querySelector("button")?.textContent).toContain("Artifacts · 2");
+    expect(lines[1]?.querySelector("button")?.getAttribute("aria-label")).toBe("Artifacts · 2");
+    expect(lines[1]?.querySelector(".lkind")?.textContent).toBe("artifact");
     expect(screen.getByText("About A")).toBeTruthy();
   });
 

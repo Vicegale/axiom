@@ -95,7 +95,7 @@ function Item({ link: l, slug }: { link: LinkItem; slug: string }) {
 }
 
 /**
- * The topic's artifacts as one "Artifacts · N" button that opens a menu (native popover, so it
+ * The topic's artifacts as one "Show N" button (named "Artifacts · N") that opens a menu (native popover, so it
  * sits in the top layer and no scroll container clips it). Escape and a click outside close it and
  * the browser returns focus to the button; the arrow keys move between the items.
  */
@@ -165,9 +165,10 @@ export function ArtifactsMenu({ links, slug }: { links: readonly LinkItem[]; slu
         className="lchip abtn"
         popoverTarget={id}
         aria-haspopup="menu"
+        aria-label={`Artifacts · ${links.length}`}
         title="Open the artifacts of this topic"
       >
-        Artifacts · {links.length} <span aria-hidden="true">▾</span>
+        Show {links.length} <span aria-hidden="true">▾</span>
       </button>
       <div
         id={id}
