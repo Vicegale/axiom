@@ -72,6 +72,7 @@ export interface Link {
   kind: LinkKind;
   target: string;
   label: string | null;
+  description: string | null;
   createdAt: string;
   createdByThreadId: number | null;
 }

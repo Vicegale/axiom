@@ -346,6 +346,42 @@ describe("entries", () => {
 });
 
 describe("links and monitors", () => {
+  it("adds and updates link descriptions, and topic show prints them", () => {
+    const s = session();
+    s.ok(["topic", "new", "t", "--title", "T"]);
+    const added = s.json<any>([
+      "link",
+      "add",
+      "artifact",
+      "docs/a.md",
+      "--description",
+      "About a",
+      "--topic",
+      "t",
+    ]);
+    expect(added.description).toBe("About a");
+    expect(s.ok(["topic", "show", "t"])).toMatch(/#\d+ artifact {2}docs\/a\.md\n {6}About a/);
+    const u = s.json<any>(["link", "update", String(added.id), "--label", "A", "--topic", "t"]);
+    expect(u).toMatchObject({ label: "A", description: "About a" });
+    const cleared = s.json<any>([
+      "link",
+      "update",
+      String(added.id),
+      "--description",
+      "",
+      "--topic",
+      "t",
+    ]);
+    expect(cleared.description).toBeNull();
+    expect(s.ok(["topic", "show", "t"])).not.toContain("About a");
+    expect(s.exec(["link", "update", String(added.id), "--topic", "t"]).code).toBe(2);
+    expect(s.exec(["link", "update", "999", "--label", "x", "--topic", "t"]).code).not.toBe(0);
+    expect(
+      s.exec(["link", "add", "artifact", "x", "--description", "y".repeat(201), "--topic", "t"])
+        .code,
+    ).not.toBe(0);
+  });
+
   it("adds links and monitor targets, then confirms", () => {
     const s = session();
     s.ok(["topic", "new", "t", "--title", "T"]);

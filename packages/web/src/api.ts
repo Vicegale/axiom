@@ -92,6 +92,7 @@ export interface LinkItem {
   kind: string;
   target: string;
   label: string | null;
+  description?: string | null;
 }
 
 export interface MonitorTarget {

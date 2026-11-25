@@ -499,19 +499,47 @@ export function buildProgram(env: NodeJS.ProcessEnv, write: (s: string) => void)
     );
 
   // ---- links and monitor targets ----------------------------------------------------
-  sub(sub(program, "link", "links on a topic"), "add", "add a link")
+  const linkGroup = sub(program, "link", "links on a topic");
+  sub(linkGroup, "add", "add a link")
     .addArgument(new Argument("<kind>").choices(LINK_KINDS))
     .argument("<target>", "URL, path or name")
-    .option("--label <label>", "label")
+    .option("--label <label>", "label (at most 120 characters)")
+    .option("--description <text>", "one-line description (at most 200 characters)")
     .option("--topic <topic>", "topic slug (default: current)")
     .action(
       run((ctx, [kind, target], o) => {
         const link = ctx.axiom.addLink(
           ctx.topic(o.topic),
-          { kind: kind as never, target: target as string, label: o.label },
+          {
+            kind: kind as never,
+            target: target as string,
+            label: o.label,
+            description: o.description,
+          },
           ctx.actor,
         );
         return { data: link, text: `Added ${link.kind} link #${link.id}.` };
+      }),
+    );
+  sub(linkGroup, "update", "change a link's label or description (an empty string clears it)")
+    .argument("<id>", "link id (shown by `topic show`)")
+    .option("--label <label>", "label (at most 120 characters)")
+    .option("--description <text>", "one-line description (at most 200 characters)")
+    .option("--topic <topic>", "topic slug (default: current)")
+    .action(
+      run((ctx, [id], o) => {
+        if (o.label === undefined && o.description === undefined) {
+          throw new UsageError("pass --label and/or --description");
+        }
+        const linkId = Number(id);
+        if (!Number.isInteger(linkId)) throw new UsageError(`not a link id: ${id}`);
+        const link = ctx.axiom.updateLink(
+          ctx.topic(o.topic),
+          linkId,
+          { label: o.label, description: o.description },
+          ctx.actor,
+        );
+        return { data: link, text: `Updated ${link.kind} link #${link.id}.` };
       }),
     );
 

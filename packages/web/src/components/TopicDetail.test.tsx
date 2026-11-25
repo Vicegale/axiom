@@ -224,15 +224,56 @@ describe("TopicDetail", () => {
     const repo = screen.getByText("~/projects/x");
     expect(repo.getAttribute("href")).toBeNull();
     expect(repo.getAttribute("title")).toBe("~/projects/x");
-    expect(screen.getByText("https://example.com/a").getAttribute("href")).toBe(
-      "https://example.com/a",
-    );
+    // Artifacts are a menu, not chips.
+    expect(screen.queryByText("https://example.com/a", { selector: ".lchip" })).toBeNull();
+    expect(screen.getByRole("button", { name: /^Artifacts · 1/ })).toBeTruthy();
     expect(screen.getByText(/deploy-health ~\/projects\/x ✓/)).toBeTruthy();
     expect(screen.getByText("pr-checks o/r#1").className).toContain("suggested");
     const confirms = screen.getAllByRole("button", { name: /^Confirm/ });
     expect(confirms).toHaveLength(1);
     fireEvent.click(confirms[0] as HTMLElement);
     expect(a.onConfirmMonitor).toHaveBeenCalledWith(5);
+  });
+
+  it("has no Artifacts button without artifacts, and keeps other kinds as chips", () => {
+    render(
+      <TopicDetail
+        now={NOW}
+        topic={detail({
+          links: [
+            { id: 1, kind: "spec", target: "docs/s.md", label: null },
+            { id: 2, kind: "branch", target: "feat/x", label: null },
+          ],
+        })}
+        entries={[]}
+        actions={actions()}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /Artifacts/ })).toBeNull();
+    expect(screen.getByText("docs/s.md").className).toContain("lchip");
+    expect(screen.getByText("feat/x").className).toContain("lchip");
+  });
+
+  it("puts the Artifacts button after the other link kinds, with the count", () => {
+    const { container } = render(
+      <TopicDetail
+        now={NOW}
+        topic={detail({
+          links: [
+            { id: 1, kind: "artifact", target: "a.md", label: "A", description: "About A" },
+            { id: 2, kind: "artifact", target: "b.png", label: null },
+            { id: 3, kind: "branch", target: "feat/x", label: null },
+          ],
+        })}
+        entries={[]}
+        actions={actions()}
+      />,
+    );
+    const lines = [...container.querySelectorAll(".lline")];
+    expect(lines).toHaveLength(2);
+    expect(lines[0]?.textContent).toContain("feat/x");
+    expect(lines[1]?.querySelector("button")?.textContent).toContain("Artifacts · 2");
+    expect(screen.getByText("About A")).toBeTruthy();
   });
 
   it("shows no links or watching row, and no empty block, without links and targets", () => {

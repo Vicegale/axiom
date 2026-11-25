@@ -12,8 +12,9 @@ import type {
 import { hrefs } from "../layouts/shared/routes";
 import type { TaskStatus } from "../lib/domain";
 import { LINK_ORDER, PROVIDER_LABEL } from "../lib/domain";
-import { hasScheme, isHtmlPath, isImagePath, isMarkdownPath } from "../lib/paths";
+import { hrefOf, viewable } from "../lib/links";
 import { ago, fullStamp, idleDays, stamp } from "../lib/time";
+import { ArtifactsMenu } from "./ArtifactsMenu";
 import { type Density, History } from "./History";
 import { ParentChip } from "./ParentChip";
 import { StatusPill } from "./StatusPill";
@@ -353,23 +354,6 @@ function ThreadOpen({ thread: th }: { thread: Thread }) {
   );
 }
 
-/** An http(s) URL, or a GitHub "owner/repo#N" pull request, as an address; otherwise null. */
-function hrefOf(l: LinkItem): string | null {
-  if (/^https?:\/\//.test(l.target)) return l.target;
-  const pr = l.kind === "pr" ? /^([\w.-]+\/[\w.-]+)#(\d+)$/.exec(l.target) : null;
-  return pr ? `https://github.com/${pr[1]}/pull/${pr[2]}` : null;
-}
-
-/** A spec, or an artifact that is a Markdown, HTML or image file, opens in the document viewer. */
-function viewable(l: LinkItem): boolean {
-  if (hasScheme(l.target)) return false;
-  if (l.kind === "spec") return isMarkdownPath(l.target);
-  return (
-    l.kind === "artifact" &&
-    (isMarkdownPath(l.target) || isHtmlPath(l.target) || isImagePath(l.target))
-  );
-}
-
 function LinkChip({ link: l, slug }: { link: LinkItem; slug: string }) {
   const href = hrefOf(l);
   const title = l.label ? `${l.label}: ${l.target}` : l.target;
@@ -397,11 +381,13 @@ function LinkChip({ link: l, slug }: { link: LinkItem; slug: string }) {
 function Links({ links, slug }: { links: readonly LinkItem[]; slug: string }) {
   const kinds = [...LINK_ORDER];
   for (const l of links) if (!kinds.includes(l.kind)) kinds.push(l.kind);
+  const artifacts = links.filter((l) => l.kind === "artifact");
   return (
     <div className="lines">
       {kinds.map((k) => {
         const ls = links.filter((l) => l.kind === k);
         if (!ls.length) return null;
+        if (k === "artifact") return null;
         return (
           <div className="lline" key={k}>
             <span className="lkind">{k}</span>
@@ -411,6 +397,12 @@ function Links({ links, slug }: { links: readonly LinkItem[]; slug: string }) {
           </div>
         );
       })}
+      {artifacts.length ? (
+        <div className="lline">
+          <span className="lkind" aria-hidden="true" />
+          <ArtifactsMenu links={artifacts} slug={slug} />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -134,6 +134,18 @@ export interface ListNotificationsOptions {
   includeDismissed?: boolean;
 }
 
+const LINK_LABEL_MAX = 120;
+const LINK_DESCRIPTION_MAX = 200;
+
+/** Trims a link's label or description; empty becomes null (cleared). */
+function linkText(value: string, what: string, max: number): string | null {
+  const v = value.trim();
+  if (v.length > max) {
+    throw new AxiomError("validation", `link ${what} must be at most ${max} characters`);
+  }
+  return v === "" ? null : v;
+}
+
 function ownerOnly(actor: Actor, what: string): void {
   if (actor.kind !== "owner") {
     throw new AxiomError("permission", `only the owner can ${what}`);
@@ -585,25 +597,59 @@ export class Axiom {
 
   addLink(
     topic: TopicRef,
-    input: { kind: LinkKind; target: string; label?: string },
+    input: { kind: LinkKind; target: string; label?: string; description?: string },
     actor: Actor,
   ): Link {
     const kind = parseWith(linkKindSchema, input.kind, "link kind");
     if (!input.target.trim()) throw new AxiomError("validation", "link target is required");
+    const label = input.label === undefined ? null : linkText(input.label, "label", LINK_LABEL_MAX);
+    const description =
+      input.description === undefined
+        ? null
+        : linkText(input.description, "description", LINK_DESCRIPTION_MAX);
     return this.tx(() => {
       const t = this.topicRow(topic);
       const threadId = this.knownThreadId(actor.kind === "agent" ? actor.threadId : null);
       const id = this.run(
-        `INSERT INTO link (topic_id, kind, target, label, created_at, created_by_thread_id)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO link (topic_id, kind, target, label, description, created_at, created_by_thread_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
         t.id,
         kind,
         input.target,
-        input.label ?? null,
+        label,
+        description,
         this.iso(),
         threadId,
       );
       return camel<Link>(this.get<Row>("SELECT * FROM link WHERE id = ?", id));
+    });
+  }
+
+  /** Changes a link's label and/or description; an empty string clears the field. */
+  updateLink(
+    topic: TopicRef,
+    linkId: number,
+    changes: { label?: string; description?: string },
+    _actor: Actor,
+  ): Link {
+    const label =
+      changes.label === undefined ? undefined : linkText(changes.label, "label", LINK_LABEL_MAX);
+    const description =
+      changes.description === undefined
+        ? undefined
+        : linkText(changes.description, "description", LINK_DESCRIPTION_MAX);
+    return this.tx(() => {
+      const t = this.topicRow(topic);
+      const row = this.get<Row>("SELECT * FROM link WHERE id = ? AND topic_id = ?", linkId, t.id);
+      if (!row) throw new AxiomError("not-found", `link not found: ${linkId}`);
+      this.run(
+        "UPDATE link SET label = ?, description = ? WHERE id = ?",
+        label === undefined ? (row.label as string | null) : label,
+        description === undefined ? (row.description as string | null) : description,
+        linkId,
+      );
+      if (label !== undefined || description !== undefined) this.touchTopic(t.id);
+      return camel<Link>(this.get<Row>("SELECT * FROM link WHERE id = ?", linkId));
     });
   }
 
