@@ -133,6 +133,7 @@ export function BoardShell() {
           <Link href={hrefs.all} aria-current={!onSettings ? "page" : undefined}>
             Board
           </Link>
+          <Link href={hrefs.desk}>Desk</Link>
           <Link href={hrefs.settings} aria-current={onSettings ? "page" : undefined}>
             Settings
           </Link>

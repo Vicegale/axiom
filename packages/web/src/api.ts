@@ -87,6 +87,45 @@ export interface Thread {
   open?: { kind: "url"; url: string } | { kind: "command"; command: string } | null;
 }
 
+/** A thread as GET /api/desk returns it (the full reply is fetched on its own). */
+export interface DeskThread {
+  id: number;
+  provider: Provider;
+  providerThreadId: string;
+  title: string | null;
+  status: TopicStatus;
+  open: boolean;
+  startedAt: string;
+  endedAt: string | null;
+  lastReplyAt: string | null;
+  /** The ephemeral Haiku summary of the latest reply; `next` is "Nothing" when the owner has none. */
+  summary: { now: string; next: string; at: string | null } | null;
+  summaryError: string | null;
+  hasReply: boolean;
+}
+
+/** A topic card as GET /api/desk returns it. */
+export interface DeskTopic {
+  slug: string;
+  title: string;
+  status: TopicStatus | null;
+  statusNote: string | null;
+  favorite: boolean;
+  deskHidden: boolean;
+  deskOrder: number | null;
+  taskCounts: TaskCounts;
+  linkCount: number;
+  lastWorkedAt: string;
+  highlighted: boolean;
+  attention: Attention | null;
+  threads: DeskThread[];
+}
+
+export interface ThreadReply {
+  text: string;
+  at: string | null;
+}
+
 export interface LinkItem {
   id: number;
   kind: string;
@@ -286,5 +325,17 @@ export const api = {
     slug: string,
     body: { provider: Provider; providerThreadId: string; environmentId?: string; title?: string },
   ) => request<Thread>("POST", `/api/topics/${enc(slug)}/threads`, body),
+  desk: () => request<{ topics: DeskTopic[] }>("GET", "/api/desk"),
+  threadReply: (id: number) => request<ThreadReply>("GET", `/api/threads/${id}/reply`),
+  setFavorite: (slug: string, on: boolean) =>
+    request<{ slug: string; favorite: boolean }>("POST", `/api/topics/${enc(slug)}/favorite`, {
+      on,
+    }),
+  setDeskHidden: (slug: string, hidden: boolean) =>
+    request<{ slug: string; deskHidden: boolean }>("POST", `/api/topics/${enc(slug)}/desk-hidden`, {
+      hidden,
+    }),
+  setDeskOrder: (slugs: string[]) =>
+    request<{ slugs: string[] }>("PUT", "/api/desk/order", { slugs }),
   health: () => request<Health>("GET", "/api/health"),
 };

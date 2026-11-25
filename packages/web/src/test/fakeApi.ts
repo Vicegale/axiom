@@ -2,6 +2,8 @@ import { vi } from "vitest";
 import type {
   ArtifactData,
   AxiomNotification,
+  DeskThread,
+  DeskTopic,
   DocData,
   Entry,
   EpicItem,
@@ -82,6 +84,41 @@ export function thread(over: Partial<Thread> & { id: number }): Thread {
   };
 }
 
+export function deskThread(over: Partial<DeskThread> & { id: number }): DeskThread {
+  return {
+    provider: "t3",
+    providerThreadId: `pt-${over.id}`,
+    title: `Thread ${over.id}`,
+    status: "idle",
+    open: true,
+    startedAt: T0,
+    endedAt: null,
+    lastReplyAt: null,
+    summary: null,
+    summaryError: null,
+    hasReply: false,
+    ...over,
+  };
+}
+
+export function deskTopic(over: Partial<DeskTopic> & { slug: string }): DeskTopic {
+  return {
+    title: over.slug,
+    status: "idle",
+    statusNote: null,
+    favorite: false,
+    deskHidden: false,
+    deskOrder: null,
+    taskCounts: { total: 0, done: 0 },
+    linkCount: 0,
+    lastWorkedAt: T0,
+    highlighted: false,
+    attention: null,
+    threads: [],
+    ...over,
+  };
+}
+
 export function entry(over: Partial<Entry> & { id: number }): Entry {
   return {
     topicId: 1,
@@ -117,6 +154,9 @@ export class FakeServer {
   tickets: TicketItem[] = [];
   settings: Settings = { mutedKinds: [], staleAfterDays: 14, layout: "inbox", theme: "dark" };
   calls: Call[] = [];
+  desk: DeskTopic[] = [];
+  /** Full replies by thread id; a missing one is a 404. */
+  replies = new Map<number, { text: string; at: string | null }>();
   /** Documents by `<slug>:<linkId>` or `<slug>:<linkId>:<?path>`; a missing key is a 404. */
   docs = new Map<string, DocData>();
   /** Artifact metadata by `<slug>:<linkId>`; a missing key is a 404. */
@@ -202,6 +242,34 @@ export class FakeServer {
       return art
         ? this.json(art)
         : this.json({ error: { code: "not-found", message: "no such file" } }, 404);
+    }
+    if (method === "GET" && path === "/api/desk") return this.json({ topics: this.desk });
+    const replyM = /^\/api\/threads\/(\d+)\/reply$/.exec(path);
+    if (replyM && method === "GET") {
+      const r = this.replies.get(Number(replyM[1]));
+      return r
+        ? this.json(r)
+        : this.json({ error: { code: "not-found", message: "no reply" } }, 404);
+    }
+    const deskM = /^\/api\/topics\/([^/]+)\/(favorite|desk-hidden)$/.exec(path);
+    if (deskM && method === "POST") {
+      const t = this.desk.find((x) => x.slug === decodeURIComponent(deskM[1] ?? ""));
+      if (!t) return this.json({ error: { code: "not-found", message: "nope" } }, 404);
+      if (deskM[2] === "favorite") t.favorite = body.on;
+      else t.deskHidden = body.hidden;
+      return this.json({ slug: t.slug });
+    }
+    if (method === "PUT" && path === "/api/desk/order") {
+      const slugs: string[] = body.slugs;
+      const rest = this.desk
+        .filter((t) => !slugs.includes(t.slug) && t.deskOrder !== null)
+        .sort((a, b) => (a.deskOrder ?? 0) - (b.deskOrder ?? 0))
+        .map((t) => t.slug);
+      [...slugs, ...rest].forEach((slug, i) => {
+        const t = this.desk.find((x) => x.slug === slug);
+        if (t) t.deskOrder = i;
+      });
+      return this.json({ slugs });
     }
     if (method === "GET" && path === "/api/notifications") {
       return this.json({ notifications: this.notifications, hiddenCount: 0 });
