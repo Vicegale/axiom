@@ -1,6 +1,6 @@
 # 03. Faux-always-on agent (Steward)
 
-- Status: draft
+- Status: settled (2026-11-25)
 
 ## Intent
 
@@ -37,6 +37,9 @@ Proactivity comes first: the point is to catch potential issues earlier. Some wo
 2026-11-25, owner, on watching PRs: "Yes. I accept your signal list, but since the webhooks might not work, i also want a timed version."
 
 ## Decisions
+
+Settled 2026-11-25 by the owner ("Settle it"), with the defaults below accepted and Q37 decided as recommended. The remaining small open parts are answered with these defaults; the build plan is [docs/plan/steward.md](../plan/steward.md).
+
 
 - 2026-11-25: The autonomy rule below applies to this proactive agent only. It has its own permission set, separate from regular threads, which need no permissions specified in Axiom.
 - 2026-11-25: Periodic wakes on a cheap model. "Always-on" is faked by a schedule, not a continuously running agent.
@@ -93,6 +96,19 @@ Proactivity comes first: the point is to catch potential issues earlier. Some wo
 - 2026-11-25: The Desk additions are accepted: Steward as the third page with a count, the toggle with the next wake in the top bar, a two-line strip on cards Steward has something for, the per-topic switch in a card menu, and a small "Steward off" icon.
 - 2026-11-25: Steward gets its own icon (owner), distinct from Axiom's (Q39).
 - 2026-11-25: Steward's icon is **Facet**: Axiom's diamond with its left half solid (owner: "good enough for now"). "Steward off" is the same mark, faded, with a slash. Candidates in `docs/design/mockups/steward-icons.html`.
+- 2026-11-25: Steward runs each stage as a headless `claude -p` call on the owner's subscription ([ADR 0006](../adr/0006-steward-headless-claude.md)).
+- 2026-11-25, defaults accepted when settling:
+  - **Looking back:** each wake reads what changed since its last check; the first wake, or the first after Steward was off, looks back 24 hours.
+  - **Slack:** unseen messages; if the connector can't tell what's unseen, mentions of the owner and DMs since the last check.
+  - **Working hours:** a setting in the Steward view (default 09:00–19:00, weekdays). Outside them there are no timer wakes; event wakes still run.
+  - **Time limits:** stage 1 has none; stages 2 and 3 stop after 10 minutes each.
+  - **Caps and levels:** daily caps per model and the complexity mapping are set in the Steward view, starting generous (Haiku 5M, Sonnet 1.5M, Opus 0.4M tokens a day; simple → Sonnet medium, medium → Opus high, hard → report only), tuned once the report shows real use.
+  - **Memory core:** about 2k tokens; the tidy-up runs once a day, on the first wake of the day.
+  - **Questions:** answered in place from the Steward view (an *Answer* button opens the field); a new question raises no desktop notification; a dismissed question is not asked again unless what it is about changes.
+  - **Past findings and reactions:** findings are history entries on their topic, written by `steward`; dismissing one is recorded there too, which is how Steward avoids repeating it.
+  - **Blind-spot checklist:** runs in Axiom's own code before stage 1, with no model; stage 2 adds its own judgement.
+  - **Worktrees:** Steward's worktrees live under `~/.local/share/axiom/worktrees/<repo>/<branch>`.
+- 2026-11-25: GitHub webhooks are not in the first build. Axiom polls watched PRs with `gh` every 10 minutes in working hours (no tokens) and wakes Steward when something changed, on top of the 30-minute wakes. Webhooks may come later for repos where the owner is an admin (Q37).
 - 2026-11-25: Its own looking covers, beyond confirmed targets, recent Google Docs (for example daily meeting transcripts) when Claude's connector for them is enabled, alongside the other sources in Q23.
 
 ## What makes it proactive (agreed 2026-11-25)
@@ -162,22 +178,28 @@ The owner picks a direction (Q38).
    - Partly answered 2026-11-25: a periodic schedule. Open: the interval; whether events (CI failed, PR review arrived) or opening Axiom also trigger a wake; whether the cheap model can escalate to a stronger one when it finds something.
    - Partly answered 2026-11-25: escalation, yes, as stages (see Stages; promotion rule in Q25).
    - Answered 2026-11-25: every 30 minutes in working hours, rarely or never outside them, plus a wake on events Axiom already sees; opening Axiom does not wake it. Open: how working hours are set (a setting in the Steward view?), and what "rarely" means outside them.
+   - Settled 2026-11-25: working hours are a setting; no timer wakes outside them, event wakes still run.
 2. What can it do when it wakes?
    - Answered 2026-11-25: report, flag, and do non-overwriting work as suggestions. See the draft autonomy rule; confirm or amend it.
 3. How does it keep continuity between wakes: memory in Axiom's database, the tracker itself, or both?
    - Partly answered 2026-11-25: both, the tracker first. Knowledge about a topic goes to the topic; the Steward memory keeps only general-purpose knowledge (see Decisions). Open: how it remembers its own past findings and the owner's reactions to them (property 6), which belong to no topic's goal but do concern topics.
+   - Settled 2026-11-25: findings and their dismissals live in the topic's history (author `steward`).
 4. Does it have a persona and a single conversation thread, or is it summoned per work item?
    - Partly answered 2026-11-25: there is a dedicated chat with Steward, in the Steward view (Q32, Q33).
+   - Settled 2026-11-25: no persona beyond the name Steward and its icon.
 5. Which model and agent back it, and what usage budget does it run within?
    - Partly answered 2026-11-25: a cheap model, run through the harness (Claude Code) so it can use the harness's connectors. Open: which model (for example Haiku), headless Claude Code vs the Agent SDK, a per-day budget cap.
    - Partly answered 2026-11-25: the owner picks models and efforts in fine detail to manage token use (Q22).
+   - Settled 2026-11-25: headless `claude -p` per stage (ADR 0006); default stage models Haiku low (gather) and Sonnet low (decide); per-model daily caps.
 6. Can it be proactive (message the owner unprompted), and through which channel?
    - Partly answered 2026-11-25: yes, proactivity is the point. Axiom has a notifications pane and system (desktop) notifications, both mutable (01). Open: other channels, such as Slack DMs or phone push.
    - Partly answered 2026-11-25: findings go to the Steward view, urgent ones also as a desktop notification (Q24). Other channels still open.
+   - Settled 2026-11-25: Steward view and desktop notifications for urgent findings. Other channels (Slack DMs, phone push) are later.
 7. Is "rebase autonomously" meant as in the draft rule (a new branch the owner adopts), or should rebasing the owner's own branch in place be allowed when it is clean and no one else has pushed to it?
    - Answered 2026-11-25: in place is OK in some circumstances, for example rebasing the owner's branch onto main to get the latest changes. See the autonomy rule.
 8. What does it monitor on Slack: mentions of the owner, specific channels, threads linked from tickets?
    - Answered 2026-11-25: recent messages the owner hasn't seen yet. Open: whether the Slack connector exposes "unseen" (unread) status; if not, a fallback such as mentions and DMs since the last check.
+   - Settled 2026-11-25: fallback to mentions and DMs since the last check.
 9. After an in-place rebase onto main, does the agent update the remote (`git push --force-with-lease`), or keep the rebase local and leave pushing to the owner? Pushing rewrites a PR's history and re-triggers CI.
    - Answered 2026-11-25: local by default. The agent doesn't push; the owner does.
 10. Are there other "freshen" actions that count as safe in place, such as merging main into the branch for repos that don't rebase, or updating a lockfile? Or is the rebase onto main the only exception?
@@ -192,6 +214,7 @@ The owner picks a direction (Q38).
 14. **Investigate failures:** how far does it go: read the logs and write a finding, or also try a fix, run the tests and leave the fix on a branch (`axiom/fix/<branch>`)? Where do its worktrees live? Does a cheap model escalate to a stronger one for this (see Q1)?
    - Partly answered 2026-11-25: routine checks only write findings; a fix needs promotion to stage 3 (Q25). Open: where its worktrees live; whether a promoted fix must pass the tests before it is offered.
    - Answered 2026-11-25: see Decisions (finding on routine wakes; fix by promotion, tests must pass; Axiom-owned worktree folder). Open: the folder's location.
+   - Settled 2026-11-25: `~/.local/share/axiom/worktrees/<repo>/<branch>`; a promoted fix must pass the tests before it is offered.
 15. **Tidy the tracker:** the autonomy rule lets it update statuses alone. Should it change them (for example `monitoring` without a target to `blocked`), or only suggest the change for the owner to accept? For a topic that looks stale it can only prompt (01).
    - Answered 2026-11-25: mechanical cases it changes itself, marked as Steward's in history; judgement calls become questions.
 16. How does the owner see and act on suggestions: where do `axiom/…` branches and other suggestions show (the topic's card, the notifications pane), and what do adopt and discard do?
@@ -201,50 +224,64 @@ The owner picks a direction (Q38).
    - Answered 2026-11-25: `steward` is its own actor; no topic or thread of its own.
 18. "We'll pick it in Axiom itself": is the runtime a setting in Axiom (for example headless `claude -p` vs a T3 thread, plus model and effort), changeable from the UI? Which options must the first build offer?
    - Partly answered 2026-11-25: models and efforts are set per stage in Axiom (Q22), the chat's in the chat (Q33). Open: whether the runtime itself (headless `claude -p`, a T3 thread, the Agent SDK) is also a setting, and which the first build offers.
+   - Settled 2026-11-25: headless `claude -p` for now (ADR 0006). The runtime is not a setting in the first build.
 19. What does the Desk toggle do: does off stop the schedule entirely, and what happens to a wake already running? Is there a per-topic opt-out?
    - Answered 2026-11-25: off stops new wakes, a running wake finishes; Steward can also be turned off per topic.
 20. Limits per wake: one wake at a time, a time limit, a cap on how many topics it handles per wake? (Related: the budget in Q5.)
    - Answered 2026-11-25: one wake at a time, no topic cap, token caps as the brake; no time limit for the cheap models (stage 1). Open: whether stages 2 and 3 get a time limit.
+   - Settled 2026-11-25: stages 2 and 3 stop after 10 minutes each.
 21. **Quality bar for prepared fixes** (owner: "overwhelming me with trash fixes"). Which of these, if any: offer a fix only when the tests pass on it; only for some kinds of failure (for example lint, snapshots, a clean rebase); a cap on open suggestions per topic or per day; fall back to a finding with no fix when unsure; drop a kind of fix the owner keeps discarding (property 6)?
    - Answered 2026-11-25: cheap models don't write fixes for now; fixes only through a stable, sparing promotion to a stronger model (Q25).
 22. **Model and effort control:** at what grain does the owner pick them: one setting for Steward, per job (watch PRs, investigate failures, ...), or per stage (a cheap triage pass, then a stronger model only for what it found)? Does Axiom show Steward's token use, and are there caps (per wake, per day) that stop or downgrade it?
    - Partly answered 2026-11-25: per stage; token use reported per model. Open: where the report shows (the Desk, a Steward page); caps per wake or per day, and what happens at a cap.
    - Answered 2026-11-25: report in the Steward view, per model and per day; a daily cap per model; at a cap no promotions, stage 1 continues. Open: the default caps.
+   - Settled 2026-11-25: default caps Haiku 5M, Sonnet 1.5M, Opus 0.4M tokens a day, editable.
 23. **Its own finds:** what does it look at beyond confirmed targets: every non-`done` topic, the repositories and branches linked from topics, Slack, other sources? How often, given the cost (Q22)?
    - Partly answered 2026-11-25: also recent Google Docs (for example daily meeting transcripts) when Claude's connector is enabled; a low-cost model summarises, Sonnet low decides. Open: confirm the other candidates above; how far back "recent" goes (since the last wake?); how often.
    - Partly answered 2026-11-25: since the last check (owner, tentative). Open: how far back the first wake, or one after Steward was off, looks.
+   - Settled 2026-11-25: the first wake, or the first after Steward was off, looks back 24 hours. Gathering runs on every wake.
 24. **Where a finding lands** (reworded 2026-11-25 at the owner's request). When Steward finds something, Axiom can tell the owner in several places, loudest first: (a) a desktop notification that pops up; (b) an entry in the notifications pane (the bell); (c) the topic moves to Requires attention with the reason; (d) only a finding in the topic's history. Does every finding go to the same place, or does Steward choose per finding (for example "CI failed on the PR you want merged today" → pop-up; "this topic looks stale" → pane only)? If it chooses, is that stage 2's call, and can the owner set fixed rules per kind of finding on top (01 already lets the owner mute a kind of notification)?
    - 2026-11-25: the owner's reply under Q24 was about the memory (Steward manages it itself; see Decisions). Where a finding lands is still open; asked again.
    - Answered 2026-11-25: the Steward view by default; urgent ones also as a desktop notification. Open: what counts as urgent (stage 2's call, per-kind rules from the owner, or both).
    - Answered 2026-11-25: stage 2 decides.
+   - (Per-kind rules from the owner on top of stage 2 are not in the first build.)
 25. **Promotion to a stronger model:** what makes stage 2 promote work (for example a CI failure on a favourite topic, a finding repeated across two wakes, the owner asking for it from the card), which model and effort stage 3 uses, and what keeps it rare (a cap per day, a token budget for promoted work)? "Stable" (owner) suggests a fixed rule rather than the model's own judgement each time; confirm.
    - Partly answered 2026-11-25: it depends on the complexity of the task. Open: Q34.
 26. **Connectors in Steward's runtime:** are Claude's claude.ai connectors (Google Drive, Slack) available to a headless run (`claude -p`) or a T3 thread started by Axiom? Needs a test. In the owner's T3 Claude session on 2026-11-25, Google Drive showed as needing authorisation.
    - 2026-11-25, owner: this machine's Claude has no connectors; the owner expects it to work. Untested: check on a machine with connectors before relying on Google Docs or Slack. When a connector is missing, Steward treats it as a blind spot (an unreachable source) rather than failing.
+   - Deferred 2026-11-25: build without depending on it; a missing connector is a blind spot. Test on a machine with connectors.
 27. **Detecting blind spots:** which stage does it (stage 2 while deciding, a separate pass, or both), and is there a fixed checklist (sources unreachable, topics missing a goal or target) alongside the model's own judgement?
    - Answered 2026-11-25: both, a fixed checklist and the model's judgement. Open: which stage runs each (the checklist needs no model).
+   - Settled 2026-11-25: the checklist runs in Axiom's code before stage 1; stage 2 adds judgement.
 28. **Asking:** where do questions appear (the notifications pane, the topic's card, a Steward questions list, a Steward thread), and can the owner answer in place, defer or dismiss? Is a question one of the levels in Q24?
    - Partly answered 2026-11-25: in the UI, in a separate Steward section; the owner can dismiss. Open: answer in place there (a text box per question)? Defer? Does a new question also raise a notification?
+   - Settled 2026-11-25: answered in place; no defer; questions raise no desktop notification.
 29. **Not nagging:** how many questions at most per wake or per day; are they batched (for example one digest); what happens to one that goes unanswered (asked again, expires, raised louder)?
    - Answered 2026-11-25: batched, no limit; the owner dismisses as needed. Open: does an unanswered question simply stay until answered or dismissed, and does Steward avoid asking a dismissed question again?
+   - Settled 2026-11-25: an unanswered question stays until answered or dismissed; a dismissed one is not asked again unless its subject changes.
 30. **Where answers go:** Steward's memory only, or also the tracker (a topic's goal or status note, a new monitoring target, a link), and does the answer become a history entry on the topic? Can the owner see and edit what Steward has learned?
    - Answered 2026-11-25: topics first (Steward checks and updates the topic), the Steward memory only for general-purpose knowledge; the owner can view the memory. Open: Q32.
 31. **The Steward section of the UI:** where does it sit (a third view beside Tracker and Desk, a pane, a page behind the Desk's Steward toggle), and what else belongs there: the per-model token report (Q22), settings for each stage's model and effort, its recent wakes and findings, the on/off toggle? See 02.
    - Partly answered 2026-11-25: a third view, beside Tracker and Desk. Open: which of the other items live there.
+   - Settled 2026-11-25: layout B holds the brief, questions, findings, suggestions, memory core, token use and wakes; settings open from the top bar.
 32. **The Steward memory:** can the owner edit, delete or add memory items, or only view them? What counts as general-purpose knowledge (for example "this repo merges main instead of rebasing", "standups are at 10")? When Steward updates a topic from what it learned, is that a normal history entry written by Steward (ties to Q17)?
    - Answered 2026-11-25: the owner views it, edits it directly, and can chat with Steward; Steward manages the memory itself, in a managed store, not one plain file. Open: Q33, Q35.
 33. **The Steward chat:** is it one long-running conversation or a new one each time? Which model and effort does it use (a stage setting of its own)? Can the owner ask it to do things in the chat (check a topic now, promote a task), within the autonomy rule, or is it for talking about what it knows?
    - Partly answered 2026-11-25: a fresh conversation each time; Steward takes notes as it goes and keeps the important parts. Open: the chat's model and effort; whether the owner can ask it to act from the chat.
    - Partly answered 2026-11-25: model and effort picked in the chat, separate from the wakes' stage settings. Open: whether the owner can ask it to act from the chat.
    - Answered 2026-11-25: yes, the owner can ask it to act from the chat, within the autonomy rule.
+   - (The chat's model and effort are picked in the chat; see Decisions.)
 34. **Judging complexity:** who judges a task's complexity (stage 2), on what scale (for example simple / medium / hard), and does the owner map each level to a model and effort in the per-stage settings? Is there a level that is never promoted, only reported? This is how "stable" (Q25) would be kept: the model picks the level, the owner's mapping picks the model.
    - Answered 2026-11-25: yes, for now (see Decisions). Open: the levels and their default models.
+   - Settled 2026-11-25: simple / medium / hard; defaults simple → Sonnet medium, medium → Opus high, hard → report only.
 35. **The memory store:** what shape is it: items in Axiom's database (05) with a kind, a source and a date, searchable, which Steward adds to, merges and retires? The autonomy rule says Steward never deletes anything alone: is retiring or deleting its own memory items exempt, as its own data (like its `axiom/…` branches), or does it only mark them retired and the owner deletes?
    - Answered 2026-11-25: yes to that shape; its own memory is exempt from "never delete". Owner's caveat on finding things: Q36.
 36. **Recall** (owner: the trap of "not being able to find things it _should_ remember because it's looking for the wrong thing"). Search alone fails when Steward doesn't know what to search for. Which of these does it use: (a) a small core it always loads on every wake and chat (what it considers most important, kept short by Steward itself); (b) items tied to topics, repositories or people, pulled in automatically whenever that topic, repo or person comes up, with no search needed; (c) more than one way to search (exact words and meaning-based search); (d) a periodic tidy pass where Steward merges items and rewrites the core; (e) a recall test: a set of facts it should know, checked from time to time so a regression shows?
    - 2026-11-25: the owner asked what (a) means. Explained: each wake and chat starts with an empty context, so anything Steward must search for can be missed. The core is a short block of memory put into every stage-2 run and chat automatically, the way a project's CLAUDE.md is: the few facts it must never miss, plus an index of what else the memory holds, so it knows what to look for. Steward keeps it short (it costs tokens on every wake); the owner sees and edits it in the Steward view. Still open.
    - Answered 2026-11-25: (a) core, (b) attached memory and (d) tidy-up for the first build; (c) and (e) later if needed. Open: how short the core must be, and how often the tidy-up runs.
+   - Settled 2026-11-25: core about 2k tokens; tidy-up daily on the first wake of the day.
 37. **GitHub webhooks for a local app:** Axiom runs locally, so GitHub can't call it directly. Options: a forwarder (for example the `gh webhook forward` extension, which needs admin rights on the repository or organisation), a relay service, or the timed check only. Owner work repos may not allow creating webhooks. Which does the first build try, and is the timed check's interval the 30-minute wake or its own?
+   - Settled 2026-11-25: no webhooks in the first build; `gh` polling every 10 minutes in working hours wakes Steward on a change.
 38. **Which Steward view layout:** A (inbox), B (briefing), C (stream), or a mix? And are the Desk additions (top-bar toggle and count, the card strip with a per-topic switch) right?
    - Answered 2026-11-25: B; the Desk additions as mocked.
 39. **Steward's icon:** which design? Candidates in `docs/design/mockups/steward-icons.html`.
