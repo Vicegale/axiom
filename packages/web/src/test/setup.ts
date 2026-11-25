@@ -1,7 +1,11 @@
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach } from "vitest";
 
 afterEach(cleanup);
+
+// The whole repo's suites run in parallel; under that load a 1 s wait for async UI was flaky
+// (Console drawer, Settings page). Give findBy / waitFor more room.
+configure({ asyncUtilTimeout: 4000 });
 
 // jsdom has no <dialog> modal API. Emulate showModal / close and the Escape key's `cancel`.
 if (typeof HTMLDialogElement !== "undefined" && !HTMLDialogElement.prototype.showModal) {
