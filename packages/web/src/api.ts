@@ -206,6 +206,18 @@ export class ApiError extends Error {
   }
 }
 
+/** A Markdown document as GET /api/topics/:slug/docs/:linkId returns it. */
+export interface DocData {
+  linkId: number;
+  path: string;
+  relPath: string;
+  root: string;
+  baseDir: string;
+  title: string;
+  markdown: string;
+  mtime: number;
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
@@ -232,6 +244,11 @@ export const api = {
   setTaskStatus: (slug: string, key: string, status: TaskStatus) =>
     request<TaskItem>("POST", `/api/topics/${enc(slug)}/tasks/${enc(key)}/status`, { status }),
   entries: (slug: string) => request<Entry[]>("GET", `/api/topics/${enc(slug)}/entries?limit=500`),
+  doc: (slug: string, linkId: number, path?: string) =>
+    request<DocData>(
+      "GET",
+      `/api/topics/${enc(slug)}/docs/${linkId}${path ? `?path=${enc(path)}` : ""}`,
+    ),
   open: (slug: string) => request<{ ok: true }>("POST", `/api/topics/${enc(slug)}/open`),
   mute: (slug: string, muted: boolean) =>
     request<TopicDetailData>("POST", `/api/topics/${enc(slug)}/mute`, { muted }),

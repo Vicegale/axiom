@@ -265,6 +265,7 @@ export function BoardShell() {
           listItem={topics.find((t) => t.slug === selected)}
           now={now}
           onClose={closeSheet}
+          doc={route.kind === "doc" ? route : undefined}
         />
       ) : null}
     </div>

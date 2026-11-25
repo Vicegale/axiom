@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 import type {
   AxiomNotification,
+  DocData,
   Entry,
   EpicItem,
   Settings,
@@ -115,6 +116,8 @@ export class FakeServer {
   tickets: TicketItem[] = [];
   settings: Settings = { mutedKinds: [], staleAfterDays: 14, layout: "inbox", theme: "dark" };
   calls: Call[] = [];
+  /** Documents by `<slug>:<linkId>` or `<slug>:<linkId>:<?path>`; a missing key is a 404. */
+  docs = new Map<string, DocData>();
 
   install(): void {
     vi.stubGlobal(
@@ -163,6 +166,7 @@ export class FakeServer {
     const confirmM = /^\/api\/monitors\/(\d+)\/confirm$/.exec(path);
     const tasksM = /^\/api\/topics\/([^/]+)\/tasks$/.exec(path);
     const taskStatusM = /^\/api\/topics\/([^/]+)\/tasks\/([^/]+)\/status$/.exec(path);
+    const docM = /^\/api\/topics\/([^/]+)\/docs\/(\d+)$/.exec(path);
     const entryM = /^\/api\/entries\/(\d+)$/.exec(path);
 
     if (method === "GET" && path === "/api/topics") {
@@ -180,6 +184,14 @@ export class FakeServer {
             : t;
         }),
       );
+    }
+    if (docM && method === "GET") {
+      const sub = new URLSearchParams(query ?? "").get("path");
+      const key = `${decodeURIComponent(docM[1] ?? "")}:${docM[2]}${sub ? `:${sub}` : ""}`;
+      const doc = this.docs.get(key);
+      return doc
+        ? this.json(doc)
+        : this.json({ error: { code: "not-found", message: "no such file" } }, 404);
     }
     if (method === "GET" && path === "/api/notifications") {
       return this.json({ notifications: this.notifications, hiddenCount: 0 });

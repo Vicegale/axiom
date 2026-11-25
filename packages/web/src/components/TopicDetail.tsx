@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import type {
   Entry,
   LinkItem,
@@ -8,8 +9,10 @@ import type {
   Thread,
   TopicDetailData,
 } from "../api";
+import { hrefs } from "../layouts/shared/routes";
 import type { TaskStatus } from "../lib/domain";
 import { LINK_ORDER, PROVIDER_LABEL } from "../lib/domain";
+import { hasScheme, isMarkdownPath } from "../lib/paths";
 import { ago, fullStamp, idleDays, stamp } from "../lib/time";
 import { type Density, History } from "./History";
 import { ParentChip } from "./ParentChip";
@@ -132,7 +135,7 @@ export function TopicDetail({
           <>
             <dt>Links</dt>
             <dd>
-              <Links links={t.links} />
+              <Links links={t.links} slug={t.slug} />
             </dd>
           </>
         ) : null}
@@ -266,10 +269,25 @@ function hrefOf(l: LinkItem): string | null {
   return pr ? `https://github.com/${pr[1]}/pull/${pr[2]}` : null;
 }
 
-function LinkChip({ link: l }: { link: LinkItem }) {
+/** A spec, or an artifact that is a Markdown file, opens in the document viewer. */
+function viewable(l: LinkItem): boolean {
+  return (
+    (l.kind === "spec" || l.kind === "artifact") && !hasScheme(l.target) && isMarkdownPath(l.target)
+  );
+}
+
+function LinkChip({ link: l, slug }: { link: LinkItem; slug: string }) {
   const href = hrefOf(l);
   const title = l.label ? `${l.label}: ${l.target}` : l.target;
   const text = l.label ?? l.target;
+  if (viewable(l)) {
+    // A real link: a plain click opens the viewer here, a modified click a new tab.
+    return (
+      <Link className="lchip" href={hrefs.doc(slug, l.id)} title={title}>
+        {text}
+      </Link>
+    );
+  }
   return href ? (
     <a className="lchip" href={href} target="_blank" rel="noreferrer" title={title}>
       {text}
@@ -282,7 +300,7 @@ function LinkChip({ link: l }: { link: LinkItem }) {
 }
 
 /** One compact line per link kind present. */
-function Links({ links }: { links: readonly LinkItem[] }) {
+function Links({ links, slug }: { links: readonly LinkItem[]; slug: string }) {
   const kinds = [...LINK_ORDER];
   for (const l of links) if (!kinds.includes(l.kind)) kinds.push(l.kind);
   return (
@@ -294,7 +312,7 @@ function Links({ links }: { links: readonly LinkItem[] }) {
           <div className="lline" key={k}>
             <span className="lkind">{k}</span>
             {ls.map((l) => (
-              <LinkChip key={l.id} link={l} />
+              <LinkChip key={l.id} link={l} slug={slug} />
             ))}
           </div>
         );

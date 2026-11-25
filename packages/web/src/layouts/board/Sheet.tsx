@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import type { TopicListItem } from "../../api";
 import { Modal, Splitter, StatusPill } from "../../components";
+import { LazyDocViewer } from "../../components/doc/LazyDocViewer";
 import { usePaneSize } from "../../lib/panes";
 import { tabListKeys } from "../../lib/tabs";
 import { spineStatus } from "../../lib/topics";
+import { useWide } from "../../lib/wide";
 import { type DetailPart, TopicLoader, TopicSlice } from "../shared/TopicPane";
 
 export const SHEET_TABS = [
@@ -22,6 +24,8 @@ interface Props {
   listItem: TopicListItem | undefined;
   now: Date;
   onClose: () => void;
+  /** A document is open in the sheet in place of the tabs. */
+  doc?: { linkId: number; path: string | undefined };
 }
 
 /**
@@ -29,7 +33,8 @@ interface Props {
  * is trapped, the board behind is inert, Escape closes it and focus returns to the card that
  * opened it. Its width is resizable.
  */
-export function Sheet({ slug, listItem, now, onClose }: Props) {
+export function Sheet({ slug, listItem, now, onClose, doc }: Props) {
+  const [wideDoc] = useWide();
   const [tab, setTab] = useState<TabId>("overview");
   const width = usePaneSize("board-sheet", {
     default: () => Math.round(window.innerWidth * 0.62),
@@ -43,6 +48,34 @@ export function Sheet({ slug, listItem, now, onClose }: Props) {
 
   const status = listItem ? spineStatus(listItem) : "idle";
   const current = SHEET_TABS.find((t) => t.id === tab) ?? SHEET_TABS[0];
+  if (doc) {
+    return (
+      <Modal
+        className={`bd-sheet bd-doc s-${status}`}
+        label="Document"
+        onClose={onClose}
+        data-wide={wideDoc ? "true" : undefined}
+      >
+        <div className="bd-sh-row bd-doc-row">
+          <StatusPill status={listItem?.status} />
+          <span className="slug">{slug}</span>
+          <button type="button" className="bd-x" aria-label="Close document" onClick={onClose}>
+            <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+              <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.5" fill="none" />
+            </svg>
+          </button>
+        </div>
+        <LazyDocViewer
+          slug={slug}
+          linkId={doc.linkId}
+          path={doc.path}
+          level={2}
+          topicTitle={listItem?.title}
+        />
+        <Splitter pane={width} axis="col" after edge="start" label="Resize topic sheet" />
+      </Modal>
+    );
+  }
   return (
     <Modal className={`bd-sheet s-${status}`} labelledBy="bd-sheet-title" onClose={onClose}>
       <header className="bd-sheet-head">

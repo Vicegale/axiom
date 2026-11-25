@@ -33,6 +33,8 @@ export interface DocResult {
   path: string;
   relPath: string;
   root: string;
+  /** The linked document's directory: what `?path=` is relative to. */
+  baseDir: string;
   title: string;
   markdown: string;
   mtime: number;
@@ -179,7 +181,8 @@ export async function readDoc(
     throw new DocsError(400, "validation", "the link is not a local Markdown file");
   }
   const linked = expand(link.target, scope.base);
-  const abs = sub === undefined || sub === "" ? linked : resolve(dirname(linked), sub);
+  const baseDir = dirname(real(linked) ?? linked);
+  const abs = sub === undefined || sub === "" ? linked : resolve(baseDir, sub);
   const { realPath, root, mtime } = access(scope, abs, DOC_EXTS);
   const markdown = (await readFile(realPath, "utf8")).replace(/^﻿/, "");
   return {
@@ -187,6 +190,7 @@ export async function readDoc(
     path: realPath,
     relPath: relative(root, realPath) || basename(realPath),
     root,
+    baseDir,
     title: titleOf(markdown, basename(realPath)),
     markdown,
     mtime,
