@@ -2,7 +2,7 @@
    Everything is scoped under .bd-app; shared components keep their own classes. */
 .bd-app {
   position: relative; display: flex; flex-direction: column;
-  height: 100vh; height: 100dvh; min-width: 1024px; overflow: hidden;
+  height: 100vh; height: 100dvh; overflow: hidden;
   background: var(--bg); font-size: 13px;
 }
 .bd-app .s-hitl, .bd-app .s-error, .bd-app .s-wip, .bd-app .s-monitoring, .bd-app .s-review,
@@ -41,12 +41,12 @@
 .bd-crumb + .bd-nav + .bd-clock { margin-left: auto; }
 .bd-banner { grid-column: auto; flex: none; }
 .bd-empty { margin: 14px 4px; font: 400 11px var(--font-mono); color: var(--text-2); }
-.bd-page { flex: 1; min-height: 0; overflow: auto; background: var(--bg); }
+.bd-page { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; background: var(--bg); outline: none; }
 
 /* Board: lanes on a faint dot grid. */
 .bd-board {
   position: relative; flex: 1; min-height: 0; display: flex; align-items: stretch; gap: 8px;
-  padding: 12px 14px; overflow-x: auto; overflow-y: hidden;
+  padding: 12px 14px; overflow-x: auto; overflow-y: hidden; outline: none;
   background-color: var(--bg);
 }
 .bd-rule { flex: 0 0 1px; margin: 14px 2px; background: var(--line-strong); }
@@ -61,7 +61,7 @@
 .bd-lane-title h2 { font: 600 13px/1.2 var(--font-sans); letter-spacing: -0.005em; }
 .bd-count { font: 400 24px/1 var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; color: var(--text); }
 .bd-lane-sub { margin-top: 6px; font: 500 10px/1.3 var(--font-mono); color: var(--text-2); }
-.bd-lane-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+.bd-lane-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
 .bd-lane-body[hidden] { display: none; }
 .bd-lane--pile { flex: 0 0 152px; min-width: 152px; background: transparent; border: 1px dashed var(--line-strong); }
 .bd-lane--pile .bd-count { font-size: 17px; color: var(--text-2); }
@@ -147,7 +147,7 @@
 
 /* Notifications tray. */
 .bd-tray {
-  position: absolute; left: 0; right: 0; bottom: 30px; height: 340px; z-index: 12;
+  position: absolute; left: 0; right: 0; bottom: 30px; height: min(var(--pane-board-tray, 340px), calc(100% - 80px)); z-index: 12;
   display: flex; flex-direction: column; background: var(--panel); border-top: 1px solid var(--line-strong);
   box-shadow: 0 -24px 40px -30px rgba(0, 0, 0, 0.6);
   transform: translateY(104%); visibility: hidden;
@@ -157,23 +157,24 @@
 .bd-tray-head { flex: none; display: flex; align-items: center; gap: 10px; padding: 9px 12px 9px 14px; border-bottom: 1px solid var(--line); }
 .bd-tray-head h2 { font: 600 13px/1 var(--font-sans); }
 .bd-tray-head .fine { margin-left: auto; font-size: 11.5px; color: var(--text-2); }
-.bd-tray-body { flex: 1; min-height: 0; overflow-y: auto; }
+.bd-tray:focus { outline: none; }
+.bd-tray > .splitter { position: absolute; left: 0; right: 0; top: -0.25rem; margin: 0; }
+.bd-tray-body { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
 .bd-x { width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid transparent; border-radius: var(--radius); background: none; color: var(--text-2); cursor: pointer; }
 .bd-x:hover { border-color: var(--line-strong); color: var(--text); }
 .bd-sh-row .bd-x { margin-left: auto; }
 
-/* Topic sheet: 62% from the right, over the board. */
-.bd-scrim {
-  position: absolute; left: 0; right: 0; top: 44px; bottom: 30px; z-index: 10; border: 0; padding: 0;
-  background: rgba(6, 7, 9, 0.42); cursor: default;
-}
-.bd-sheet {
-  position: absolute; top: 44px; bottom: 30px; right: 0; width: 62%; min-width: 520px; z-index: 11;
-  display: flex; flex-direction: column; background: var(--panel);
+/* Topic sheet: a modal <dialog> from the right, 62% wide by default and resizable. */
+dialog.bd-sheet::backdrop { background: rgba(6, 7, 9, 0.42); }
+dialog.bd-sheet {
+  position: fixed; inset: 44px 0 30px auto; margin: 0; padding: 0; border: 0;
+  width: min(var(--pane-board-sheet, 62vw), 100vw); max-width: none; height: auto; max-height: none;
+  display: none; flex-direction: column; overflow: visible; color: inherit; background: var(--panel);
   border-left: 1px solid var(--line-strong); box-shadow: -30px 0 60px -40px rgba(0, 0, 0, 0.8);
-  animation: bd-slide 0.26s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
+dialog.bd-sheet[open] { display: flex; animation: bd-slide 0.26s cubic-bezier(0.2, 0.7, 0.2, 1); }
 @keyframes bd-slide { from { transform: translateX(102%); } }
+.bd-sheet > .splitter { position: absolute; left: -0.25rem; top: 0; bottom: 0; margin: 0; }
 .bd-sheet::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--c, var(--line-strong)); }
 .bd-sheet:focus { outline: none; }
 .bd-sheet-head { flex: none; padding: 14px 20px 0; }
@@ -184,7 +185,21 @@
 .bd-tab:hover, .bd-tab[aria-selected="true"] { color: var(--text); }
 .bd-tab[aria-selected="true"]::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; background: var(--c, var(--text)); }
 .bd-tab-n { margin-left: 6px; font: 400 10.5px var(--font-mono); color: var(--text-2); }
-.bd-sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 18px 20px 28px; }
+.bd-sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; padding: 18px 20px 28px; }
 .bd-sheet-body .status-row .pill { height: 26px; padding: 0 11px 0 9px; font-size: 13px; }
 
-@media (prefers-reduced-motion: reduce) { .bd-sheet { animation: none; } }
+@media (prefers-reduced-motion: reduce) { dialog.bd-sheet[open] { animation: none; } .bd-tray { transition: none; } }
+.bd-sheet-body:focus-visible { outline-offset: -2px; }
+
+@media (max-width: 900px) {
+  dialog.bd-sheet { width: 100vw; border-left: 0; }
+  .bd-sheet > .splitter, .bd-tray > .splitter { display: none; }
+  .bd-clock, .bd-crumb { display: none; }
+  .bd-filter input { width: 150px; }
+  .bd-health { display: none; }
+  .bd-bar { justify-content: flex-end; }
+}
+@media (forced-colors: active) {
+  .bd-lane, .bd-card, .bd-sheet, .bd-tray, .bd-top, .bd-bar { border-color: CanvasText; }
+  .bd-dot, .bd-hd, .bd-live::before, .bd-unread, .bd-brand-mark i { forced-color-adjust: none; }
+}

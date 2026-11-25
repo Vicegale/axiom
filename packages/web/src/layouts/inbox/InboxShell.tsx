@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Redirect } from "wouter";
+import { Redirect, useLocation } from "wouter";
 import { NotificationsList, SkipLink, Splitter } from "../../components";
 import { VIEW_LABEL } from "../../lib/domain";
 import { isNarrow, useCollapsed, usePaneSize } from "../../lib/panes";
@@ -28,6 +28,7 @@ export function InboxShell() {
     goTopic,
   } = useShell();
   const [query, setQuery] = useState("");
+  const [location] = useLocation();
   const [railClosed, toggleRail, setRailClosed] = useCollapsed("inbox-rail");
   const rail = usePaneSize("inbox-rail", { default: 232, min: 168, max: 380 });
   const listPane = usePaneSize("inbox-list", {
@@ -35,6 +36,12 @@ export function InboxShell() {
     min: 280,
     max: () => Math.max(280, window.innerWidth - (railClosed ? 0 : rail.size) - 420),
   });
+
+  // On a narrow window the rail is an overlay: following a link closes it (not remembered).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: closes when the location changes.
+  useEffect(() => {
+    if (isNarrow()) setRailClosed(true, false);
+  }, [location, setRailClosed]);
 
   // Arrow keys walk the visible list (outside text fields).
   const ordered = useMemo(() => visibleTopics(topics, list, query), [topics, list, query]);
@@ -46,7 +53,7 @@ export function InboxShell() {
         return;
       }
       if (e.key === "Escape" && isNarrow() && !railClosed) {
-        setRailClosed(true);
+        setRailClosed(true, false);
         return;
       }
       if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
@@ -95,7 +102,12 @@ export function InboxShell() {
             onClick={toggleRail}
           >
             <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-              <path d="M2 3.5h12M2 8h12M2 12.5h12" stroke="currentColor" strokeWidth="1.5" fill="none" />
+              <path
+                d="M2 3.5h12M2 8h12M2 12.5h12"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                fill="none"
+              />
             </svg>
           </button>
           <div className="brand">
@@ -123,16 +135,9 @@ export function InboxShell() {
         active={active}
         now={now}
         collapsed={railClosed}
-        onNavigate={() => isNarrow() && setRailClosed(true)}
       />
       {railClosed ? null : (
-        <Splitter
-          pane={rail}
-          axis="col"
-          edge="end"
-          label="Resize sidebar"
-          className="sp-rail"
-        />
+        <Splitter pane={rail} axis="col" edge="end" label="Resize sidebar" className="sp-rail" />
       )}
       {onSettings ? (
         <main className="page" id="main" tabIndex={-1} aria-label="Settings">
@@ -179,7 +184,7 @@ export function InboxShell() {
                   titleOf={titleOf}
                   hiddenCount={data.hiddenCount}
                   now={now}
-                  onOpen={goTopic}
+                  onOpen={openTopic}
                 />
               ) : data.topics ? (
                 <TopicList
@@ -202,7 +207,11 @@ export function InboxShell() {
             label="Resize topic list"
             className="sp-list"
           />
-          <Reader slug={selected} now={now} backHref={list === "all" ? hrefs.all : hrefs.view(list)} />
+          <Reader
+            slug={selected}
+            now={now}
+            backHref={list === "all" ? hrefs.all : hrefs.view(list)}
+          />
         </>
       )}
       <StatusBar topics={topics} live={data.live} now={now} />

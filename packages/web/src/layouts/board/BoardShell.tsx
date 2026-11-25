@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Redirect } from "wouter";
 import type { TopicListItem } from "../../api";
-import { NotificationsList } from "../../components";
+import { NotificationsList, SkipLink, Splitter } from "../../components";
 import type { ViewId } from "../../lib/domain";
 import { healthRows } from "../../lib/health";
+import { usePaneSize } from "../../lib/panes";
 import { dateShort, hm } from "../../lib/time";
 import { matchesQuery, viewsOf } from "../../lib/topics";
 import { SettingsPage } from "../../pages/SettingsPage";
@@ -40,16 +41,34 @@ export function BoardShell() {
     topics,
     notifications,
     titleOf,
-    goTopic,
+    openTopic,
   } = useShell();
   const [query, setQuery] = useState("");
-  const [tray, setTray] = useState(route.kind === "notifications");
+  // The tray is the /notifications route, like the sheet is /topic/<slug>: Back and Forward close
+  // and reopen them, and a link to either works.
+  const tray = route.kind === "notifications";
   const filterRef = useRef<HTMLInputElement>(null);
+  const trayRef = useRef<HTMLElement>(null);
+  const trayButton = useRef<HTMLButtonElement>(null);
+  const trayHeight = usePaneSize("board-tray", {
+    default: 340,
+    min: 160,
+    max: () => Math.max(160, window.innerHeight - 180),
+  });
+  const listHref = list === "all" ? hrefs.all : hrefs.view(list);
 
-  // Landing on /notifications (for instance after a layout switch) opens the tray.
+  // Focus follows the tray: into it when it opens, back to its button when it closes.
+  const wasTray = useRef(false);
   useEffect(() => {
-    if (route.kind === "notifications") setTray(true);
-  }, [route.kind]);
+    if (tray) trayRef.current?.focus();
+    else if (wasTray.current) {
+      const active = document.activeElement;
+      if (!active || active === document.body || trayRef.current?.contains(active)) {
+        trayButton.current?.focus();
+      }
+    }
+    wasTray.current = tray;
+  }, [tray]);
 
   const lanes = useMemo(() => {
     const out = new Map<ViewId, TopicListItem[]>(LANES.map((l) => [l.view, []]));
@@ -68,10 +87,7 @@ export function BoardShell() {
       ?.scrollIntoView?.({ inline: "center", block: "nearest" });
   }, [route]);
 
-  const closeTray = () => {
-    setTray(false);
-    if (route.kind === "notifications") navigate(hrefs.all);
-  };
+  const closeTray = () => navigate(listHref);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return;
@@ -88,7 +104,7 @@ export function BoardShell() {
 
   if (route.kind === "unknown") return <Redirect to={hrefs.all} replace />;
 
-  const closeSheet = () => navigate(list === "all" ? hrefs.all : hrefs.view(list));
+  const closeSheet = () => navigate(listHref);
   const onSettings = route.kind === "settings";
   const iso = now.toISOString();
 
@@ -97,6 +113,7 @@ export function BoardShell() {
       className={`bd-app${data.error ? " has-banner" : ""}`}
       data-tray={tray ? "open" : "closed"}
     >
+      <SkipLink />
       <header className="bd-top">
         <div className="bd-brand">
           <span className="bd-brand-mark" aria-hidden="true">
@@ -107,15 +124,19 @@ export function BoardShell() {
           </span>
           Axiom
         </div>
-        <span className="bd-crumb">{onSettings ? "Settings" : "Status board"}</span>
-        <div className="bd-nav">
+        {onSettings ? (
+          <p className="bd-crumb">Settings</p>
+        ) : (
+          <h1 className="bd-crumb">Status board</h1>
+        )}
+        <nav className="bd-nav" aria-label="Pages">
           <Link href={hrefs.all} aria-current={!onSettings ? "page" : undefined}>
             Board
           </Link>
           <Link href={hrefs.settings} aria-current={onSettings ? "page" : undefined}>
             Settings
           </Link>
-        </div>
+        </nav>
         {onSettings ? null : (
           <label className="bd-filter">
             <span className="sr-only">Filter topics</span>
@@ -144,11 +165,11 @@ export function BoardShell() {
       ) : null}
 
       {onSettings ? (
-        <div className="bd-page">
+        <main className="bd-page" id="main" tabIndex={-1} aria-label="Settings">
           <SettingsPage />
-        </div>
+        </main>
       ) : (
-        <main className="bd-board" aria-label="Topics by status">
+        <main className="bd-board" id="main" tabIndex={-1} aria-label="Topics by status">
           {data.topics ? (
             LANES.map(({ view, zone }) => (
               <LaneWithRule
@@ -161,7 +182,7 @@ export function BoardShell() {
                     topics={lanes.get(view) ?? []}
                     now={now}
                     focused={route.kind === "view" && route.view === view}
-                    onOpen={goTopic}
+                    onOpen={openTopic}
                     onMarkStale={(slug) => void actions.markStale(slug)}
                     onDismissStale={(slug) => void actions.dismissStalePrompt(slug)}
                   />
@@ -192,14 +213,23 @@ export function BoardShell() {
           className="bd-bar-btn"
           aria-expanded={tray}
           aria-controls="bd-tray"
-          onClick={() => (tray ? closeTray() : setTray(true))}
+          ref={trayButton}
+          onClick={() => (tray ? closeTray() : navigate(hrefs.notifications))}
         >
           Notifications <span className="bd-count-b">{notifications.length}</span>
         </button>
         <ThemeToggle className="bd-bar-btn" />
       </footer>
 
-      <section className="bd-tray" id="bd-tray" aria-label="Notifications">
+      <aside
+        className="bd-tray"
+        id="bd-tray"
+        aria-label="Notifications"
+        ref={trayRef}
+        tabIndex={-1}
+        inert={!tray}
+      >
+        <Splitter pane={trayHeight} axis="row" after edge="start" label="Resize notifications" />
         <header className="bd-tray-head">
           <h2>Notifications</h2>
           <span className="fine">
@@ -223,14 +253,11 @@ export function BoardShell() {
               titleOf={titleOf}
               hiddenCount={data.hiddenCount}
               now={now}
-              onOpen={(slug) => {
-                setTray(false);
-                goTopic(slug);
-              }}
+              onOpen={openTopic}
             />
           ) : null}
         </div>
-      </section>
+      </aside>
 
       {selected && !onSettings ? (
         <Sheet

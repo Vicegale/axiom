@@ -54,7 +54,7 @@ describe("Console shell", () => {
   it("lists saved views with the same counts", async () => {
     open("/");
     await screen.findByText("Needs me");
-    const views = within(screen.getByRole("group", { name: "Views and piles" }));
+    const views = within(screen.getByRole("navigation", { name: "Views and piles" }));
     const n = (label: string) =>
       views.getByText(label).closest("a")?.querySelector(".n")?.textContent;
     expect(n("Everything")).toBe("6");
@@ -235,9 +235,13 @@ describe("Console shell", () => {
     expect(document.querySelector(".cs-drawer")).toBeNull();
     pressKey("n");
     const drawer = within(document.querySelector(".cs-drawer") as HTMLElement);
-    expect(drawer.getByRole("button", { name: "Needs me" })).toBeTruthy();
-    fireEvent.click(drawer.getByRole("button", { name: "Needs me" }));
+    expect(drawer.getByRole("link", { name: "Needs me" }).getAttribute("href")).toBe("/topic/ask");
+    fireEvent.click(drawer.getByRole("link", { name: "Needs me" }));
     await waitFor(() => expect(server.called("POST", "/api/topics/ask/open")).toHaveLength(1));
+    // Following the link leaves the drawer: it is the /notifications route.
+    await waitFor(() => expect(document.querySelector(".cs-drawer")).toBeNull());
+    pressKey("n");
+    expect(document.querySelector(".cs-drawer")).toBeTruthy();
     pressKey("n");
     expect(document.querySelector(".cs-drawer")).toBeNull();
   });

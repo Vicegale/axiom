@@ -1,4 +1,5 @@
 import { Router } from "wouter";
+import { LiveAnnouncer } from "./components";
 import { DataProvider, useAxiom } from "./data/DataProvider";
 import { BoardShell } from "./layouts/board/BoardShell";
 import { ConsoleShell } from "./layouts/console/ConsoleShell";
@@ -25,6 +26,7 @@ export function App({ router }: { router?: Partial<React.ComponentProps<typeof R
     <DataProvider>
       <Router {...router}>
         <Layout />
+        <LiveAnnouncer />
       </Router>
     </DataProvider>
   );

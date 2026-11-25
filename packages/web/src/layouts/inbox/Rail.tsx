@@ -38,23 +38,12 @@ interface Props {
   active: Active;
   now: Date;
   collapsed: boolean;
-  /** A link in the rail was followed (a narrow window closes the overlay). */
-  onNavigate: () => void;
 }
 
-export function Rail({ topics, notificationCount, health, active, now, collapsed, onNavigate }: Props) {
+export function Rail({ topics, notificationCount, health, active, now, collapsed }: Props) {
   const count = (v: ViewId) => topics.filter((t) => inView(t, v)).length;
   return (
-    // biome-ignore lint/a11y/noNoninteractiveElementInteractions: closes the overlay after a link click
-    <nav
-      className="rail"
-      id="rail"
-      aria-label="Mailboxes"
-      hidden={collapsed}
-      onClick={(e) => {
-        if ((e.target as Element).closest("a")) onNavigate();
-      }}
-    >
+    <nav className="rail" id="rail" aria-label="Mailboxes" hidden={collapsed}>
       <Nav
         href={hrefs.all}
         label={VIEW_LABEL.all}

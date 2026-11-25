@@ -31,7 +31,8 @@ export function Splitter({ pane, label, axis, after = false, edge, className = "
   const ref = useRef<HTMLDivElement>(null);
   const drag = useRef<{ from: number; start: number; now: number; frame: number } | null>(null);
   const sign = after ? -1 : 1;
-  const coord = (e: { clientX: number; clientY: number }) => (axis === "col" ? e.clientX : e.clientY);
+  const coord = (e: { clientX: number; clientY: number }) =>
+    axis === "col" ? e.clientX : e.clientY;
 
   const show = (px: number) => {
     ref.current?.setAttribute("aria-valuenow", String(Math.round(px)));

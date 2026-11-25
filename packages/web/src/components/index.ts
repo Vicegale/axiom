@@ -1,13 +1,13 @@
 export { type Density, History } from "./History";
 export { Lock } from "./Icons";
 export { entryLabel, KindLabel, kindClass } from "./KindLabel";
+export { LiveAnnouncer } from "./LiveAnnouncer";
+export { Modal } from "./Modal";
 export { NotificationsList } from "./NotificationsList";
 export { ParentChip } from "./ParentChip";
+export { SkipLink } from "./SkipLink";
+export { Splitter } from "./Splitter";
 export { StatusPill } from "./StatusPill";
 export { T3Picker } from "./T3Picker";
 export { GraphSection, TaskBadge, TaskPill, TasksSection } from "./Tasks";
 export { TopicDetail, type TopicDetailActions } from "./TopicDetail";
-export { Splitter } from "./Splitter";
-export { LiveAnnouncer } from "./LiveAnnouncer";
-export { Modal } from "./Modal";
-export { SkipLink } from "./SkipLink";

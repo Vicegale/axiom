@@ -34,6 +34,7 @@ export function Modal({ onClose, label, labelledBy, role, className, children }:
   }, []);
 
   return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: Escape is handled natively (`cancel`)
     <dialog
       ref={ref}
       role={role}

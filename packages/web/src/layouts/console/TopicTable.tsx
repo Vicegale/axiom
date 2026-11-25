@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import type { TopicListItem } from "../../api";
 import { ParentChip, TaskBadge } from "../../components";
+import { isPlainClick, onInteractive } from "../../lib/click";
 import { PROVIDER_LABEL, VIEW_LABEL, type ViewId } from "../../lib/domain";
 import { ago } from "../../lib/time";
 import type { SortKey } from "../../lib/topics";
@@ -90,7 +91,9 @@ export function TopicTable({ groups, selected, sort, dir, now, onSort, onGo, onO
                 data-slug={t.slug}
                 aria-selected={selected === t.slug}
                 tabIndex={-1}
-                onClick={() => onGo(t.slug)}
+                onClick={(e) => {
+                  if (isPlainClick(e) && !onInteractive(e)) onGo(t.slug);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && e.target === e.currentTarget) onGo(t.slug);
                 }}
@@ -100,13 +103,7 @@ export function TopicTable({ groups, selected, sort, dir, now, onSort, onGo, onO
                 </td>
                 <td className="c-slug">
                   <span className={`cs-udot${t.highlighted ? "" : " off"}`} aria-hidden="true" />
-                  <Link
-                    href={hrefs.topic(t.slug)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onOpen(t.slug);
-                    }}
-                  >
+                  <Link href={hrefs.topic(t.slug)} onClick={() => onOpen(t.slug)}>
                     {t.slug}
                   </Link>
                   {t.highlighted ? <span className="sr-only"> (unread)</span> : null}

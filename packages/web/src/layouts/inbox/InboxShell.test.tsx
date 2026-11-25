@@ -255,7 +255,7 @@ describe("Inbox shell", () => {
     seed();
     const loc = open("/notifications");
     expect(await screen.findByText("Which way?")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Needs me" }));
+    fireEvent.click(screen.getByRole("link", { name: "Needs me" }));
     await waitFor(() => expect(loc.history?.at(-1)).toBe("/topic/ask"));
     expect(server.called("POST", "/api/topics/ask/open")).toHaveLength(1);
   });

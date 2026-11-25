@@ -12,7 +12,12 @@ interface Props {
 /** The right-hand reading pane: the selected topic, or a hint. */
 export function Reader({ slug, now, backHref }: Props) {
   return (
-    <main className="reader" id={slug ? "main" : undefined} aria-label="Selected topic" tabIndex={-1}>
+    <main
+      className="reader"
+      id={slug ? "main" : undefined}
+      aria-label="Selected topic"
+      tabIndex={-1}
+    >
       {slug ? (
         <Link href={backHref} className="back-link">
           <span aria-hidden="true">←</span> Back to list

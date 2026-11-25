@@ -9,13 +9,14 @@ export function isNarrow(): boolean {
 }
 
 export interface PaneOptions {
-  default: number;
+  default: number | (() => number);
   min: number;
   /** A number, or a function of the current window (so a pane cannot push the rest off screen). */
   max: number | (() => number);
 }
 
 const maxOf = (o: PaneOptions) => (typeof o.max === "function" ? o.max() : o.max);
+const defaultOf = (o: PaneOptions) => (typeof o.default === "function" ? o.default() : o.default);
 const clampTo = (v: number, o: PaneOptions) => {
   const hi = Math.max(o.min, maxOf(o));
   return Math.round(Math.min(hi, Math.max(o.min, v)));
@@ -44,7 +45,7 @@ export function usePaneSize(key: string, options: PaneOptions): PaneSize {
   const storageKey = `axiom.pane.${key}`;
   const [raw, setRaw] = useState(() => {
     const stored = Number(readStored(storageKey));
-    return readStored(storageKey) !== null && Number.isFinite(stored) ? stored : options.default;
+    return readStored(storageKey) !== null && Number.isFinite(stored) ? stored : defaultOf(options);
   });
   const [, setViewport] = useState(0);
   useEffect(() => {
@@ -80,31 +81,38 @@ export function usePaneSize(key: string, options: PaneOptions): PaneSize {
     [varName, storageKey],
   );
   const reset = useCallback(() => {
-    setRaw(opts.current.default);
-    document.documentElement.style.setProperty(
-      varName,
-      `${clampTo(opts.current.default, opts.current)}px`,
-    );
+    const def = defaultOf(opts.current);
+    setRaw(def);
+    document.documentElement.style.setProperty(varName, `${clampTo(def, opts.current)}px`);
     removeStored(storageKey);
   }, [varName, storageKey]);
 
-  return { size, min: options.min, max: Math.max(options.min, maxOf(options)), preview, commit, reset };
+  return {
+    size,
+    min: options.min,
+    max: Math.max(options.min, maxOf(options)),
+    preview,
+    commit,
+    reset,
+  };
 }
 
 /**
  * A pane that can collapse, remembered per browser (`axiom.pane.<key>.collapsed`). With nothing
  * remembered it starts collapsed on a narrow window, where the pane is an overlay.
  */
-export function useCollapsed(key: string): [boolean, () => void, (v: boolean) => void] {
+export function useCollapsed(
+  key: string,
+): [boolean, () => void, (v: boolean, remember?: boolean) => void] {
   const storageKey = `axiom.pane.${key}.collapsed`;
   const [collapsed, setCollapsed] = useState(() => {
     const stored = readStored(storageKey);
     return stored === null ? isNarrow() : stored === "1";
   });
   const set = useCallback(
-    (v: boolean) => {
+    (v: boolean, remember = true) => {
       setCollapsed(v);
-      writeStored(storageKey, v ? "1" : "0");
+      if (remember) writeStored(storageKey, v ? "1" : "0");
     },
     [storageKey],
   );
