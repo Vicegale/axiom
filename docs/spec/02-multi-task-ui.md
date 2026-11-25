@@ -34,6 +34,7 @@ The owner's reference for it is a screen called **Desk** ([docs/design/reference
 - 2026-11-25: The Desk is a grid of topic cards as in the reference: several agents' work on one screen; cards per row and sort order chosen in the top bar; favourites; drag to reorder.
 - 2026-11-25: Each card shows one of its topic's threads (selectable), a Haiku summary of that thread's latest reply plus what the owner must do next, and the full reply collapsible as Markdown.
 - 2026-11-25: The owner can reply from the card: to the selected thread, or as a new thread attached to the topic, with a model and effort picker. The reply box is hidden until the owner chooses to reply.
+- 2026-11-25 (amended): the reply box is a collapsible composer: collapsed to one line (with a draft preview) on every card, expanding to a rounded box with its controls inside (thread / provider / model / effort chips, collapse, round Send). "New thread" is a choice of the thread chip.
 - 2026-11-25: Replying works for both providers: T3 threads (through T3's API) and direct Claude Code sessions (by resuming the session).
 - 2026-11-25: The Haiku summary is made each time a thread stops, using the owner's subscription (not an API key). Summaries are ephemeral: only the latest is kept, on the thread, never in history.
 - 2026-11-25: Claude Code approvals from the card use a blocking `PermissionRequest` hook that waits for the owner's answer in Axiom, falling back to the terminal prompt after a timeout.
