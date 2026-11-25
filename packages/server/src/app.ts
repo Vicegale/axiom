@@ -14,10 +14,11 @@ import {
   topicStatusSchema,
   VIEWS,
 } from "@axiom/core";
-import { Hono } from "hono";
+import { type Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { backupDir, newestBackupMs } from "./backup.js";
+import { DocsError, readDoc, readImage } from "./docs.js";
 import type { ChangeBus } from "./events.js";
 import type { T3Provider } from "./providers/t3/provider.js";
 import { serveWeb } from "./static.js";
@@ -332,6 +333,40 @@ export function createApp(ctx: AppContext): Hono {
     const id = intParam(c.req.param("id"), "entry id");
     write(() => ax.deleteEntry(id, owner));
     return c.json({ ok: true });
+  });
+
+  // ---- documents and images linked from a topic -----------------------------
+
+  const docsFailure = (c: Context, e: unknown) => {
+    if (!(e instanceof DocsError)) throw e;
+    return c.json(err(e.code, e.message), e.status);
+  };
+
+  app.get("/api/topics/:slug/docs/:linkId", async (c) => {
+    try {
+      const linkId = intParam(c.req.param("linkId"), "link id");
+      return c.json(await readDoc(ax, c.req.param("slug"), linkId, c.req.query("path")));
+    } catch (e) {
+      return docsFailure(c, e);
+    }
+  });
+
+  app.get("/api/topics/:slug/files", async (c) => {
+    try {
+      const path = c.req.query("path");
+      if (!path) throw bad("path is required");
+      const file = await readImage(ax, c.req.param("slug"), path);
+      const headers: Record<string, string> = {
+        "content-type": file.type,
+        "x-content-type-options": "nosniff",
+        "cache-control": "no-cache",
+      };
+      // An SVG opened on its own must not run scripts.
+      if (file.type === "image/svg+xml") headers["content-security-policy"] = "sandbox";
+      return new Response(new Uint8Array(file.bytes), { headers });
+    } catch (e) {
+      return docsFailure(c, e);
+    }
   });
 
   // ---- tickets and epics --------------------------------------------------
