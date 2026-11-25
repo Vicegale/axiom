@@ -752,9 +752,13 @@ export class Axiom {
         clear: true,
       });
       // The thread's task, if it named one, is being worked on (01, Tasks). Stopping or ending
-      // never touches it: the agent sets `done` or `blocked`.
+      // never touches it: the agent sets `done` or `blocked`. A task already `done` stays done:
+      // a thread still pointing at it is doing follow-up work, not reopening it.
       if (th.taskId !== null) {
-        this.applyTaskStatus(this.taskById(th.taskId), "wip", { kind: "axiom" }, threadId);
+        const task = this.taskById(th.taskId);
+        if (task.status === "to do" || task.status === "blocked") {
+          this.applyTaskStatus(task, "wip", { kind: "axiom" }, threadId);
+        }
       }
       return th;
     });

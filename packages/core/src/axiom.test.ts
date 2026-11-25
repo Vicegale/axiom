@@ -669,6 +669,9 @@ describe("tasks", () => {
       .listEntries("work")
       .find((e) => e.kind === "status change" && (e.data as { task?: string }).task);
     expect(change).toMatchObject({ threadId: thread.id, data: { task: "S1", by: "axiom" } });
+    ax.setTaskStatus("work", "S1", "done", owner);
+    ax.threadWorking(thread.id); // follow-up work does not reopen a done task
+    expect(ax.getTask("work", "S1").status).toBe("done");
     ax.setThreadTask(thread.id, null, owner);
     expect(ax.getThread(thread.id).taskId).toBeNull();
   });

@@ -41,7 +41,7 @@ A **task** is a unit of work inside a topic, such as a row of a build plan (`S7`
 - **Fields:** key (unique within the topic, e.g. `S7`), title, done when, status, order, and **dependencies** (other tasks of the same topic it waits for).
 - **Statuses:** `to do`, `wip`, `blocked`, `done`.
 - **Dependencies:** a task can depend on several tasks of the same topic. Cycles are rejected. A task whose dependencies are not all `done` is shown as waiting on them.
-- **Threads:** a thread can say which task it works on (`axiom thread attach <topic> --task S7`, or later `axiom thread task S7`). While that thread is working, the task becomes `wip` automatically. Stopping does not change the task; the agent sets `done` or `blocked`.
+- **Threads:** a thread can say which task it works on (`axiom thread attach <topic> --task S7`, or later `axiom thread task S7`). While that thread is working, a `to do` or `blocked` task becomes `wip` automatically (a `done` task stays done). Stopping does not change the task; the agent sets `done` or `blocked`.
 - **On screen:** the topic page has a Tasks section (per spec, with progress such as 5/8 done) and a separate **dependency graph** section, drawn on the dotted grid (09).
 
 ## Statuses
