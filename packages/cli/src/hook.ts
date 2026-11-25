@@ -84,6 +84,7 @@ export function runHook(
     if (t3ThreadId) {
       const axiom = openDatabase(options.db ?? defaultDatabasePath(env));
       try {
+        axiom.recordHookEvent();
         const thread = axiom.findThread({ provider: "t3", providerThreadId: t3ThreadId });
         if (thread) {
           if (event === "stop") {
@@ -111,6 +112,7 @@ export function runHook(
 
     const axiom = openDatabase(options.db ?? defaultDatabasePath(env));
     try {
+      axiom.recordHookEvent();
       const thread = axiom.findThread({ provider: "claude-code", providerThreadId: sessionId });
       if (!thread) return 0; // not attached to a topic: ignored
       switch (event as HookEvent) {

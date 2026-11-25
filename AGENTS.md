@@ -15,4 +15,6 @@ Axiom is in the spec phase. Do not write application code, pick dependencies or 
 
 ## Cross-session context
 
+Track work in Axiom (see the `axiom` skill): this project's topic is `axiom-v1`, with the build plan as tasks. Until the work-log migration (spec 07) is decided, also keep the GPT Command Center log below.
+
 Session history for this project is kept in GPT Command Center: `~/Documents/notes/GPTCommandCenter/docs/work/axiom-spec.md`. Axiom is meant to replace that system; until it does, keep logging there.

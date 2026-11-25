@@ -169,6 +169,23 @@ describe("axiom hook", () => {
     expect(s.topic().status).toBe("wip");
   });
 
+  it("records that a hook ran, even for unattached and T3 sessions", () => {
+    const s = session();
+    const last = () => {
+      const ax = openDatabase(s.db);
+      try {
+        return ax.lastHookEventAt();
+      } finally {
+        ax.close();
+      }
+    };
+    s.hook("prompt", PROMPT);
+    const first = last();
+    expect(first).not.toBeNull();
+    s.hook("prompt", PROMPT, { T3CODE_THREAD_ID: "t3-unattached" });
+    expect(last()).not.toBeNull();
+  });
+
   it("does nothing for a session that is not attached", () => {
     const s = session();
     s.attach();

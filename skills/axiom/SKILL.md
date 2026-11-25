@@ -1,9 +1,15 @@
 ---
 name: axiom
-description: Record your work in Axiom, the owner's local tracker, instead of a Markdown work log. Use at the start of any substantive task (find or create the topic and attach your thread), whenever you decide, find, verify or plan something worth keeping, when you need the owner (set hitl), and when you finish (set the final status). Trigger whenever a project's instructions mention Axiom or the `axiom` CLI.
+description: Record your work in Axiom, the owner's local tracker. OPT-IN - use this skill only when the project's instructions (AGENTS.md / CLAUDE.md) say to track work in Axiom, or the user asks you to; otherwise follow the project's own work-log rules and do not create Axiom topics. When it applies - at the start of a task (find or create the topic, attach your thread), whenever you decide, find, verify or plan something worth keeping, when you need the owner (set hitl), and when you finish (set the final status).
 ---
 
 # Axiom: recording your work
+
+**Opt-in.** Only use Axiom when the project's instructions say so, for example a line like:
+
+> Track work in Axiom (see the `axiom` skill).
+
+or when the user asks. In a project without that line, follow its own rules (for example a Markdown work log) and leave Axiom alone.
 
 Axiom tracks what you and the owner are working on. You write to it with the `axiom` CLI (on PATH). Your identity is detected automatically: inside Claude Code or T3 you are an **agent**, and once your thread is attached, every entry you write is tagged with it.
 
