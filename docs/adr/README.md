@@ -9,3 +9,4 @@ One file per decision, numbered: `0001-short-slug.md`. Copy [0000-template.md](0
 | [0003](0003-sqlite-storage.md) | SQLite as Axiom's database | accepted |
 | [0004](0004-cli-writes-database-directly.md) | The CLI writes to the database directly | accepted |
 | [0005](0005-providers-claude-code-and-t3.md) | Two providers: Claude Code directly and the T3 service | accepted |
+| [0006](0006-steward-headless-claude.md) | Steward runs as headless Claude Code calls | accepted |
