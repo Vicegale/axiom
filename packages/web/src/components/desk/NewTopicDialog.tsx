@@ -12,6 +12,16 @@ import {
 } from "../../api";
 import type { Provider } from "../../lib/domain";
 import { Modal } from "../Modal";
+import { ChipMenu, type ChipOption } from "./ChipMenu";
+import {
+  ComposerBox,
+  ComposerError,
+  ComposerNote,
+  ComposerText,
+  ComposerToolbar,
+  Glyph,
+  SendButton,
+} from "./Composer";
 import "../../styles/newtopic.css";
 
 interface Props {
@@ -24,7 +34,7 @@ interface Props {
 
 type Phase = "idle" | "creating" | "starting";
 
-const PROVIDERS: { value: Provider; label: string }[] = [
+const PROVIDERS: (ChipOption & { value: Provider })[] = [
   { value: "t3", label: "T3" },
   { value: "claude-code", label: "Claude Code" },
 ];
@@ -33,6 +43,12 @@ const PROVIDERS: { value: Provider; label: string }[] = [
 const T3_INSTANCE = "claudeAgent";
 
 const norm = (p: string) => p.trim().replace(/(.)\/+$/, "$1");
+
+/** The chip option that reveals the inline path input. */
+const FOLDER =
+  "M1.8 4.2c0-.6.4-1 1-1h2.6l1.2 1.4h4.6c.6 0 1 .4 1 1v4.8c0 .6-.4 1-1 1H2.8c-.6 0-1-.4-1-1z";
+const TYPE_PATH = "\u0000type-a-path";
+const baseName = (p: string) => norm(p).split("/").filter(Boolean).pop() ?? p;
 
 export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
   const ids = useId();
@@ -47,6 +63,8 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
   const [effort, setEffort] = useState<Effort | "">("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
+  /** The error came from starting the thread: it shows inside the composer. */
+  const [errorInBox, setErrorInBox] = useState(false);
   const [errors, setErrors] = useState<{ title?: string; folder?: string; model?: string }>({});
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   /** Set once the topic exists, so a retry only starts the thread. */
@@ -58,14 +76,17 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
   /** `null` while loading or when T3 cannot be read (then `t3Error` says why). */
   const [t3Projects, setT3Projects] = useState<T3Project[] | null>(null);
   const [t3Error, setT3Error] = useState<string | null>(null);
-  /** The chosen T3 project; `null` means "none chosen yet": the one matching the folder is used. */
-  const [projectId, setProjectId] = useState<string | null>(null);
+  /** The owner asked to type a folder path instead of picking a suggestion. */
+  const [typingPath, setTypingPath] = useState(false);
   const [options, setOptions] = useState<ComposeOptions | null>(null);
 
   const titleRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
-  const projectRef = useRef<HTMLSelectElement>(null);
-  const modelRef = useRef<HTMLSelectElement>(null);
+  const pathRef = useRef<HTMLInputElement>(null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  const projectChip = useRef<HTMLButtonElement>(null);
+  const folderChip = useRef<HTMLButtonElement>(null);
+  const modelChip = useRef<HTMLButtonElement>(null);
 
   // The dialog opens after this effect (Modal's own): the attribute makes showModal() focus the
   // title natively; the timer covers browsers and test DOMs that ignore it.
@@ -95,17 +116,42 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
   const busy = phase !== "idle";
   const withMessage = text.trim() !== "";
   const choices = options?.providers[provider];
-  const dirty = [title, goal, folder, parent, text, projectId ?? ""].some((v) => v.trim() !== "");
+  const dirty = [title, goal, folder, parent, text].some((v) => v.trim() !== "");
 
-  // With a first T3 thread the project comes from T3's own list; otherwise it is a folder.
-  const useSelect = withMessage && provider === "t3" && t3Projects !== null;
-  const folderMatch = t3Projects?.find((p) => p.workspaceRoot === norm(folder));
-  const project =
-    useSelect && projectId !== ""
-      ? t3Projects?.find((p) => p.id === (projectId ?? folderMatch?.id))
-      : undefined;
+  // The folder is the one value: a T3 project is the one whose folder it is. With a first T3
+  // thread the project must come from T3's own list; otherwise the folder is used as typed.
+  const t3List = provider === "t3" && t3Projects !== null;
+  const useSelect = withMessage && t3List;
+  const project = t3List ? t3Projects?.find((p) => p.workspaceRoot === norm(folder)) : undefined;
   const folderValue = useSelect ? (project?.workspaceRoot ?? "") : folder.trim();
   const modelRequired = useSelect && project !== undefined && !project.hasDefaultModel;
+  const folderMode =
+    provider === "claude-code" || (provider === "t3" && t3Projects === null && t3Error !== null);
+  const suggestions: { path: string; label: string }[] = [
+    ...(t3Projects?.map((p) => ({ path: p.workspaceRoot, label: p.title })) ?? []),
+    ...workspaces
+      .filter((w) => !t3Projects?.some((p) => p.workspaceRoot === w.path))
+      .map((w) => ({ path: w.path, label: w.label })),
+  ];
+  const suggested = suggestions.find((x) => x.path === norm(folder));
+  const pathOpen = folderMode && (typingPath || (folder.trim() !== "" && !suggested));
+  const effortHint =
+    provider === "t3" && !model ? "Choose a model first: T3 applies effort to a model." : undefined;
+  const ready =
+    title.trim() !== "" && withMessage && folderValue !== "" && (!modelRequired || !!model);
+  const sendBlocked = !title.trim()
+    ? "Give the topic a title first."
+    : !withMessage
+      ? "Write the first message to start a thread."
+      : provider === "t3" && t3Projects === null && !t3Error
+        ? "Loading T3 projects…"
+        : !folderValue
+          ? useSelect
+            ? "Choose a T3 project."
+            : "Pick the folder to start the thread in."
+          : modelRequired && !model
+            ? "Choose a model: this project has no default."
+            : undefined;
 
   const close = () => {
     if (busy) return;
@@ -121,8 +167,6 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
   };
 
   const pickProvider = (p: Provider) => {
-    // Leaving T3 keeps the chosen project's folder for the folder field.
-    if (p !== "t3" && project && !folder.trim()) setFolder(project.workspaceRoot);
     setProvider(p);
     setModel("");
     setEffort("");
@@ -159,8 +203,11 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
     if (modelRequired && !model) next.model = "This project has no default model: choose one.";
     setErrors(next);
     if (next.title) return titleRef.current?.focus();
-    if (next.folder) return (useSelect ? projectRef : folderRef).current?.focus();
-    if (next.model) return modelRef.current?.focus();
+    if (next.folder) {
+      if (useSelect) return projectChip.current?.focus();
+      return (pathOpen ? pathRef : folderChip).current?.focus();
+    }
+    if (next.model) return modelChip.current?.focus();
     setError(null);
     let slug = created;
     try {
@@ -182,6 +229,7 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
       onDone(slug);
     } catch (e) {
       setError(e instanceof ApiError || e instanceof Error ? e.message : String(e));
+      setErrorInBox(slug !== null);
       setPhase("idle");
     }
   };
@@ -255,39 +303,10 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
         </div>
 
         <div className="nt-row">
-          {useSelect ? (
-            <div className="nt-field">
-              <label htmlFor={id("project")}>
-                T3 project <span className="nt-opt">required</span>
-              </label>
-              <select
-                id={id("project")}
-                ref={projectRef}
-                value={project?.id ?? ""}
-                disabled={created !== null}
-                aria-required="true"
-                aria-invalid={errors.folder ? true : undefined}
-                aria-describedby={errors.folder ? id("folder-e") : undefined}
-                onChange={(e) => setProjectId(e.target.value)}
-              >
-                <option value="">Choose a T3 project…</option>
-                {t3Projects?.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.title} — {p.workspaceRoot}
-                  </option>
-                ))}
-              </select>
-              {errors.folder ? (
-                <p className="nt-err" id={id("folder-e")}>
-                  {errors.folder}
-                </p>
-              ) : null}
-            </div>
-          ) : (
+          {withMessage ? null : (
             <div className="nt-field">
               <label htmlFor={id("folder")}>
-                Project folder{" "}
-                <span className="nt-opt">{withMessage ? "required" : "optional"}</span>
+                Project folder <span className="nt-opt">optional</span>
               </label>
               <input
                 id={id("folder")}
@@ -298,9 +317,6 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
                 placeholder="~/projects/…"
                 spellCheck={false}
                 autoComplete="off"
-                aria-required={withMessage ? true : undefined}
-                aria-invalid={errors.folder ? true : undefined}
-                aria-describedby={errors.folder ? id("folder-e") : undefined}
                 onChange={(e) => setFolder(e.target.value)}
               />
               <datalist id={id("folders")}>
@@ -317,16 +333,6 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
                     </option>
                   ))}
               </datalist>
-              {withMessage && provider === "t3" && t3Error ? (
-                <p className="nt-err">
-                  Could not list T3 projects ({t3Error}). Type the project's folder instead.
-                </p>
-              ) : null}
-              {errors.folder ? (
-                <p className="nt-err" id={id("folder-e")}>
-                  {errors.folder}
-                </p>
-              ) : null}
             </div>
           )}
           <div className="nt-field">
@@ -362,100 +368,166 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
           </div>
         </div>
 
-        <div className="nt-field">
-          <label htmlFor={id("text")}>
-            First message <span className="nt-opt">optional</span>
-          </label>
-          <textarea
-            id={id("text")}
-            rows={5}
+        <ComposerBox className="nt-composer">
+          <ComposerText
+            ref={textRef}
+            aria-label="First message"
             value={text}
-            placeholder="What should the first thread do? Leave empty to create the topic only."
+            placeholder="First message for the agent (optional)"
             onChange={(e) => setText(e.target.value)}
           />
-        </div>
-
-        {withMessage ? (
-          <fieldset className="nt-start">
-            <legend>First thread</legend>
-            <div className="nt-row">
-              <div className="nt-field">
-                <span className="nt-label" id={id("prov")}>
-                  Provider
-                </span>
-                {/* biome-ignore lint/a11y/useSemanticElements: matches the Desk's other segmented controls */}
-                <div className="seg" role="group" aria-labelledby={id("prov")}>
-                  {PROVIDERS.map((p) => (
-                    <button
-                      key={p.value}
-                      type="button"
-                      aria-pressed={provider === p.value}
-                      onClick={() => pickProvider(p.value)}
-                    >
-                      {p.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="nt-field">
-                <label htmlFor={id("model")}>
-                  Model {modelRequired ? <span className="nt-opt">required</span> : null}
-                </label>
-                <select
-                  id={id("model")}
-                  ref={modelRef}
-                  value={model}
-                  aria-required={modelRequired ? true : undefined}
-                  aria-invalid={errors.model ? true : undefined}
-                  aria-describedby={errors.model ? id("model-e") : undefined}
-                  onChange={(e) => setModel(e.target.value)}
-                >
-                  <option value="">{modelRequired ? "Choose a model…" : "Default"}</option>
-                  {choices?.models.map((m) => (
-                    <option key={m} value={m}>
-                      {m}
-                    </option>
-                  ))}
-                </select>
-                {errors.model ? (
-                  <p className="nt-err" id={id("model-e")}>
-                    {errors.model}
-                  </p>
-                ) : null}
-              </div>
-              <div className="nt-field">
-                <label htmlFor={id("effort")}>Effort</label>
-                <select
-                  id={id("effort")}
-                  value={effort}
-                  disabled={provider === "t3" && !model}
-                  onChange={(e) => setEffort(e.target.value as Effort | "")}
-                >
-                  <option value="">Default</option>
-                  {choices?.efforts.map((x) => (
-                    <option key={x} value={x}>
-                      {x}
-                    </option>
-                  ))}
-                </select>
-              </div>
+          {pathOpen ? (
+            <div className="nt-path">
+              <label htmlFor={id("path")}>Folder</label>
+              <input
+                id={id("path")}
+                ref={pathRef}
+                value={folder}
+                disabled={created !== null}
+                placeholder="~/projects/…"
+                spellCheck={false}
+                autoComplete="off"
+                aria-invalid={errors.folder ? true : undefined}
+                onChange={(e) => setFolder(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
+                    e.preventDefault();
+                    textRef.current?.focus();
+                  }
+                }}
+              />
             </div>
-            <p className="nt-hint">
-              {provider === "t3"
-                ? `T3 uses the project's default model. A model chosen here runs on T3's "${T3_INSTANCE}" provider instance${modelRequired ? ", and this project has no default model, so one is required" : ""}.`
-                : "Claude Code runs in the project folder with claude -p."}
-            </p>
-          </fieldset>
-        ) : null}
+          ) : null}
+          {provider === "t3" && t3Error && withMessage ? (
+            <ComposerNote>
+              Could not list T3 projects ({t3Error}). Type the project's folder instead.
+            </ComposerNote>
+          ) : model && provider === "t3" ? (
+            <ComposerNote>Runs on T3's "{T3_INSTANCE}" provider instance.</ComposerNote>
+          ) : modelRequired ? (
+            <ComposerNote>This project has no default model, so one is required.</ComposerNote>
+          ) : null}
+          {withMessage && errors.folder ? <ComposerError>{errors.folder}</ComposerError> : null}
+          {withMessage && errors.model ? <ComposerError>{errors.model}</ComposerError> : null}
+          {error && errorInBox ? (
+            <ComposerError>
+              The topic "{title.trim()}" was created, but its thread did not start: {error}
+            </ComposerError>
+          ) : null}
+          <ComposerToolbar
+            chips={
+              <>
+                <ChipMenu
+                  name="Provider"
+                  display={provider === "t3" ? "T3" : "Claude Code"}
+                  valueText={provider === "t3" ? "T3" : "Claude Code"}
+                  value={provider}
+                  options={PROVIDERS}
+                  onChange={(v) => pickProvider(v as Provider)}
+                />
+                {folderMode ? (
+                  <ChipMenu
+                    name="Folder"
+                    buttonRef={folderChip}
+                    display={folder.trim() ? (suggested?.label ?? baseName(folder)) : "Folder"}
+                    valueText={folder.trim() || "none"}
+                    muted={!folder.trim()}
+                    value={suggested?.path ?? (pathOpen ? TYPE_PATH : "")}
+                    icon={<Glyph d={FOLDER} />}
+                    options={[
+                      ...suggestions.map((x) => ({ value: x.path, label: x.label, hint: x.path })),
+                      {
+                        value: TYPE_PATH,
+                        label: "Type a path…",
+                        separated: suggestions.length > 0,
+                      },
+                    ]}
+                    disabledReason={created !== null ? "The topic already exists." : undefined}
+                    onChange={(v) => {
+                      if (v === TYPE_PATH) {
+                        setTypingPath(true);
+                        setTimeout(() => pathRef.current?.focus(), 0);
+                      } else {
+                        setTypingPath(false);
+                        setFolder(v);
+                      }
+                    }}
+                  />
+                ) : (
+                  <ChipMenu
+                    name="Project"
+                    buttonRef={projectChip}
+                    display={project?.title ?? "Project"}
+                    valueText={project?.title ?? "none"}
+                    muted={!project}
+                    value={project?.id ?? ""}
+                    icon={<Glyph d={FOLDER} />}
+                    options={(t3Projects ?? []).map((p) => ({
+                      value: p.id,
+                      label: p.title,
+                      hint: p.workspaceRoot,
+                    }))}
+                    disabledReason={
+                      created !== null
+                        ? "The topic already exists."
+                        : t3Projects === null
+                          ? "Loading T3 projects…"
+                          : t3Projects.length === 0
+                            ? "T3 has no projects."
+                            : undefined
+                    }
+                    onChange={(v) => {
+                      const p = t3Projects?.find((x) => x.id === v);
+                      if (p) setFolder(p.workspaceRoot);
+                    }}
+                  />
+                )}
+                <ChipMenu
+                  name="Model"
+                  buttonRef={modelChip}
+                  display={model || (modelRequired ? "Model required" : "Model")}
+                  valueText={model || (modelRequired ? "required" : "default")}
+                  muted={!model}
+                  value={model}
+                  options={[
+                    ...(modelRequired ? [] : [{ value: "", label: "Default" }]),
+                    ...(choices?.models.map((m) => ({ value: m, label: m })) ?? []),
+                  ]}
+                  onChange={setModel}
+                />
+                <ChipMenu
+                  name="Effort"
+                  display={effort || "Effort"}
+                  valueText={effort || "default"}
+                  muted={!effort}
+                  value={effort}
+                  options={[
+                    { value: "", label: "Default" },
+                    ...(choices?.efforts.map((x) => ({ value: x, label: x })) ?? []),
+                  ]}
+                  disabledReason={effortHint}
+                  onChange={(v) => setEffort(v as Effort | "")}
+                />
+              </>
+            }
+            actions={
+              <SendButton
+                ready={ready && !busy}
+                sending={phase === "starting"}
+                label={retrying ? "Retry start" : "Create and start"}
+                title={busy ? label : (sendBlocked ?? `${label} (Ctrl+Enter)`)}
+                disabled={!ready || busy}
+              />
+            }
+          />
+        </ComposerBox>
 
         <div className="nt-status" role="status" aria-live="polite">
           {busy ? label : ""}
         </div>
-        {error ? (
+        {error && !errorInBox ? (
           <p className="nt-fail" role="alert">
-            {created
-              ? `The topic "${title.trim()}" was created, but its thread did not start: ${error}`
-              : error}
+            {error}
           </p>
         ) : null}
 

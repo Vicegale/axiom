@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ApiError,
   api,
@@ -8,8 +8,19 @@ import {
   type T3Project,
 } from "../../api";
 import { readStored, removeStored, writeStored } from "../../lib/storage";
-import "../../styles/replybox.css";
 import { ChipMenu, type ChipOption } from "./ChipMenu";
+import {
+  ARROW_UP,
+  CHEVRON_DOWN,
+  ComposerBox,
+  ComposerError,
+  ComposerNote,
+  ComposerText,
+  ComposerToolbar,
+  Glyph,
+  PLUS,
+  SendButton,
+} from "./Composer";
 
 export interface ReplyBoxProps {
   topicSlug: string;
@@ -69,25 +80,6 @@ const PROVIDERS: ChipOption[] = [
   { value: "t3", label: "T3" },
   { value: "claude-code", label: "Claude Code" },
 ];
-
-const Glyph = ({ d }: { d: string }) => (
-  <svg
-    width="14"
-    height="14"
-    viewBox="0 0 14 14"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.4"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    <path d={d} />
-  </svg>
-);
-const ARROW_UP = "M7 11.5v-9M3 6.2 7 2.2l4 4";
-const CHEVRON_DOWN = "m3 5 4 4 4-4";
-const PLUS = "M7 2.8v8.4M2.8 7h8.4";
 
 /**
  * The composer of a Desk card: a one-line bar that expands into a box with the text, and the
@@ -177,15 +169,6 @@ export function ReplyBox({
     }
     wasFocused.current = false;
   }, [open, closing]);
-
-  // Grow with the text, up to the CSS max-height; then the textarea scrolls.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the text and the box opening are the triggers
-  useLayoutEffect(() => {
-    const el = area.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [text, open]);
 
   // The card picked another thread: the composer follows it.
   const picked = thread?.id ?? null;
@@ -359,20 +342,19 @@ export function ReplyBox({
 
   return (
     <div className={`rc-wrap ${open ? "in" : "out"}`}>
-      <form
+      <ComposerBox
+        as="form"
         ref={form}
-        className="rc-box"
         aria-label="Reply"
         onSubmit={(e) => {
           e.preventDefault();
           void send();
         }}
       >
-        <textarea
+        <ComposerText
           ref={area}
-          className="rc-text"
+          measureOn={open}
           aria-label={targetName ? `Message to ${targetName}` : "Message to a new thread"}
-          rows={1}
           value={text}
           placeholder={targetName ? `Reply to ${targetName}…` : "Start a thread…"}
           onChange={(e) => changeText(e.target.value)}
@@ -389,13 +371,13 @@ export function ReplyBox({
           }}
         />
         {newT3 && projectsError !== null && (
-          <p className="rc-note" role="status">
+          <ComposerNote>
             Could not list T3 projects ({projectsError}). The thread starts in the topic's
             repository folder.
-          </p>
+          </ComposerNote>
         )}
         {failure && (
-          <div className="rc-error" role="alert">
+          <ComposerError>
             <p>{failure.message}</p>
             {failure.resumeCommand && (
               <div className="rc-resume">
@@ -409,101 +391,101 @@ export function ReplyBox({
                 </button>
               </div>
             )}
-          </div>
+          </ComposerError>
         )}
-        <div className="rc-bottom">
-          <div className="rc-chips">
-            <ChipMenu
-              name="Thread"
-              display={target ? label(target) : "New thread"}
-              valueText={target ? label(target) : "new thread"}
-              value={target ? String(target.id) : NEW}
-              options={targetOptions}
-              icon={target ? undefined : <Glyph d={PLUS} />}
-              disabledReason={threads.length === 0 ? "This topic has no thread yet." : undefined}
-              onChange={(v) => changeThread(v === NEW ? null : Number(v))}
-            />
-            {!target && (
+        <ComposerToolbar
+          chips={
+            <>
               <ChipMenu
-                name="Provider"
-                display={newProvider === "t3" ? "T3" : "Claude Code"}
-                valueText={newProvider === "t3" ? "T3" : "Claude Code"}
-                value={newProvider}
-                options={PROVIDERS}
-                onChange={(v) => setNewProvider(v as NewProvider)}
+                name="Thread"
+                display={target ? label(target) : "New thread"}
+                valueText={target ? label(target) : "new thread"}
+                value={target ? String(target.id) : NEW}
+                options={targetOptions}
+                icon={target ? undefined : <Glyph d={PLUS} />}
+                disabledReason={threads.length === 0 ? "This topic has no thread yet." : undefined}
+                onChange={(v) => changeThread(v === NEW ? null : Number(v))}
               />
-            )}
-            {projectMode && (
+              {!target && (
+                <ChipMenu
+                  name="Provider"
+                  display={newProvider === "t3" ? "T3" : "Claude Code"}
+                  valueText={newProvider === "t3" ? "T3" : "Claude Code"}
+                  value={newProvider}
+                  options={PROVIDERS}
+                  onChange={(v) => setNewProvider(v as NewProvider)}
+                />
+              )}
+              {projectMode && (
+                <ChipMenu
+                  name="Project"
+                  display={project?.title ?? "Project"}
+                  valueText={project?.title ?? "none"}
+                  muted={!project}
+                  value={project?.id ?? ""}
+                  options={projects.map((p) => ({
+                    value: p.id,
+                    label: p.title,
+                    hint: p.workspaceRoot,
+                  }))}
+                  disabledReason={projects.length === 0 ? "T3 has no projects." : undefined}
+                  onChange={(v) => setProjectId(v)}
+                />
+              )}
               <ChipMenu
-                name="Project"
-                display={project?.title ?? "Project"}
-                valueText={project?.title ?? "none"}
-                muted={!project}
-                value={project?.id ?? ""}
-                options={projects.map((p) => ({
-                  value: p.id,
-                  label: p.title,
-                  hint: p.workspaceRoot,
-                }))}
-                disabledReason={projects.length === 0 ? "T3 has no projects." : undefined}
-                onChange={(v) => setProjectId(v)}
+                name="Model"
+                display={model || (modelRequired ? "Model required" : "Model")}
+                valueText={model || "default"}
+                muted={!model}
+                value={model}
+                options={[
+                  ...(modelRequired ? [] : [{ value: "", label: "Default" }]),
+                  ...(modelChoices?.models.map((m) => ({ value: m, label: m })) ?? []),
+                ]}
+                disabledReason={modelHint}
+                onChange={setModel}
               />
-            )}
-            <ChipMenu
-              name="Model"
-              display={model || (modelRequired ? "Model required" : "Model")}
-              valueText={model || "default"}
-              muted={!model}
-              value={model}
-              options={[
-                ...(modelRequired ? [] : [{ value: "", label: "Default" }]),
-                ...(modelChoices?.models.map((m) => ({ value: m, label: m })) ?? []),
-              ]}
-              disabledReason={modelHint}
-              onChange={setModel}
-            />
-            <ChipMenu
-              name="Effort"
-              display={effort || "Effort"}
-              valueText={effort || "default"}
-              muted={!effort}
-              value={effort}
-              options={[
-                { value: "", label: "Default" },
-                ...(modelChoices?.efforts.map((x) => ({ value: x, label: x })) ?? []),
-              ]}
-              disabledReason={effortHint}
-              onChange={(v) => setEffort(v as Effort | "")}
-            />
-          </div>
-          <div className="rc-actions">
-            <span className="rc-keys" aria-hidden="true">
-              {mac ? "⌘↵" : "Ctrl↵"}
-            </span>
-            <button
-              type="button"
-              className="rc-icon"
-              aria-label="Collapse"
-              title="Collapse (Esc). The draft is kept."
-              onClick={collapse}
-            >
-              <Glyph d={CHEVRON_DOWN} />
-            </button>
-            <button
-              type="submit"
-              className={`rc-send${canSend ? " ready" : ""}`}
-              disabled={!canSend}
-              aria-busy={sending || undefined}
-              aria-label={sending ? "Sending…" : sendName}
-              title={
-                sending ? "Sending…" : (blocked ?? `${sendName} (${mac ? "⌘↵" : "Ctrl+Enter"})`)
-              }
-            >
-              {sending ? <span className="rc-spin" aria-hidden="true" /> : <Glyph d={ARROW_UP} />}
-            </button>
-          </div>
-        </div>
-      </form>
+              <ChipMenu
+                name="Effort"
+                display={effort || "Effort"}
+                valueText={effort || "default"}
+                muted={!effort}
+                value={effort}
+                options={[
+                  { value: "", label: "Default" },
+                  ...(modelChoices?.efforts.map((x) => ({ value: x, label: x })) ?? []),
+                ]}
+                disabledReason={effortHint}
+                onChange={(v) => setEffort(v as Effort | "")}
+              />
+            </>
+          }
+          actions={
+            <>
+              <span className="rc-keys" aria-hidden="true">
+                {mac ? "⌘↵" : "Ctrl↵"}
+              </span>
+              <button
+                type="button"
+                className="rc-icon"
+                aria-label="Collapse"
+                title="Collapse (Esc). The draft is kept."
+                onClick={collapse}
+              >
+                <Glyph d={CHEVRON_DOWN} />
+              </button>
+              <SendButton
+                ready={canSend}
+                sending={sending}
+                label={sending ? "Sending…" : sendName}
+                title={
+                  sending ? "Sending…" : (blocked ?? `${sendName} (${mac ? "⌘↵" : "Ctrl+Enter"})`)
+                }
+              />
+            </>
+          }
+        />
+      </ComposerBox>
     </div>
   );
 }
