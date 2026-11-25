@@ -372,24 +372,41 @@ export function buildProgram(env: NodeJS.ProcessEnv, write: (s: string) => void)
 
   const monitor = sub(program, "monitor", "monitor targets");
   sub(monitor, "add", "add a monitor target (creates the link if the topic lacks it)")
-    .addArgument(new Argument("<kind>").choices(LINK_KINDS))
-    .argument("<target>", "what to watch, such as a PR URL")
+    .argument("<check>", "what to check, such as pr-review, pr-checks or deploy-health")
+    .argument("<target>", "what it watches, such as owner/repo#123")
+    .addOption(
+      new Option(
+        "--link-kind <kind>",
+        "kind of the watched link (default: pr for pr-* checks)",
+      ).choices(LINK_KINDS),
+    )
     .option("--topic <topic>", "topic slug (default: current)")
     .option("--confirmed", "confirm now instead of leaving it suggested")
     .action(
-      run((ctx, [kind, target], o) => {
+      run((ctx, [check, target], o) => {
         const { axiom, actor } = ctx;
-        const ref = ctx.topic(o.topic);
-        const detail = axiom.getTopic(ref);
+        if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(check as string)) {
+          throw new UsageError("check must be lowercase kebab-case, such as pr-review");
+        }
+        const linkKind = o.linkKind ?? ((check as string).startsWith("pr-") ? "pr" : undefined);
+        if (!linkKind) throw new UsageError("pass --link-kind for checks that are not pr-*");
+        const detail = axiom.getTopic(ctx.topic(o.topic));
         const link =
-          detail.links.find((l) => l.kind === kind && l.target === target) ??
-          axiom.addLink(detail.id, { kind: kind as never, target: target as string }, actor);
+          detail.links.find((l) => l.kind === linkKind && l.target === target) ??
+          axiom.addLink(detail.id, { kind: linkKind as never, target: target as string }, actor);
         const m = axiom.addMonitorTarget(
           detail.id,
-          { kind: kind as string, linkId: link.id, state: o.confirmed ? "confirmed" : "suggested" },
+          {
+            kind: check as string,
+            linkId: link.id,
+            state: o.confirmed ? "confirmed" : "suggested",
+          },
           actor,
         );
-        return { data: m, text: `Added ${m.state} monitor target #${m.id} (${kind} ${target}).` };
+        return {
+          data: m,
+          text: `Added ${m.state} monitor target #${m.id} (${check} on ${linkKind} ${target}).`,
+        };
       }),
     );
   sub(monitor, "confirm", "confirm a suggested monitor target")

@@ -621,7 +621,7 @@ export class Axiom {
       const existing = this.findThread({
         provider,
         providerThreadId: input.providerThreadId,
-        environmentId: input.environmentId,
+        environmentId: input.environmentId ?? null,
       });
       if (existing) {
         const where = existing.topicId === t.id ? "this topic" : `topic id ${existing.topicId}`;
@@ -647,18 +647,30 @@ export class Axiom {
     });
   }
 
+  /**
+   * Finds an attached thread. `environmentId: undefined` matches any environment (a session knows
+   * its thread id but not always its T3 environment id); `null` or a string must match exactly.
+   */
   findThread(input: {
     provider: Provider;
     providerThreadId: string;
     environmentId?: string | null;
   }): Thread | undefined {
-    const row = this.get<Row>(
-      `SELECT * FROM thread WHERE provider = ? AND provider_thread_id = ?
-         AND COALESCE(environment_id, '') = ?`,
-      input.provider,
-      input.providerThreadId,
-      input.environmentId ?? "",
-    );
+    const row =
+      input.environmentId === undefined
+        ? this.get<Row>(
+            `SELECT * FROM thread WHERE provider = ? AND provider_thread_id = ?
+               ORDER BY id LIMIT 1`,
+            input.provider,
+            input.providerThreadId,
+          )
+        : this.get<Row>(
+            `SELECT * FROM thread WHERE provider = ? AND provider_thread_id = ?
+               AND COALESCE(environment_id, '') = ?`,
+            input.provider,
+            input.providerThreadId,
+            input.environmentId ?? "",
+          );
     return row ? camel<Thread>(row) : undefined;
   }
 

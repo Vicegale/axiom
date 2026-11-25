@@ -352,8 +352,20 @@ describe("links and monitors", () => {
     s.ok(["link", "add", "repository", "/home/me/repo", "--label", "main repo", "--topic", "t"]);
     s.ok(["link", "add", "pr", "https://github.com/o/r/pull/1", "--topic", "t"]);
     expect(s.exec(["link", "add", "bogus", "x", "--topic", "t"]).code).toBe(2);
-    s.ok(["monitor", "add", "pr", "https://github.com/o/r/pull/1", "--topic", "t"]);
-    s.ok(["monitor", "add", "branch", "feat/x", "--topic", "t", "--confirmed"]);
+    s.ok(["monitor", "add", "pr-review", "https://github.com/o/r/pull/1", "--topic", "t"]);
+    s.ok([
+      "monitor",
+      "add",
+      "ci-status",
+      "feat/x",
+      "--link-kind",
+      "branch",
+      "--topic",
+      "t",
+      "--confirmed",
+    ]);
+    expect(s.exec(["monitor", "add", "deploy-health", "x", "--topic", "t"]).code).toBe(2);
+    expect(s.exec(["monitor", "add", "Bad_Check", "x", "--topic", "t"]).code).toBe(2);
     let show = s.json(["topic", "show", "t"]);
     expect(show.links.map((l: any) => [l.kind, l.target])).toEqual([
       ["repository", "/home/me/repo"],
@@ -362,8 +374,8 @@ describe("links and monitors", () => {
     ]);
     expect(show.links[0].label).toBe("main repo");
     expect(show.monitorTargets.map((m: any) => [m.kind, m.state, m.target])).toEqual([
-      ["pr", "suggested", "https://github.com/o/r/pull/1"],
-      ["branch", "confirmed", "feat/x"],
+      ["pr-review", "suggested", "https://github.com/o/r/pull/1"],
+      ["ci-status", "confirmed", "feat/x"],
     ]);
     s.ok(["monitor", "confirm", String(show.monitorTargets[0].id)]);
     show = s.json(["topic", "show", "t"]);
@@ -400,7 +412,7 @@ describe("threads", () => {
     s.ok(["topic", "note", "default note"], env);
     s.ok(["topic", "goal", "default goal"], env);
     s.ok(["link", "add", "spec", "docs/x.md"], env);
-    s.ok(["monitor", "add", "pr", "https://x/pr/1"], env);
+    s.ok(["monitor", "add", "pr-checks", "https://x/pr/1"], env);
     expect(s.ok(["topic", "show"], env)).toContain("default goal");
     expect(s.json<any[]>(["entries"], env).map((e) => e.body)).toContain("from the thread");
     expect(s.exec(["thread", "attach", "t"], env).code).toBe(1); // already attached
@@ -419,6 +431,13 @@ describe("threads", () => {
       environmentId: null,
     });
     expect(s.json(["thread", "show"], env).topic.slug).toBe("t");
+  });
+
+  it("finds a T3 thread attached with an environment id from T3CODE_THREAD_ID alone", () => {
+    const s = session();
+    s.ok(["topic", "new", "t", "--title", "T"]);
+    s.ok(["thread", "attach", "t", "--provider", "t3", "--id", "th-env", "--env", "vic-desktop"]);
+    expect(s.json(["thread", "show"], { T3CODE_THREAD_ID: "th-env" }).topic.slug).toBe("t");
   });
 
   it("records the attached thread on entries written by an agent", () => {
