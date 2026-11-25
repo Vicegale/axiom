@@ -112,11 +112,12 @@
   display: flex; align-items: center; gap: 0.5rem; flex: none; padding: 0.5rem 0.75rem;
   color: var(--text-3); border-bottom: 1px solid var(--line);
 }
-.pp-search:focus-within { color: var(--text-2); }
+.pp-search:focus-within { color: var(--text); box-shadow: inset 0 -2px 0 var(--focus); }
 .pp-input {
   flex: 1; min-width: 0; padding: 0.125rem 0; font: inherit; font-size: 0.8125rem; color: var(--text);
   background: transparent; border: 0; outline: none;
 }
+.pp-input:focus-visible { outline: none; }
 .pp-input::placeholder { color: var(--text-3); }
 .pp-list { flex: 1; min-height: 0; padding: 0.25rem; overflow-y: auto; overscroll-behavior: contain; }
 .pp-heading {
