@@ -144,15 +144,15 @@ export class T3Provider {
       const threads = this.ax.listProviderThreads("t3").filter((t) => t.endedAt === null);
       const environmentId = readT3Meta(this.dir).environmentId;
       // Read everything first: a failing query leaves the Axiom threads untouched.
-      const planned = threads.map((th) => ({
-        th,
-        action: decide(
-          th,
-          db.thread(th.providerThreadId, environmentId),
-          this.ax.runningSubagents(th.id),
-        ),
-      }));
+      const planned = threads.map((th) => {
+        const state = db.thread(th.providerThreadId, environmentId);
+        return { th, state, action: decide(th, state, this.ax.runningSubagents(th.id)) };
+      });
       let applied = 0;
+      // T3 names its threads; use that name when the Axiom thread has none.
+      for (const { th, state } of planned) {
+        if (!th.title && state?.title) this.ax.fillThreadTitle(th.id, state.title);
+      }
       for (const { th, action } of planned) {
         if (!action) continue;
         switch (action.kind) {

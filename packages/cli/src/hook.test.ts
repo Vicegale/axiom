@@ -186,6 +186,14 @@ describe("axiom hook", () => {
     expect(last()).not.toBeNull();
   });
 
+  it("names an untitled thread after its first prompt", () => {
+    const s = session();
+    s.attach();
+    s.hook("prompt", payload("UserPromptSubmit", { prompt: "Fix the export\nwith details" }));
+    s.hook("prompt", payload("UserPromptSubmit", { prompt: "Second prompt" }));
+    expect(s.topic().threads[0].title).toBe("Fix the export");
+  });
+
   it("does nothing for a session that is not attached", () => {
     const s = session();
     s.attach();

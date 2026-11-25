@@ -242,15 +242,23 @@ function Parents({
   );
 }
 
+/** Provider ids can be long (T3 launch ids are ~80 chars): show the distinctive tail. */
+function shortId(id: string): string {
+  const tail = id.split(":").pop() ?? id;
+  return tail.length > 12 ? `…${tail.slice(-8)}` : tail;
+}
+
 function ThreadRow({ thread: th, now }: { thread: Thread; now: Date }) {
   const end = th.endedAt ? stamp(th.endedAt, now) : "open";
   return (
     <li className={`thread s-${th.status}`}>
       <span className="prov">{PROVIDER_LABEL[th.provider] ?? th.provider}</span>
       <span className="th-main">
-        <span className="th-title">{th.title ?? th.providerThreadId}</span>
+        <span className="th-title">
+          {th.title || `Untitled ${PROVIDER_LABEL[th.provider] ?? th.provider} thread`}
+        </span>
         <span className="th-meta">
-          <span>{th.providerThreadId}</span>
+          <span title={th.providerThreadId}>{shortId(th.providerThreadId)}</span>
           {th.environmentId ? <span>{th.environmentId}</span> : null}
         </span>
       </span>

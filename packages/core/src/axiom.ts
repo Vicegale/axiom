@@ -732,6 +732,16 @@ export class Axiom {
     );
   }
 
+  /** Sets a thread's title when it has none (providers fill it in; a title given by hand wins). */
+  fillThreadTitle(threadId: number, title: string): boolean {
+    const t = title.replace(/\s+/g, " ").trim().slice(0, 120);
+    if (!t) return false;
+    const r = this.db
+      .prepare("UPDATE thread SET title = ? WHERE id = ? AND (title IS NULL OR title = '')")
+      .run(t, threadId);
+    return Number(r.changes) > 0;
+  }
+
   /** Records that a Claude Code hook ran (any session, attached or not): hooks are alive. */
   recordHookEvent(): void {
     this.run(
