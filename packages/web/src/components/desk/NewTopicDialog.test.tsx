@@ -162,7 +162,8 @@ describe("+ New topic: T3 projects", () => {
     pick("Provider: T3", "Claude Code");
     fireEvent.click(chip("Folder: none"));
     const labels = [...document.querySelectorAll(".pp-heading")].map((h) => h.textContent);
-    expect(labels).toEqual(["T3 projects", "~/projects"]);
+    // The ~/projects folder is also a T3 project: it is listed once, under T3 projects.
+    expect(labels).toEqual(["T3 projects"]);
     expect(screen.getAllByRole("option", { hidden: true }).at(-1)?.textContent).toBe(
       "Type a path…",
     );
