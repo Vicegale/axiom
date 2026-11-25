@@ -118,7 +118,8 @@ describe("topics", () => {
     expect(slugs(["--view", "attention"])).toEqual(["b"]);
     expect(slugs(["--view", "monitoring"])).toEqual(["c"]);
     expect(slugs(["--view", "ongoing"])).toEqual([]);
-    expect(s.ok(["topic", "list"])).toMatch(/^\s?b\s+hitl/m);
+    expect(s.ok(["topic", "list"])).toMatch(/^\s+b\s+hitl/m);
+    expect(s.ok(["topic", "list"])).toContain("not attached to a topic");
   });
 
   it("--json shape for show and list", () => {
@@ -488,6 +489,20 @@ describe("threads", () => {
       environmentId: null,
     });
     expect(s.json(["thread", "show"], env).topic.slug).toBe("t");
+  });
+
+  it("topic list marks this session's topic; attach without a topic says where it is", () => {
+    const s = session();
+    s.ok(["topic", "new", "t", "--title", "T"]);
+    s.ok(["topic", "new", "u", "--title", "U"]);
+    const env = { CLAUDE_CODE_SESSION_ID: "here-1" };
+    s.ok(["thread", "attach", "t"], env);
+    const out = s.ok(["topic", "list"], env);
+    expect(out).toMatch(/^→\s+t\s/m);
+    expect(out).toContain("this session's topic (t)");
+    const r = s.exec(["thread", "attach"], env);
+    expect(r.code).toBe(2);
+    expect(r.err).toContain("already attached to topic t");
   });
 
   it("finds a T3 thread attached with an environment id from T3CODE_THREAD_ID alone", () => {

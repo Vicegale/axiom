@@ -172,7 +172,9 @@ export function buildProgram(env: NodeJS.ProcessEnv, write: (s: string) => void)
         if (!o.all && !o.status) {
           topics = topics.filter((t) => t.status !== "done" && t.status !== "stale");
         }
-        return { data: topics, text: topicTable(topics) };
+        const here = ctx.currentThread();
+        const current = here ? ctx.axiom.getTopic(here.topicId).slug : undefined;
+        return { data: topics, text: topicTable(topics, current) };
       }),
     );
 
@@ -602,7 +604,7 @@ export function buildProgram(env: NodeJS.ProcessEnv, write: (s: string) => void)
   // ---- threads --------------------------------------------------------------------------
   const thread = sub(program, "thread", "threads attached to topics");
   sub(thread, "attach", "attach a thread to a topic (default: the current thread)")
-    .argument("<topic>")
+    .argument("[topic]")
     .addOption(new Option("--provider <provider>").choices(PROVIDERS))
     .option("--id <providerThreadId>", "the provider's thread id")
     .option("--env <environmentId>", "T3 environment id")
@@ -610,6 +612,15 @@ export function buildProgram(env: NodeJS.ProcessEnv, write: (s: string) => void)
     .option("--task <key>", "the task of the topic this thread works on")
     .action(
       run((ctx, [slug], o) => {
+        if (!slug) {
+          const here = ctx.currentThread();
+          const at = here ? ctx.axiom.getTopic(here.topicId).slug : undefined;
+          throw new UsageError(
+            at
+              ? `this session is already attached to topic ${at} (axiom thread show)`
+              : "name the topic to attach to: axiom thread attach <topic> (axiom topic list shows them)",
+          );
+        }
         if (Boolean(o.provider) !== Boolean(o.id)) {
           throw new UsageError("--provider and --id go together");
         }

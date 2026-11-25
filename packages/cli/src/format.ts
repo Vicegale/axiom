@@ -51,15 +51,23 @@ export function statusLabel(t: { status: TopicStatus | null; openThreadStatuses?
   return open.length ? `(${[...new Set(open)].join("/")})` : "(none)";
 }
 
-export function topicTable(topics: TopicSummary[]): string {
+/** `current` is the slug of the topic this session's thread is attached to, if any. */
+export function topicTable(topics: TopicSummary[], current?: string): string {
   if (topics.length === 0) return "No topics.";
   const rows = topics.map((t) => [
-    `${t.highlighted ? "*" : " "}${t.slug}`,
+    t.slug === current ? "→" : " ",
+    t.slug,
     statusLabel(t),
+    t.highlighted ? "new" : "",
     when(t.lastWorkedAt),
     t.title,
   ]);
-  return table(rows, (r, c, cell) => (c === 1 ? paint(cell, topics[r]?.status ?? null) : cell));
+  const out = table(rows, (r, c, cell) =>
+    c === 2 ? paint(cell, topics[r]?.status ?? null) : cell,
+  );
+  return current
+    ? `${out}\n\n→ is this session's topic (${current}).`
+    : `${out}\n\nThis session is not attached to a topic (axiom thread attach <topic>).`;
 }
 
 function indent(text: string, by = "    "): string {
