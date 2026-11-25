@@ -249,7 +249,11 @@ function shortId(id: string): string {
 }
 
 function ThreadRow({ thread: th, now }: { thread: Thread; now: Date }) {
-  const end = th.endedAt ? stamp(th.endedAt, now) : "open";
+  const started = stamp(th.startedAt, now);
+  const span = th.endedAt ? `${started} → ${stamp(th.endedAt, now)}` : `since ${started}`;
+  const full = th.endedAt
+    ? `Started ${fullStamp(th.startedAt)}, ended ${fullStamp(th.endedAt)}`
+    : `Started ${fullStamp(th.startedAt)}, still open`;
   return (
     <li className={`thread s-${th.status}`}>
       <span className="prov">{PROVIDER_LABEL[th.provider] ?? th.provider}</span>
@@ -266,8 +270,8 @@ function ThreadRow({ thread: th, now }: { thread: Thread; now: Date }) {
         </span>
       </span>
       <StatusPill status={th.status} />
-      <time className="th-time">
-        {stamp(th.startedAt, now)} → {end}
+      <time className="th-time" dateTime={th.startedAt} title={full}>
+        {span}
       </time>
     </li>
   );
