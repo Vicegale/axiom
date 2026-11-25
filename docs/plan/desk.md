@@ -1,6 +1,6 @@
 # Build plan: the Desk (spec 02)
 
-- Status: draft (awaiting the owner)
+- Status: approved (2026-11-25)
 - Created: 2026-11-25
 - Builds: 02 Multi-task UI. Out of scope: the Steward (03), the ctx meter (no source yet), mobile.
 
@@ -26,4 +26,6 @@ D1 first; then D2 and D3 in parallel (separate worktrees); then D4 and D5.
 ## Open questions
 
 1. The latest summary is stored on the thread, not as a history entry (so history isn't flooded with one entry per stop). OK?
+   - Answered 2026-11-25: summaries are ephemeral: only the latest is kept, on the thread; never in history.
 2. Claude Code approvals need a hook that blocks the agent until Axiom answers (with a timeout that falls back to the normal terminal prompt). OK to install that hook?
+   - Answered 2026-11-25: OK.

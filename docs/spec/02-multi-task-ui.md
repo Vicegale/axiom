@@ -35,7 +35,8 @@ The owner's reference for it is a screen called **Desk** ([docs/design/reference
 - 2026-11-25: Each card shows one of its topic's threads (selectable), a Haiku summary of that thread's latest reply plus what the owner must do next, and the full reply collapsible as Markdown.
 - 2026-11-25: The owner can reply from the card: to the selected thread, or as a new thread attached to the topic, with a model and effort picker. The reply box is hidden until the owner chooses to reply.
 - 2026-11-25: Replying works for both providers: T3 threads (through T3's API) and direct Claude Code sessions (by resuming the session).
-- 2026-11-25: The Haiku summary is made each time a thread stops, using the owner's subscription (not an API key).
+- 2026-11-25: The Haiku summary is made each time a thread stops, using the owner's subscription (not an API key). Summaries are ephemeral: only the latest is kept, on the thread, never in history.
+- 2026-11-25: Claude Code approvals from the card use a blocking `PermissionRequest` hook that waits for the owner's answer in Axiom, falling back to the terminal prompt after a timeout.
 - 2026-11-25: Sort orders: "Ready first" puts topics where the owner is next on top (waiting for them, stopped with a question, in review); "Fixed" is the owner's drag order. Favourites are always first in both.
 - 2026-11-25: Hiding a topic hides it from the Desk only; it stays in the tracker.
 - 2026-11-25: The owner can approve or deny a thread's permission prompt from its card.
