@@ -67,6 +67,7 @@ const bodies = {
   status: z.strictObject({ status: topicStatusSchema, reason: z.string().optional() }),
   taskStatus: z.strictObject({ status: taskStatusSchema }),
   mute: z.strictObject({ muted: z.boolean() }),
+  linkUpdate: z.strictObject({ label: z.string().optional(), description: z.string().optional() }),
   thread: z.strictObject({
     provider: providerSchema,
     providerThreadId: z.string().min(1),
@@ -302,6 +303,13 @@ export function createApp(ctx: AppContext): Hono {
     const slug = c.req.param("slug");
     const key = c.req.param("key");
     return c.json(write(() => ax.setTaskStatus(slug, key, body.status, owner)));
+  });
+
+  app.patch("/api/topics/:slug/links/:id", async (c) => {
+    const body = parse(bodies.linkUpdate, await json(c));
+    const slug = c.req.param("slug");
+    const id = intParam(c.req.param("id"), "link id");
+    return c.json(write(() => ax.updateLink(slug, id, body, owner)));
   });
 
   app.post("/api/topics/:slug/open", (c) => {

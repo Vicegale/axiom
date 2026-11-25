@@ -59,6 +59,43 @@ function topic(slug = "demo") {
   return slug;
 }
 
+describe("link descriptions", () => {
+  it("includes descriptions in the topic detail and lets the owner edit a link", async () => {
+    topic("t");
+    const l = cli.addLink(
+      "t",
+      { kind: "artifact", target: "a.md", label: "A", description: "About a" },
+      owner,
+    );
+    const detail = await api("/api/topics/t");
+    expect(detail.body.links[0]).toMatchObject({ id: l.id, label: "A", description: "About a" });
+    const ok = await api(`/api/topics/t/links/${l.id}`, {
+      method: "PATCH",
+      body: { description: "Changed", label: "" },
+    });
+    expect(ok.status).toBe(200);
+    expect(ok.body).toMatchObject({ description: "Changed", label: null });
+    expect(cli.getTopic("t").links[0]?.description).toBe("Changed");
+    const clear = await api(`/api/topics/t/links/${l.id}`, {
+      method: "PATCH",
+      body: { description: "" },
+    });
+    expect(clear.body.description).toBeNull();
+  });
+
+  it("rejects bad link edits", async () => {
+    topic("t");
+    const l = cli.addLink("t", { kind: "artifact", target: "a.md" }, owner);
+    const patch = (path: string, body: unknown) => api(path, { method: "PATCH", body });
+    expect(
+      (await patch(`/api/topics/t/links/${l.id}`, { description: "x".repeat(201) })).status,
+    ).toBe(400);
+    expect((await patch(`/api/topics/t/links/${l.id}`, { nope: 1 })).status).toBe(400);
+    expect((await patch("/api/topics/t/links/999", { label: "x" })).status).toBe(404);
+    expect((await patch("/api/topics/t/links/abc", { label: "x" })).status).toBe(400);
+  });
+});
+
 describe("topics", () => {
   it("lists topics with views, parents, threads and the highlight flag", async () => {
     topic("a");
