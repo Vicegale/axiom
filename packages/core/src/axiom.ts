@@ -1,0 +1,1071 @@
+import type { DatabaseSync, SQLInputValue, StatementSync } from "node:sqlite";
+import type { z } from "zod";
+import {
+  type Actor,
+  DEFAULT_STALE_AFTER_DAYS,
+  type EntryKind,
+  type LinkKind,
+  type MonitorState,
+  type NotificationKind,
+  type Provider,
+  type TopicStatus,
+  type View,
+  type WorkItemStatus,
+} from "./constants.js";
+import { AxiomError } from "./errors.js";
+import {
+  entryWriteError,
+  isAxiomEntryKind,
+  manualStatusError,
+  needsStalePrompt,
+  staleCutoff,
+  stopStatus,
+  type ThreadState,
+  topicStatusFromThreads,
+  viewsOfTopic,
+} from "./rules.js";
+import {
+  entryDataSchemas,
+  jiraSchema,
+  linkKindSchema,
+  monitorStateSchema,
+  notificationKindSchema,
+  parseWith,
+  providerSchema,
+  refsSchema,
+  settingSchemas,
+  slugSchema,
+  topicStatusSchema,
+  workItemStatusSchema,
+} from "./schemas.js";
+import type {
+  Entry,
+  Epic,
+  Link,
+  MonitorTarget,
+  Notification,
+  Ref,
+  Thread,
+  Ticket,
+  Topic,
+  TopicDetail,
+  TopicRef,
+  TopicSummary,
+} from "./types.js";
+
+export type Clock = () => Date;
+
+type Row = Record<string, unknown>;
+const BOOLEAN_COLUMNS = new Set(["muted", "stale_prompt_dismissed", "waiting_on_owner"]);
+
+function camel<T>(row: Row | undefined): T {
+  if (!row) throw new AxiomError("not-found", "row not found");
+  const out: Row = {};
+  for (const [key, value] of Object.entries(row)) {
+    const name = key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+    out[name] = BOOLEAN_COLUMNS.has(key) ? value === 1 : value;
+  }
+  return out as T;
+}
+
+export interface CreateTopicInput {
+  slug: string;
+  title: string;
+  goal?: string;
+  statusNote?: string;
+  status?: TopicStatus;
+}
+
+export interface CreateWorkItemInput {
+  slug: string;
+  title: string;
+  status?: WorkItemStatus;
+  jira?: { key: string; url: string };
+}
+
+export interface AttachThreadInput {
+  provider: Provider;
+  providerThreadId: string;
+  environmentId?: string | null;
+  title?: string;
+}
+
+export interface EntryInput {
+  kind: EntryKind;
+  body?: string;
+  data?: unknown;
+  refs?: Ref[];
+  correctsEntryId?: number;
+}
+
+export interface ListTopicsFilter {
+  view?: View;
+  status?: TopicStatus | null;
+}
+
+export interface ListNotificationsOptions {
+  includeDismissed?: boolean;
+}
+
+function ownerOnly(actor: Actor, what: string): void {
+  if (actor.kind !== "owner") {
+    throw new AxiomError("permission", `only the owner can ${what}`);
+  }
+}
+
+/** The tracker's operations on one open database. Every write takes an actor. */
+export class Axiom {
+  readonly db: DatabaseSync;
+  private readonly clock: Clock;
+  private readonly statements = new Map<string, StatementSync>();
+  private depth = 0;
+
+  constructor(db: DatabaseSync, clock: Clock = () => new Date()) {
+    this.db = db;
+    this.clock = clock;
+  }
+
+  close(): void {
+    this.statements.clear();
+    this.db.close();
+  }
+
+  now(): Date {
+    return this.clock();
+  }
+
+  // ---- plumbing -----------------------------------------------------------
+
+  private stmt(sql: string): StatementSync {
+    let s = this.statements.get(sql);
+    if (!s) {
+      s = this.db.prepare(sql);
+      this.statements.set(sql, s);
+    }
+    return s;
+  }
+
+  private all<T>(sql: string, ...params: unknown[]): T[] {
+    return this.stmt(sql).all(...(params as SQLInputValue[])) as unknown as T[];
+  }
+
+  private get<T>(sql: string, ...params: unknown[]): T | undefined {
+    return this.stmt(sql).get(...(params as SQLInputValue[])) as unknown as T | undefined;
+  }
+
+  private run(sql: string, ...params: unknown[]): number {
+    const r = this.stmt(sql).run(...(params as SQLInputValue[]));
+    return Number(r.lastInsertRowid);
+  }
+
+  /** `BEGIN IMMEDIATE ... COMMIT` for the outermost call; savepoints when nested. */
+  private tx<T>(fn: () => T): T {
+    if (this.depth === 0) {
+      this.db.exec("BEGIN IMMEDIATE");
+      this.depth = 1;
+      try {
+        const result = fn();
+        this.db.exec("COMMIT");
+        return result;
+      } catch (err) {
+        this.db.exec("ROLLBACK");
+        throw err;
+      } finally {
+        this.depth = 0;
+      }
+    }
+    const name = `sp${this.depth}`;
+    this.db.exec(`SAVEPOINT ${name}`);
+    this.depth++;
+    try {
+      const result = fn();
+      this.db.exec(`RELEASE ${name}`);
+      return result;
+    } catch (err) {
+      this.db.exec(`ROLLBACK TO ${name}`);
+      this.db.exec(`RELEASE ${name}`);
+      throw err;
+    } finally {
+      this.depth--;
+    }
+  }
+
+  private iso(): string {
+    return this.clock().toISOString();
+  }
+
+  private topicRow(ref: TopicRef): Topic {
+    const row =
+      typeof ref === "number"
+        ? this.get<Row>("SELECT * FROM topic WHERE id = ?", ref)
+        : this.get<Row>("SELECT * FROM topic WHERE slug = ?", ref);
+    if (!row) throw new AxiomError("not-found", `topic not found: ${ref}`);
+    return camel<Topic>(row);
+  }
+
+  private threadRow(id: number): Thread {
+    const row = this.get<Row>("SELECT * FROM thread WHERE id = ?", id);
+    if (!row) throw new AxiomError("not-found", `thread not found: ${id}`);
+    return camel<Thread>(row);
+  }
+
+  // ---- topics -------------------------------------------------------------
+
+  createTopic(input: CreateTopicInput, actor: Actor): Topic {
+    const slug = parseWith(slugSchema, input.slug, "slug");
+    const status = parseWith(topicStatusSchema, input.status ?? "idle", "status");
+    if (!input.title.trim()) throw new AxiomError("validation", "title is required");
+    return this.tx(() => {
+      if (this.get("SELECT 1 FROM topic WHERE slug = ?", slug)) {
+        throw new AxiomError("conflict", `topic slug already exists: ${slug}`);
+      }
+      const at = this.iso();
+      const id = this.run(
+        `INSERT INTO topic (slug, title, status, status_note, goal, created_at, last_worked_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        slug,
+        input.title,
+        status,
+        input.statusNote ?? null,
+        input.goal ?? null,
+        at,
+        at,
+      );
+      const threadId = actor.kind === "agent" ? (actor.threadId ?? null) : null;
+      this.insertEntry({
+        topicId: id,
+        author: "axiom",
+        threadId: this.knownThreadId(threadId),
+        kind: "topic created",
+        body: `Topic created: ${input.title}`,
+        data: { createdBy: actor.kind },
+      });
+      return this.topicRow(id);
+    });
+  }
+
+  updateTopic(
+    ref: TopicRef,
+    changes: { title?: string; goal?: string | null; statusNote?: string | null },
+    _actor: Actor,
+  ): Topic {
+    return this.tx(() => {
+      const t = this.topicRow(ref);
+      this.run(
+        "UPDATE topic SET title = ?, goal = ?, status_note = ?, last_worked_at = ? WHERE id = ?",
+        changes.title ?? t.title,
+        changes.goal === undefined ? t.goal : changes.goal,
+        changes.statusNote === undefined ? t.statusNote : changes.statusNote,
+        this.iso(),
+        t.id,
+      );
+      return this.topicRow(t.id);
+    });
+  }
+
+  /** Sets the topic's status by hand. Agents' choices are also remembered on their thread. */
+  setTopicStatus(ref: TopicRef, status: TopicStatus, actor: Actor, reason?: string): Topic {
+    const parsed = parseWith(topicStatusSchema, status, "status");
+    const denied = manualStatusError(actor, parsed);
+    if (denied) throw new AxiomError("permission", denied);
+    return this.tx(() => {
+      const t = this.topicRow(ref);
+      let threadId: number | null = null;
+      if (actor.kind === "agent" && actor.threadId !== undefined) {
+        const th = this.get<Row>("SELECT * FROM thread WHERE id = ?", actor.threadId);
+        if (th && th.topic_id === t.id) {
+          threadId = actor.threadId;
+          this.run("UPDATE thread SET declared_status = ? WHERE id = ?", parsed, threadId);
+        }
+      }
+      this.applyTopicStatus(t, parsed, reason, threadId);
+      return this.topicRow(t.id);
+    });
+  }
+
+  setTopicMuted(ref: TopicRef, muted: boolean, actor: Actor): Topic {
+    ownerOnly(actor, "mute a topic");
+    return this.tx(() => {
+      const t = this.topicRow(ref);
+      this.run("UPDATE topic SET muted = ? WHERE id = ?", muted ? 1 : 0, t.id);
+      return this.topicRow(t.id);
+    });
+  }
+
+  /** The owner clicks a topic: its undismissed notifications are dismissed. */
+  openTopic(ref: TopicRef, actor: Actor): void {
+    ownerOnly(actor, "open a topic");
+    this.tx(() => {
+      const t = this.topicRow(ref);
+      this.run(
+        "UPDATE notification SET dismissed_at = ? WHERE topic_id = ? AND dismissed_at IS NULL",
+        this.iso(),
+        t.id,
+      );
+    });
+  }
+
+  /** Writes the new status (and a `status change` entry) if it differs from the current one. */
+  private applyTopicStatus(
+    t: Topic,
+    to: TopicStatus | null,
+    reason: string | undefined,
+    threadId: number | null,
+  ): void {
+    if (t.status === to) return;
+    this.run("UPDATE topic SET status = ? WHERE id = ?", to, t.id);
+    this.insertEntry({
+      topicId: t.id,
+      author: "axiom",
+      threadId,
+      kind: "status change",
+      body: `${t.status ?? "none"} -> ${to ?? "none"}${reason ? `: ${reason}` : ""}`,
+      data: { from: t.status, to, ...(reason ? { reason } : {}) },
+    });
+  }
+
+  private knownThreadId(id: number | null | undefined): number | null {
+    if (id === null || id === undefined) return null;
+    return this.get("SELECT 1 FROM thread WHERE id = ?", id) ? id : null;
+  }
+
+  getTopic(ref: TopicRef): TopicDetail {
+    const t = this.topicRow(ref);
+    const summary = this.summarize(t);
+    return {
+      ...summary,
+      tickets: this.all<Row>(
+        `SELECT ticket.* FROM ticket JOIN topic_ticket ON ticket.id = topic_ticket.ticket_id
+         WHERE topic_ticket.topic_id = ? ORDER BY ticket.id`,
+        t.id,
+      ).map((r) => camel<Ticket>(r)),
+      epics: this.all<Row>(
+        `SELECT epic.* FROM epic JOIN topic_epic ON epic.id = topic_epic.epic_id
+         WHERE topic_epic.topic_id = ? ORDER BY epic.id`,
+        t.id,
+      ).map((r) => camel<Epic>(r)),
+      threads: this.all<Row>("SELECT * FROM thread WHERE topic_id = ? ORDER BY id", t.id).map((r) =>
+        camel<Thread>(r),
+      ),
+      links: this.all<Row>("SELECT * FROM link WHERE topic_id = ? ORDER BY id", t.id).map((r) =>
+        camel<Link>(r),
+      ),
+      monitorTargets: this.all<Row>(
+        "SELECT * FROM monitor_target WHERE topic_id = ? ORDER BY id",
+        t.id,
+      ).map((r) => camel<MonitorTarget>(r)),
+    };
+  }
+
+  private summarize(t: Topic): TopicSummary {
+    const openThreadStatuses = this.all<{ status: TopicStatus }>(
+      "SELECT status FROM thread WHERE topic_id = ? AND ended_at IS NULL ORDER BY id",
+      t.id,
+    ).map((r) => r.status);
+    return {
+      ...t,
+      views: viewsOfTopic(t.status, openThreadStatuses),
+      highlighted: this.isHighlighted(t.id),
+      openThreadStatuses,
+    };
+  }
+
+  listTopics(filter: ListTopicsFilter = {}): TopicSummary[] {
+    return this.all<Row>("SELECT * FROM topic ORDER BY last_worked_at DESC, id DESC")
+      .map((r) => this.summarize(camel<Topic>(r)))
+      .filter((t) => filter.view === undefined || t.views.includes(filter.view))
+      .filter((t) => filter.status === undefined || t.status === filter.status);
+  }
+
+  // ---- tickets and epics --------------------------------------------------
+
+  private createWorkItem(table: "ticket" | "epic", input: CreateWorkItemInput): Ticket {
+    const slug = parseWith(slugSchema, input.slug, "slug");
+    const status = parseWith(workItemStatusSchema, input.status ?? "to do", "status");
+    const jira = input.jira === undefined ? null : parseWith(jiraSchema, input.jira, "jira");
+    return this.tx(() => {
+      if (this.get(`SELECT 1 FROM ${table} WHERE slug = ?`, slug)) {
+        throw new AxiomError("conflict", `${table} slug already exists: ${slug}`);
+      }
+      const at = this.iso();
+      const id = this.run(
+        `INSERT INTO ${table} (slug, title, status, jira_key, jira_url, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        slug,
+        input.title,
+        status,
+        jira?.key ?? null,
+        jira?.url ?? null,
+        at,
+        at,
+      );
+      return this.workItemRow(table, id);
+    });
+  }
+
+  private workItemRow(table: "ticket" | "epic", ref: TopicRef): Ticket {
+    const row =
+      typeof ref === "number"
+        ? this.get<Row>(`SELECT * FROM ${table} WHERE id = ?`, ref)
+        : this.get<Row>(`SELECT * FROM ${table} WHERE slug = ?`, ref);
+    if (!row) throw new AxiomError("not-found", `${table} not found: ${ref}`);
+    return camel<Ticket>(row);
+  }
+
+  private setWorkItemStatus(
+    table: "ticket" | "epic",
+    ref: TopicRef,
+    status: WorkItemStatus,
+    _actor: Actor,
+  ): Ticket {
+    const parsed = parseWith(workItemStatusSchema, status, "status");
+    return this.tx(() => {
+      const item = this.workItemRow(table, ref);
+      if (item.jiraKey !== null) {
+        throw new AxiomError(
+          "conflict",
+          `${table} ${item.slug} is linked to Jira (${item.jiraKey}); its status is Jira's and is locked`,
+        );
+      }
+      this.run(
+        `UPDATE ${table} SET status = ?, updated_at = ? WHERE id = ?`,
+        parsed,
+        this.iso(),
+        item.id,
+      );
+      return this.workItemRow(table, item.id);
+    });
+  }
+
+  private setWorkItemJiraStatus(
+    table: "ticket" | "epic",
+    ref: TopicRef,
+    jiraStatus: string,
+  ): Ticket {
+    return this.tx(() => {
+      const item = this.workItemRow(table, ref);
+      if (item.jiraKey === null) {
+        throw new AxiomError("conflict", `${table} ${item.slug} is not linked to Jira`);
+      }
+      const at = this.iso();
+      this.run(
+        `UPDATE ${table} SET jira_status = ?, jira_synced_at = ?, updated_at = ? WHERE id = ?`,
+        jiraStatus,
+        at,
+        at,
+        item.id,
+      );
+      return this.workItemRow(table, item.id);
+    });
+  }
+
+  createTicket(input: CreateWorkItemInput, _actor: Actor): Ticket {
+    return this.createWorkItem("ticket", input);
+  }
+  createEpic(input: CreateWorkItemInput, _actor: Actor): Epic {
+    return this.createWorkItem("epic", input);
+  }
+  getTicket(ref: TopicRef): Ticket {
+    return this.workItemRow("ticket", ref);
+  }
+  getEpic(ref: TopicRef): Epic {
+    return this.workItemRow("epic", ref);
+  }
+  listTickets(): Ticket[] {
+    return this.all<Row>("SELECT * FROM ticket ORDER BY id").map((r) => camel<Ticket>(r));
+  }
+  listEpics(): Epic[] {
+    return this.all<Row>("SELECT * FROM epic ORDER BY id").map((r) => camel<Epic>(r));
+  }
+  setTicketStatus(ref: TopicRef, status: WorkItemStatus, actor: Actor): Ticket {
+    return this.setWorkItemStatus("ticket", ref, status, actor);
+  }
+  setEpicStatus(ref: TopicRef, status: WorkItemStatus, actor: Actor): Epic {
+    return this.setWorkItemStatus("epic", ref, status, actor);
+  }
+  /** For the Jira connector: stores Jira's own status name and when it was pulled. */
+  setTicketJiraStatus(ref: TopicRef, jiraStatus: string): Ticket {
+    return this.setWorkItemJiraStatus("ticket", ref, jiraStatus);
+  }
+  setEpicJiraStatus(ref: TopicRef, jiraStatus: string): Epic {
+    return this.setWorkItemJiraStatus("epic", ref, jiraStatus);
+  }
+
+  // ---- parents (many-to-many) ---------------------------------------------
+
+  addTopicToTicket(topic: TopicRef, ticket: TopicRef, _actor: Actor): void {
+    this.tx(() => {
+      this.run(
+        "INSERT OR IGNORE INTO topic_ticket (topic_id, ticket_id) VALUES (?, ?)",
+        this.topicRow(topic).id,
+        this.workItemRow("ticket", ticket).id,
+      );
+    });
+  }
+  removeTopicFromTicket(topic: TopicRef, ticket: TopicRef, _actor: Actor): void {
+    this.run(
+      "DELETE FROM topic_ticket WHERE topic_id = ? AND ticket_id = ?",
+      this.topicRow(topic).id,
+      this.workItemRow("ticket", ticket).id,
+    );
+  }
+  addTopicToEpic(topic: TopicRef, epic: TopicRef, _actor: Actor): void {
+    this.tx(() => {
+      this.run(
+        "INSERT OR IGNORE INTO topic_epic (topic_id, epic_id) VALUES (?, ?)",
+        this.topicRow(topic).id,
+        this.workItemRow("epic", epic).id,
+      );
+    });
+  }
+  removeTopicFromEpic(topic: TopicRef, epic: TopicRef, _actor: Actor): void {
+    this.run(
+      "DELETE FROM topic_epic WHERE topic_id = ? AND epic_id = ?",
+      this.topicRow(topic).id,
+      this.workItemRow("epic", epic).id,
+    );
+  }
+  addTicketToEpic(ticket: TopicRef, epic: TopicRef, _actor: Actor): void {
+    this.tx(() => {
+      this.run(
+        "INSERT OR IGNORE INTO ticket_epic (ticket_id, epic_id) VALUES (?, ?)",
+        this.workItemRow("ticket", ticket).id,
+        this.workItemRow("epic", epic).id,
+      );
+    });
+  }
+  removeTicketFromEpic(ticket: TopicRef, epic: TopicRef, _actor: Actor): void {
+    this.run(
+      "DELETE FROM ticket_epic WHERE ticket_id = ? AND epic_id = ?",
+      this.workItemRow("ticket", ticket).id,
+      this.workItemRow("epic", epic).id,
+    );
+  }
+  listTicketEpics(ticket: TopicRef): Epic[] {
+    return this.all<Row>(
+      `SELECT epic.* FROM epic JOIN ticket_epic ON epic.id = ticket_epic.epic_id
+       WHERE ticket_epic.ticket_id = ? ORDER BY epic.id`,
+      this.workItemRow("ticket", ticket).id,
+    ).map((r) => camel<Epic>(r));
+  }
+
+  // ---- links and monitor targets ------------------------------------------
+
+  addLink(
+    topic: TopicRef,
+    input: { kind: LinkKind; target: string; label?: string },
+    actor: Actor,
+  ): Link {
+    const kind = parseWith(linkKindSchema, input.kind, "link kind");
+    if (!input.target.trim()) throw new AxiomError("validation", "link target is required");
+    return this.tx(() => {
+      const t = this.topicRow(topic);
+      const threadId = this.knownThreadId(actor.kind === "agent" ? actor.threadId : null);
+      const id = this.run(
+        `INSERT INTO link (topic_id, kind, target, label, created_at, created_by_thread_id)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        t.id,
+        kind,
+        input.target,
+        input.label ?? null,
+        this.iso(),
+        threadId,
+      );
+      return camel<Link>(this.get<Row>("SELECT * FROM link WHERE id = ?", id));
+    });
+  }
+
+  addMonitorTarget(
+    topic: TopicRef,
+    input: { kind: string; linkId?: number; state?: MonitorState },
+    _actor: Actor,
+  ): MonitorTarget {
+    const state = parseWith(monitorStateSchema, input.state ?? "suggested", "monitor state");
+    return this.tx(() => {
+      const t = this.topicRow(topic);
+      if (input.linkId !== undefined) {
+        const link = this.get<Row>("SELECT topic_id FROM link WHERE id = ?", input.linkId);
+        if (!link || link.topic_id !== t.id) {
+          throw new AxiomError("validation", "monitor target link must belong to the same topic");
+        }
+      }
+      const id = this.run(
+        "INSERT INTO monitor_target (topic_id, link_id, kind, state, created_at) VALUES (?, ?, ?, ?, ?)",
+        t.id,
+        input.linkId ?? null,
+        input.kind,
+        state,
+        this.iso(),
+      );
+      return camel<MonitorTarget>(this.get<Row>("SELECT * FROM monitor_target WHERE id = ?", id));
+    });
+  }
+
+  confirmMonitorTarget(id: number, _actor: Actor): MonitorTarget {
+    return this.tx(() => {
+      if (!this.get("SELECT 1 FROM monitor_target WHERE id = ?", id)) {
+        throw new AxiomError("not-found", `monitor target not found: ${id}`);
+      }
+      this.run("UPDATE monitor_target SET state = 'confirmed' WHERE id = ?", id);
+      return camel<MonitorTarget>(this.get<Row>("SELECT * FROM monitor_target WHERE id = ?", id));
+    });
+  }
+
+  // ---- threads ------------------------------------------------------------
+
+  attachThread(topic: TopicRef, input: AttachThreadInput, _actor: Actor): Thread {
+    const provider = parseWith(providerSchema, input.provider, "provider");
+    if (!input.providerThreadId) throw new AxiomError("validation", "providerThreadId is required");
+    return this.tx(() => {
+      const t = this.topicRow(topic);
+      const existing = this.findThread({
+        provider,
+        providerThreadId: input.providerThreadId,
+        environmentId: input.environmentId,
+      });
+      if (existing) {
+        const where = existing.topicId === t.id ? "this topic" : `topic id ${existing.topicId}`;
+        throw new AxiomError(
+          "conflict",
+          `thread ${provider}:${input.providerThreadId} is already attached to ${where}`,
+        );
+      }
+      const at = this.iso();
+      const id = this.run(
+        `INSERT INTO thread (topic_id, provider, provider_thread_id, environment_id, title,
+                             status_changed_at, started_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        t.id,
+        provider,
+        input.providerThreadId,
+        input.environmentId ?? null,
+        input.title ?? null,
+        at,
+        at,
+      );
+      return this.threadRow(id);
+    });
+  }
+
+  findThread(input: {
+    provider: Provider;
+    providerThreadId: string;
+    environmentId?: string | null;
+  }): Thread | undefined {
+    const row = this.get<Row>(
+      `SELECT * FROM thread WHERE provider = ? AND provider_thread_id = ?
+         AND COALESCE(environment_id, '') = ?`,
+      input.provider,
+      input.providerThreadId,
+      input.environmentId ?? "",
+    );
+    return row ? camel<Thread>(row) : undefined;
+  }
+
+  getThread(id: number): Thread {
+    return this.threadRow(id);
+  }
+
+  /** A new turn started: the thread is working, and what it declared before no longer holds. */
+  threadWorking(threadId: number): Thread {
+    return this.threadEvent(threadId, {
+      event: "working",
+      status: "wip",
+      body: "Thread working",
+      clear: true,
+    });
+  }
+
+  threadWaitingOnOwner(threadId: number, reason: string): Thread {
+    return this.threadEvent(threadId, {
+      event: "waiting on owner",
+      status: "hitl",
+      body: `Waiting on the owner: ${reason}`,
+      waiting: true,
+      notify: { kind: "agent asked", body: reason },
+    });
+  }
+
+  threadStopped(threadId: number): Thread {
+    return this.threadEvent(threadId, {
+      event: "stopped",
+      body: "Thread stopped",
+      notify: { kind: "agent stopped", body: "The agent stopped" },
+      statusFromStop: true,
+    });
+  }
+
+  threadError(threadId: number, message: string): Thread {
+    return this.threadEvent(threadId, {
+      event: "error",
+      status: "error",
+      body: `Thread error: ${message}`,
+      notify: { kind: "error", body: message },
+    });
+  }
+
+  /** The session ended. The thread's status is unchanged; it stops counting as open. */
+  threadEnded(threadId: number, reason?: string): Thread {
+    return this.tx(() => {
+      const th = this.threadRow(threadId);
+      if (th.endedAt === null) {
+        this.run(
+          "UPDATE thread SET ended_at = ?, end_reason = ? WHERE id = ?",
+          this.iso(),
+          reason ?? null,
+          threadId,
+        );
+        // A thread that ends while still running (killed, crashed session) is no longer working.
+        if (th.status === "wip") {
+          this.run(
+            `UPDATE thread SET status = 'idle', status_changed_at = ?,
+               status_changed_seq = (SELECT COALESCE(MAX(status_changed_seq), 0) + 1 FROM thread)
+             WHERE id = ?`,
+            this.iso(),
+            threadId,
+          );
+        }
+      }
+      this.insertEntry({
+        topicId: th.topicId,
+        author: "axiom",
+        threadId,
+        kind: "thread event",
+        body: `Thread ended${reason ? `: ${reason}` : ""}`,
+        data: { event: "ended", provider: th.provider, providerThreadId: th.providerThreadId },
+      });
+      // Only a thread that was still running changes the topic; otherwise a session ending would
+      // overwrite a status set by hand (for example the owner marking the topic done).
+      if (th.endedAt === null && th.status === "wip") {
+        this.recomputeFromThreads(this.topicRow(th.topicId), "thread ended", threadId);
+      }
+      return this.threadRow(threadId);
+    });
+  }
+
+  private threadEvent(
+    threadId: number,
+    ev: {
+      event: string;
+      body: string;
+      status?: TopicStatus;
+      statusFromStop?: boolean;
+      clear?: boolean;
+      waiting?: boolean;
+      notify?: { kind: NotificationKind; body: string };
+    },
+  ): Thread {
+    return this.tx(() => {
+      const th = this.threadRow(threadId);
+      const topic = this.topicRow(th.topicId);
+      let status = ev.status;
+      if (ev.statusFromStop) {
+        status = stopStatus({
+          declaredStatus: th.declaredStatus,
+          waitingOnOwner: th.waitingOnOwner,
+          hasPrLink: !!this.get(
+            "SELECT 1 FROM link WHERE topic_id = ? AND kind = 'pr'",
+            th.topicId,
+          ),
+          confirmedMonitorTargets:
+            this.get<{ n: number }>(
+              "SELECT COUNT(*) AS n FROM monitor_target WHERE topic_id = ? AND state = 'confirmed'",
+              th.topicId,
+            )?.n ?? 0,
+        });
+      }
+      if (status === undefined) throw new AxiomError("validation", "thread event without a status");
+      this.run(
+        `UPDATE thread SET status = ?, status_changed_at = ?,
+           status_changed_seq = (SELECT COALESCE(MAX(status_changed_seq), 0) + 1 FROM thread),
+           declared_status = CASE WHEN ? THEN NULL ELSE declared_status END,
+           waiting_on_owner = CASE WHEN ? THEN 0 WHEN ? THEN 1 ELSE waiting_on_owner END
+         WHERE id = ?`,
+        status,
+        this.iso(),
+        ev.clear ? 1 : 0,
+        ev.clear ? 1 : 0,
+        ev.waiting ? 1 : 0,
+        threadId,
+      );
+      this.insertEntry({
+        topicId: topic.id,
+        author: "axiom",
+        threadId,
+        kind: "thread event",
+        body: ev.body,
+        data: { event: ev.event, provider: th.provider, providerThreadId: th.providerThreadId },
+      });
+      if (ev.notify) this.insertNotification(topic.id, threadId, ev.notify.kind, ev.notify.body);
+      this.recomputeFromThreads(topic, `thread ${ev.event}`, threadId);
+      return this.threadRow(threadId);
+    });
+  }
+
+  private recomputeFromThreads(topic: Topic, reason: string, threadId: number): void {
+    const threads = this.all<Row>("SELECT * FROM thread WHERE topic_id = ?", topic.id).map((r) => {
+      const th = camel<Thread>(r);
+      const state: ThreadState = {
+        status: th.status,
+        open: th.endedAt === null,
+        statusChangedAt: th.statusChangedAt,
+        statusChangedSeq: th.statusChangedSeq,
+      };
+      return state;
+    });
+    if (threads.length === 0) return;
+    const fresh = this.topicRow(topic.id);
+    this.applyTopicStatus(fresh, topicStatusFromThreads(threads), reason, threadId);
+  }
+
+  // ---- entries ------------------------------------------------------------
+
+  addEntry(topic: TopicRef, input: EntryInput, actor: Actor): Entry {
+    const kind = input.kind;
+    if (!(kind in entryDataSchemas)) {
+      throw new AxiomError("validation", `unknown entry kind "${kind}"`);
+    }
+    const denied = entryWriteError(actor, kind);
+    if (denied) throw new AxiomError("permission", denied);
+    if (!isAxiomEntryKind(kind) && !input.body?.trim()) {
+      throw new AxiomError("validation", `"${kind}" entries need a body`);
+    }
+    const schema = entryDataSchemas[kind] as z.ZodType;
+    const data = parseWith(schema, input.data, `data for "${kind}" entry`);
+    const refs = parseWith(refsSchema, input.refs ?? [], "refs");
+    return this.tx(() => {
+      const t = this.topicRow(topic);
+      if (input.correctsEntryId !== undefined) {
+        const target = this.get<Row>(
+          "SELECT topic_id FROM entry WHERE id = ?",
+          input.correctsEntryId,
+        );
+        if (!target) {
+          throw new AxiomError("not-found", `entry to correct not found: ${input.correctsEntryId}`);
+        }
+        if (target.topic_id !== t.id) {
+          throw new AxiomError(
+            "validation",
+            "an entry can only correct an entry of the same topic",
+          );
+        }
+      }
+      const id = this.insertEntry({
+        topicId: t.id,
+        author: actor.kind,
+        threadId: this.knownThreadId(actor.kind === "agent" ? actor.threadId : null),
+        kind,
+        body: input.body ?? null,
+        data,
+        refs,
+        correctsEntryId: input.correctsEntryId ?? null,
+      });
+      return this.entryRow(id);
+    });
+  }
+
+  private insertEntry(e: {
+    topicId: number;
+    author: Entry["author"];
+    threadId?: number | null;
+    kind: EntryKind;
+    body?: string | null;
+    data?: unknown;
+    refs?: Ref[];
+    correctsEntryId?: number | null;
+  }): number {
+    if (e.kind === "status change" || isAxiomEntryKind(e.kind)) {
+      parseWith(entryDataSchemas[e.kind] as z.ZodType, e.data, `data for "${e.kind}" entry`);
+    }
+    const at = this.iso();
+    const id = this.run(
+      `INSERT INTO entry (topic_id, at, author, thread_id, kind, body, data, refs, corrects_entry_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      e.topicId,
+      at,
+      e.author,
+      e.threadId ?? null,
+      e.kind,
+      e.body ?? null,
+      e.data === undefined ? null : JSON.stringify(e.data),
+      JSON.stringify(e.refs ?? []),
+      e.correctsEntryId ?? null,
+    );
+    this.run("UPDATE topic SET last_worked_at = ? WHERE id = ?", at, e.topicId);
+    return id;
+  }
+
+  private entryRow(id: number): Entry {
+    return this.mapEntry(this.get<Row>("SELECT * FROM entry WHERE id = ?", id));
+  }
+
+  private mapEntry(row: Row | undefined): Entry {
+    const e = camel<Entry & { data: string | null; refs: string | null }>(row);
+    return {
+      ...e,
+      data: e.data === null ? null : JSON.parse(e.data),
+      refs: e.refs === null ? [] : (JSON.parse(e.refs) as Ref[]),
+    };
+  }
+
+  listEntries(topic: TopicRef): Entry[] {
+    const t = this.topicRow(topic);
+    return this.all<Row>("SELECT * FROM entry WHERE topic_id = ? ORDER BY id", t.id).map((r) =>
+      this.mapEntry(r),
+    );
+  }
+
+  /** Hard delete (for example a leaked secret). Owner only; entries are otherwise never changed. */
+  deleteEntry(id: number, actor: Actor): void {
+    ownerOnly(actor, "delete an entry");
+    this.tx(() => {
+      if (!this.get("SELECT 1 FROM entry WHERE id = ?", id)) {
+        throw new AxiomError("not-found", `entry not found: ${id}`);
+      }
+      this.run("DELETE FROM entry WHERE id = ?", id);
+    });
+  }
+
+  // ---- notifications ------------------------------------------------------
+
+  private insertNotification(
+    topicId: number,
+    threadId: number | null,
+    kind: NotificationKind,
+    body: string | null,
+  ): number {
+    parseWith(notificationKindSchema, kind, "notification kind");
+    return this.run(
+      "INSERT INTO notification (topic_id, thread_id, kind, body, created_at) VALUES (?, ?, ?, ?, ?)",
+      topicId,
+      threadId,
+      kind,
+      body,
+      this.iso(),
+    );
+  }
+
+  /** For connectors (monitor problem, Jira changed, PR review). */
+  raiseNotification(
+    topic: TopicRef,
+    kind: NotificationKind,
+    body: string | null,
+    _actor: Actor,
+  ): number {
+    return this.tx(() => this.insertNotification(this.topicRow(topic).id, null, kind, body));
+  }
+
+  /** The notifications pane: hides muted kinds and muted topics. Dismissed ones only on request. */
+  listNotifications(options: ListNotificationsOptions = {}): Notification[] {
+    const mutedKinds = new Set<string>(this.getSetting("mutedKinds") as string[]);
+    return this.all<Row>(
+      `SELECT notification.*, topic.slug AS topic_slug FROM notification
+       JOIN topic ON topic.id = notification.topic_id
+       WHERE topic.muted = 0 ${options.includeDismissed ? "" : "AND notification.dismissed_at IS NULL"}
+       ORDER BY notification.id DESC`,
+    )
+      .map((r) => camel<Notification>(r))
+      .filter((n) => !mutedKinds.has(n.kind));
+  }
+
+  /** Highlighted = any undismissed notification. Muting never hides this. */
+  isHighlighted(topic: TopicRef): boolean {
+    const id = typeof topic === "number" ? topic : this.topicRow(topic).id;
+    return !!this.get(
+      "SELECT 1 FROM notification WHERE topic_id = ? AND dismissed_at IS NULL LIMIT 1",
+      id,
+    );
+  }
+
+  // ---- stale prompts ------------------------------------------------------
+
+  /** Creates a `stale prompt` notification for each idle topic untouched for N days. */
+  refreshStalePrompts(now: Date = this.clock()): number[] {
+    const days = this.getSetting("staleAfterDays") as number;
+    const cutoff = staleCutoff(now, days);
+    return this.tx(() => {
+      const created: number[] = [];
+      const candidates = this.all<Row>(
+        "SELECT * FROM topic WHERE status = 'idle' AND stale_prompt_dismissed = 0 AND last_worked_at < ?",
+        cutoff,
+      ).map((r) => camel<Topic>(r));
+      for (const t of candidates) {
+        const open = !!this.get(
+          "SELECT 1 FROM notification WHERE topic_id = ? AND kind = 'stale prompt' AND dismissed_at IS NULL",
+          t.id,
+        );
+        if (
+          needsStalePrompt({
+            status: t.status,
+            lastWorkedAt: t.lastWorkedAt,
+            stalePromptDismissed: t.stalePromptDismissed,
+            hasOpenStalePrompt: open,
+            now,
+            staleAfterDays: days,
+          })
+        ) {
+          created.push(
+            this.insertNotification(
+              t.id,
+              null,
+              "stale prompt",
+              `Idle for more than ${days} days: mark as stale?`,
+            ),
+          );
+        }
+      }
+      return created;
+    });
+  }
+
+  markStale(topic: TopicRef, actor: Actor): Topic {
+    ownerOnly(actor, "mark a topic stale");
+    return this.tx(() => {
+      const t = this.topicRow(topic);
+      this.applyTopicStatus(t, "stale", "marked stale by the owner", null);
+      this.dismissStaleNotifications(t.id);
+      return this.topicRow(t.id);
+    });
+  }
+
+  /** The prompt never comes back for this topic. */
+  dismissStalePrompt(topic: TopicRef, actor: Actor): void {
+    ownerOnly(actor, "dismiss a stale prompt");
+    this.tx(() => {
+      const t = this.topicRow(topic);
+      this.run("UPDATE topic SET stale_prompt_dismissed = 1 WHERE id = ?", t.id);
+      this.dismissStaleNotifications(t.id);
+    });
+  }
+
+  private dismissStaleNotifications(topicId: number): void {
+    this.run(
+      `UPDATE notification SET dismissed_at = ?
+       WHERE topic_id = ? AND kind = 'stale prompt' AND dismissed_at IS NULL`,
+      this.iso(),
+      topicId,
+    );
+  }
+
+  // ---- settings -----------------------------------------------------------
+
+  getSetting(key: string): unknown {
+    const row = this.get<{ value: string }>("SELECT value FROM setting WHERE key = ?", key);
+    if (row) return JSON.parse(row.value);
+    if (key === "mutedKinds") return [];
+    if (key === "staleAfterDays") return DEFAULT_STALE_AFTER_DAYS;
+    return undefined;
+  }
+
+  setSetting(key: string, value: unknown, actor: Actor): void {
+    ownerOnly(actor, "change settings");
+    const schema = (settingSchemas as Record<string, z.ZodType>)[key];
+    const checked = schema ? parseWith(schema, value, `setting ${key}`) : value;
+    if (checked === undefined) throw new AxiomError("validation", "setting value is required");
+    this.run(
+      "INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+      key,
+      JSON.stringify(checked),
+    );
+  }
+}

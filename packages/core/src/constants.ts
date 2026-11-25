@@ -1,0 +1,92 @@
+export const TOPIC_STATUSES = [
+  "idle",
+  "wip",
+  "hitl",
+  "monitoring",
+  "blocked",
+  "review",
+  "done",
+  "stale",
+  "error",
+] as const;
+export type TopicStatus = (typeof TOPIC_STATUSES)[number];
+
+export const WORK_ITEM_STATUSES = ["to do", "wip", "done"] as const;
+export type WorkItemStatus = (typeof WORK_ITEM_STATUSES)[number];
+
+export const VIEWS = ["attention", "ongoing", "monitoring", "piles", "closed"] as const;
+export type View = (typeof VIEWS)[number];
+
+export const PROVIDERS = ["claude-code", "t3"] as const;
+export type Provider = (typeof PROVIDERS)[number];
+
+export const LINK_KINDS = [
+  "project",
+  "repository",
+  "branch",
+  "worktree",
+  "pr",
+  "spec",
+  "artifact",
+] as const;
+export type LinkKind = (typeof LINK_KINDS)[number];
+
+export const MONITOR_STATES = ["suggested", "confirmed"] as const;
+export type MonitorState = (typeof MONITOR_STATES)[number];
+
+export const NOTIFICATION_KINDS = [
+  "agent stopped",
+  "agent asked",
+  "monitor problem",
+  "jira changed",
+  "pr review",
+  "stale prompt",
+  "error",
+] as const;
+export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
+
+/** Entry kinds that agents or the owner may write (08). */
+export const SHARED_ENTRY_KINDS = [
+  "note",
+  "decision",
+  "finding",
+  "verification",
+  "next steps",
+] as const;
+/** Entry kinds only the owner may write. */
+export const OWNER_ENTRY_KINDS = ["owner input", "authorization"] as const;
+/** Entry kinds only Axiom writes. */
+export const AXIOM_ENTRY_KINDS = [
+  "status change",
+  "topic created",
+  "thread event",
+  "git event",
+  "deploy event",
+] as const;
+export const ENTRY_KINDS = [
+  ...SHARED_ENTRY_KINDS,
+  ...OWNER_ENTRY_KINDS,
+  ...AXIOM_ENTRY_KINDS,
+] as const;
+export type EntryKind = (typeof ENTRY_KINDS)[number];
+
+export const REF_TYPES = [
+  "pr",
+  "commit",
+  "branch",
+  "worktree",
+  "thread",
+  "artifact",
+  "spec",
+  "deploy",
+  "external-ticket",
+  "topic",
+] as const;
+export type RefType = (typeof REF_TYPES)[number];
+
+export const ENTRY_AUTHORS = ["owner", "agent", "axiom"] as const;
+export type EntryAuthor = (typeof ENTRY_AUTHORS)[number];
+
+export const DEFAULT_STALE_AFTER_DAYS = 14;
+
+export type Actor = { kind: "owner" } | { kind: "agent"; threadId?: number } | { kind: "axiom" };
