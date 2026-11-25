@@ -254,8 +254,11 @@ function ThreadRow({ thread: th, now }: { thread: Thread; now: Date }) {
     <li className={`thread s-${th.status}`}>
       <span className="prov">{PROVIDER_LABEL[th.provider] ?? th.provider}</span>
       <span className="th-main">
-        <span className="th-title">
-          {th.title || `Untitled ${PROVIDER_LABEL[th.provider] ?? th.provider} thread`}
+        <span className="th-head">
+          <span className="th-title">
+            {th.title || `Untitled ${PROVIDER_LABEL[th.provider] ?? th.provider} thread`}
+          </span>
+          <ThreadOpen thread={th} />
         </span>
         <span className="th-meta">
           <span title={th.providerThreadId}>{shortId(th.providerThreadId)}</span>
@@ -266,28 +269,71 @@ function ThreadRow({ thread: th, now }: { thread: Thread; now: Date }) {
       <time className="th-time">
         {stamp(th.startedAt, now)} → {end}
       </time>
-      <ThreadOpen thread={th} />
     </li>
   );
 }
 
-/** "Open in T3" (a real link), or "Copy resume command" for a direct Claude Code session. */
+const ExternalIcon = () => (
+  <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
+    <path
+      d="M9 2.5h4.5V7M13.5 2.5 7.5 8.5M12 9.5v3a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h3"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </svg>
+);
+
+const CopyIcon = () => (
+  <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
+    <rect
+      x="5.5"
+      y="5.5"
+      width="8"
+      height="8"
+      rx="1.2"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+    />
+    <path
+      d="M10.5 3.5v-.5a1 1 0 0 0-1-1H3a1 1 0 0 0-1 1v6.5a1 1 0 0 0 1 1h.5"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+    />
+  </svg>
+);
+
+/**
+ * A small icon beside the thread title: open the thread in the T3 app, or copy the command that
+ * resumes a direct Claude Code session.
+ */
 function ThreadOpen({ thread: th }: { thread: Thread }) {
   const [copied, setCopied] = useState(false);
   const open = th.open;
-  if (!open) return <span className="th-open" />;
+  if (!open) return null;
   if (open.kind === "url") {
     return (
-      <a className="btn sm th-open" href={open.url} title="Open this thread in the T3 app">
-        Open in T3
+      <a
+        className="th-open"
+        href={open.url}
+        aria-label="Open in T3"
+        title="Open this thread in the T3 app"
+      >
+        <ExternalIcon />
       </a>
     );
   }
   return (
     <button
       type="button"
-      className="btn sm th-open"
-      title={open.command}
+      className="th-open"
+      aria-label={copied ? "Copied" : "Copy resume command"}
+      title={copied ? "Copied" : `Copy: ${open.command}`}
       onClick={() => {
         void navigator.clipboard?.writeText(open.command).then(
           () => {
@@ -298,7 +344,7 @@ function ThreadOpen({ thread: th }: { thread: Thread }) {
         );
       }}
     >
-      {copied ? "Copied" : "Copy resume command"}
+      {copied ? "✓" : <CopyIcon />}
     </button>
   );
 }
