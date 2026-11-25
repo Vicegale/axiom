@@ -16,6 +16,22 @@ beforeEach(() => {
   server.workspaces = [
     { path: "/home/u/projects/foo", label: "~/projects/foo", source: "projects" },
   ];
+  server.t3Projects = [
+    {
+      id: "proj-foo",
+      title: "Foo",
+      workspaceRoot: "/home/u/projects/foo",
+      hasDefaultModel: true,
+      pinned: true,
+    },
+    {
+      id: "proj-bare",
+      title: "Bare",
+      workspaceRoot: "/home/u/projects/bare",
+      hasDefaultModel: false,
+      pinned: false,
+    },
+  ];
   server.install();
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -32,13 +48,119 @@ const type = (name: string | RegExp, value: string) =>
   fireEvent.change(field(name), { target: { value } });
 const submit = () => fireEvent.click(screen.getByRole("button", { name: /^(Create|Retry)/ }));
 
+const select = (name: string | RegExp) => screen.getByLabelText(name) as HTMLSelectElement;
+
+describe("+ New topic: T3 projects", () => {
+  it("offers the T3 projects in the folder suggestions when there is no first message", async () => {
+    await openDialog();
+    await waitFor(() =>
+      expect([...document.querySelectorAll("datalist option")].map((o) => o.textContent)).toEqual([
+        "T3: Foo",
+        "T3: Bare",
+      ]),
+    );
+    expect(screen.queryByLabelText(/^T3 project/)).toBeNull();
+  });
+
+  it("shows a T3 project select for a T3 first thread and a folder field for Claude Code", async () => {
+    await openDialog();
+    type("Title", "Fix it");
+    type(/^First message/, "Do the thing");
+    const sel = select(/^T3 project/);
+    expect(sel.value).toBe("");
+    expect([...sel.options].map((o) => o.textContent)).toEqual([
+      "Choose a T3 project…",
+      "Foo — /home/u/projects/foo",
+      "Bare — /home/u/projects/bare",
+    ]);
+    expect(screen.queryByLabelText(/^Project folder/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Claude Code" }));
+    expect(screen.queryByLabelText(/^T3 project/)).toBeNull();
+    expect(field(/^Project folder/)).toBeTruthy();
+  });
+
+  it("requires a project, then sends its id and sets the repository from its folder", async () => {
+    await openDialog();
+    type("Title", "Fix it");
+    type(/^First message/, "Do the thing");
+    submit();
+    expect(await screen.findByText("Choose the T3 project to start a thread in.")).toBeTruthy();
+    expect(server.called("POST", "/api/topics")).toHaveLength(0);
+    type(/^T3 project/, "proj-foo");
+    submit();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(server.called("POST", "/api/topics")[0]?.body).toMatchObject({
+      repository: "/home/u/projects/foo",
+    });
+    expect(server.called("POST", "/api/topics/fix-it/threads/new")[0]?.body).toEqual({
+      text: "Do the thing",
+      provider: "t3",
+      project: "proj-foo",
+    });
+  });
+
+  it("preselects the project whose folder was typed", async () => {
+    await openDialog();
+    type(/^Project folder/, "/home/u/projects/bare/");
+    type(/^First message/, "Do the thing");
+    expect(select(/^T3 project/).value).toBe("proj-bare");
+  });
+
+  it("requires a model for a project without a default model", async () => {
+    await openDialog();
+    type("Title", "Fix it");
+    type(/^First message/, "Do the thing");
+    type(/^T3 project/, "proj-bare");
+    expect(screen.getByText(/this project has no default model, so one is required/)).toBeTruthy();
+    submit();
+    expect(await screen.findByText("This project has no default model: choose one.")).toBeTruthy();
+    expect(server.called("POST", "/api/topics")).toHaveLength(0);
+    type(/^Model/, "claude-opus-5-5");
+    submit();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(server.called("POST", "/api/topics/fix-it/threads/new")[0]?.body).toMatchObject({
+      project: "proj-bare",
+      model: "claude-opus-5-5",
+      providerInstance: "claudeAgent",
+    });
+  });
+
+  it("does not ask for a model when the project has a default", async () => {
+    await openDialog();
+    type(/^First message/, "Do the thing");
+    type(/^T3 project/, "proj-foo");
+    expect(screen.queryByText(/so one is required/)).toBeNull();
+  });
+
+  it("falls back to the folder field with the error when T3 cannot be read", async () => {
+    server.t3Projects = null;
+    await openDialog();
+    type("Title", "Fix it");
+    type(/^First message/, "Do the thing");
+    expect(await screen.findByText(/Could not list T3 projects/)).toBeTruthy();
+    type(/^Project folder/, "/home/u/projects/foo");
+    submit();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(server.called("POST", "/api/topics/fix-it/threads/new")[0]?.body).toMatchObject({
+      provider: "t3",
+      project: "/home/u/projects/foo",
+    });
+  });
+
+  it("is accessible with the select shown", async () => {
+    await openDialog();
+    type(/^First message/, "Do the thing");
+    await expectAccessible();
+  });
+});
+
 describe("+ New topic", () => {
   it("opens from the button with the title focused, and is accessible", async () => {
     const dialog = await openDialog();
     expect(dialog).toBeTruthy();
     expect(document.activeElement).toBe(field("Title"));
     expect(screen.getByRole("button", { name: "Create topic" })).toBeTruthy();
-    await waitFor(() => expect(document.querySelectorAll("datalist option")).toHaveLength(1));
+    await waitFor(() => expect(document.querySelectorAll("datalist option")).toHaveLength(2));
     await expectAccessible();
   });
 
@@ -74,9 +196,9 @@ describe("+ New topic", () => {
     type("Title", "Fix it");
     type(/^First message/, "Do the thing");
     submit();
-    expect(await screen.findByText(/Pick the project folder/)).toBeTruthy();
+    expect(await screen.findByText(/Choose the T3 project/)).toBeTruthy();
     expect(server.called("POST", "/api/topics")).toHaveLength(0);
-    expect(document.activeElement).toBe(field(/^Project folder/));
+    expect(document.activeElement).toBe(select(/^T3 project/));
   });
 
   it("creates the topic only, with goal, parent and folder", async () => {
@@ -115,7 +237,7 @@ describe("+ New topic", () => {
     expect(server.called("POST", "/api/topics/fix-it/threads/new")[0]?.body).toEqual({
       text: "Do the thing",
       provider: "t3",
-      project: "/home/u/projects/foo",
+      project: "proj-foo",
       providerInstance: "claudeAgent",
       model: "claude-opus-5-5",
       effort: "high",

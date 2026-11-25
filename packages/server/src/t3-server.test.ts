@@ -82,6 +82,25 @@ describe("T3 health in /api/health", () => {
   });
 });
 
+describe("GET /api/t3/projects", () => {
+  it("lists live projects", async () => {
+    t3.project("p1", { title: "One", model: true }).project("p2", { title: "Two", deleted: true });
+    await start();
+    const { status, body } = await get("/api/t3/projects");
+    expect(status).toBe(200);
+    expect(body).toEqual([
+      { id: "p1", title: "One", workspaceRoot: "/work/p1", hasDefaultModel: true, pinned: false },
+    ]);
+  });
+
+  it("is 503 unavailable when T3 cannot be read", async () => {
+    await start(join(dir, "missing"));
+    const { status, body } = await get("/api/t3/projects");
+    expect(status).toBe(503);
+    expect(body.error.code).toBe("unavailable");
+  });
+});
+
 describe("GET /api/t3/threads", () => {
   it("lists unattached threads, newest first, with the picker fields", async () => {
     t3.thread("a", { title: "Alpha", updatedAt: "2026-11-25T09:00:00.000Z" });

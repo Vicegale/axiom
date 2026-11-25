@@ -1,5 +1,6 @@
 -- Schema of the T3 tables Axiom reads, copied from T3 server 0.1.11-nightly.20261118.4890 (migration 98).
 -- Tables only (no indexes, no rows). Used to build synthetic fixture databases in tests.
+-- `projection_projects` feeds the new-topic dialog's project select.
 -- `orchestration_v2_projection_turn_items` also holds the steps behind the Desk card's activity line.
 CREATE TABLE "effect_sql_migrations" (
   migration_id integer PRIMARY KEY NOT NULL,
@@ -70,4 +71,13 @@ CREATE TABLE orchestration_v2_projection_turn_items (
       updated_at TEXT NOT NULL,
       payload_json TEXT NOT NULL
     , inline_work_output INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE projection_projects (
+      project_id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      workspace_root TEXT NOT NULL,
+      scripts_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      deleted_at TEXT
+    , default_model_selection_json TEXT, project_icon_json TEXT, default_thread_env_mode TEXT, favicon_path TEXT, auto_pull INTEGER NOT NULL DEFAULT 0, pinned_at TEXT, archived_at TEXT, has_custom_title INTEGER NOT NULL DEFAULT 0);
 CREATE UNIQUE INDEX orchestration_v2_projection_runs_thread_ordinal_idx ON orchestration_v2_projection_runs(thread_id, ordinal);

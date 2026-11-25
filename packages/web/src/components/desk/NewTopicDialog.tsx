@@ -6,6 +6,7 @@ import {
   type Effort,
   type EpicItem,
   type NewThreadBody,
+  type T3Project,
   type TicketItem,
   type Workspace,
 } from "../../api";
@@ -31,6 +32,8 @@ const PROVIDERS: { value: Provider; label: string }[] = [
 /** Claude models on T3 go through the `claudeAgent` provider instance. */
 const T3_INSTANCE = "claudeAgent";
 
+const norm = (p: string) => p.trim().replace(/(.)\/+$/, "$1");
+
 export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
   const ids = useId();
   const id = (n: string) => `${ids}-${n}`;
@@ -44,7 +47,7 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
   const [effort, setEffort] = useState<Effort | "">("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
-  const [errors, setErrors] = useState<{ title?: string; folder?: string }>({});
+  const [errors, setErrors] = useState<{ title?: string; folder?: string; model?: string }>({});
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   /** Set once the topic exists, so a retry only starts the thread. */
   const [created, setCreated] = useState<string | null>(null);
@@ -52,10 +55,17 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [epics, setEpics] = useState<EpicItem[]>([]);
   const [tickets, setTickets] = useState<TicketItem[]>([]);
+  /** `null` while loading or when T3 cannot be read (then `t3Error` says why). */
+  const [t3Projects, setT3Projects] = useState<T3Project[] | null>(null);
+  const [t3Error, setT3Error] = useState<string | null>(null);
+  /** The chosen T3 project; `null` means "none chosen yet": the one matching the folder is used. */
+  const [projectId, setProjectId] = useState<string | null>(null);
   const [options, setOptions] = useState<ComposeOptions | null>(null);
 
   const titleRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement>(null);
+  const projectRef = useRef<HTMLSelectElement>(null);
+  const modelRef = useRef<HTMLSelectElement>(null);
 
   // The dialog opens after this effect (Modal's own): the attribute makes showModal() focus the
   // title natively; the timer covers browsers and test DOMs that ignore it.
@@ -70,6 +80,10 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
     const ok = <T,>(p: Promise<T>, set: (v: T) => void) =>
       p.then((v) => live && set(v)).catch(() => {});
     ok(api.workspaces(), setWorkspaces);
+    api
+      .t3Projects()
+      .then((v) => live && setT3Projects(v))
+      .catch((e) => live && setT3Error(e instanceof Error ? e.message : String(e)));
     ok(api.epics(), setEpics);
     ok(api.tickets(), setTickets);
     ok(api.composeOptions(), setOptions);
@@ -81,7 +95,17 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
   const busy = phase !== "idle";
   const withMessage = text.trim() !== "";
   const choices = options?.providers[provider];
-  const dirty = [title, goal, folder, parent, text].some((v) => v.trim() !== "");
+  const dirty = [title, goal, folder, parent, text, projectId ?? ""].some((v) => v.trim() !== "");
+
+  // With a first T3 thread the project comes from T3's own list; otherwise it is a folder.
+  const useSelect = withMessage && provider === "t3" && t3Projects !== null;
+  const folderMatch = t3Projects?.find((p) => p.workspaceRoot === norm(folder));
+  const project =
+    useSelect && projectId !== ""
+      ? t3Projects?.find((p) => p.id === (projectId ?? folderMatch?.id))
+      : undefined;
+  const folderValue = useSelect ? (project?.workspaceRoot ?? "") : folder.trim();
+  const modelRequired = useSelect && project !== undefined && !project.hasDefaultModel;
 
   const close = () => {
     if (busy) return;
@@ -97,6 +121,8 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
   };
 
   const pickProvider = (p: Provider) => {
+    // Leaving T3 keeps the chosen project's folder for the folder field.
+    if (p !== "t3" && project && !folder.trim()) setFolder(project.workspaceRoot);
     setProvider(p);
     setModel("");
     setEffort("");
@@ -105,11 +131,14 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
   const start = async (slug: string) => {
     setPhase("starting");
     const body: NewThreadBody = { text: text.trim(), provider };
-    // `~` is not expanded for the provider; the topic's repository link (already absolute) is used.
-    const f = folder.trim();
-    if (f && !f.startsWith("~")) {
-      if (provider === "t3") body.project = f;
-      else body.cwd = f;
+    if (useSelect && project) body.project = project.id;
+    else {
+      // `~` is not expanded for the provider; the topic's repository link (already absolute) is used.
+      const f = folder.trim();
+      if (f && !f.startsWith("~")) {
+        if (provider === "t3") body.project = f;
+        else body.cwd = f;
+      }
     }
     if (model) {
       body.model = model;
@@ -123,11 +152,15 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
     if (busy) return;
     const next: typeof errors = {};
     if (!title.trim()) next.title = "A title is required.";
-    if (withMessage && !folder.trim())
-      next.folder = "Pick the project folder to start a thread in.";
+    if (withMessage && !folderValue)
+      next.folder = useSelect
+        ? "Choose the T3 project to start a thread in."
+        : "Pick the project folder to start a thread in.";
+    if (modelRequired && !model) next.model = "This project has no default model: choose one.";
     setErrors(next);
     if (next.title) return titleRef.current?.focus();
-    if (next.folder) return folderRef.current?.focus();
+    if (next.folder) return (useSelect ? projectRef : folderRef).current?.focus();
+    if (next.model) return modelRef.current?.focus();
     setError(null);
     let slug = created;
     try {
@@ -139,7 +172,7 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
           ...(goal.trim() ? { goal: goal.trim() } : {}),
           ...(kind === "epic" && ref ? { epic: ref } : {}),
           ...(kind === "ticket" && ref ? { ticket: ref } : {}),
-          ...(folder.trim() ? { repository: folder.trim() } : {}),
+          ...(folderValue ? { repository: folderValue } : {}),
         });
         slug = topic.slug;
         setCreated(slug);
@@ -222,37 +255,80 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
         </div>
 
         <div className="nt-row">
-          <div className="nt-field">
-            <label htmlFor={id("folder")}>
-              Project folder <span className="nt-opt">{withMessage ? "required" : "optional"}</span>
-            </label>
-            <input
-              id={id("folder")}
-              ref={folderRef}
-              list={id("folders")}
-              value={folder}
-              disabled={created !== null}
-              placeholder="~/projects/…"
-              spellCheck={false}
-              autoComplete="off"
-              aria-required={withMessage ? true : undefined}
-              aria-invalid={errors.folder ? true : undefined}
-              aria-describedby={errors.folder ? id("folder-e") : undefined}
-              onChange={(e) => setFolder(e.target.value)}
-            />
-            <datalist id={id("folders")}>
-              {workspaces.map((w) => (
-                <option key={w.path} value={w.path}>
-                  {w.label}
-                </option>
-              ))}
-            </datalist>
-            {errors.folder ? (
-              <p className="nt-err" id={id("folder-e")}>
-                {errors.folder}
-              </p>
-            ) : null}
-          </div>
+          {useSelect ? (
+            <div className="nt-field">
+              <label htmlFor={id("project")}>
+                T3 project <span className="nt-opt">required</span>
+              </label>
+              <select
+                id={id("project")}
+                ref={projectRef}
+                value={project?.id ?? ""}
+                disabled={created !== null}
+                aria-required="true"
+                aria-invalid={errors.folder ? true : undefined}
+                aria-describedby={errors.folder ? id("folder-e") : undefined}
+                onChange={(e) => setProjectId(e.target.value)}
+              >
+                <option value="">Choose a T3 project…</option>
+                {t3Projects?.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.title} — {p.workspaceRoot}
+                  </option>
+                ))}
+              </select>
+              {errors.folder ? (
+                <p className="nt-err" id={id("folder-e")}>
+                  {errors.folder}
+                </p>
+              ) : null}
+            </div>
+          ) : (
+            <div className="nt-field">
+              <label htmlFor={id("folder")}>
+                Project folder{" "}
+                <span className="nt-opt">{withMessage ? "required" : "optional"}</span>
+              </label>
+              <input
+                id={id("folder")}
+                ref={folderRef}
+                list={id("folders")}
+                value={folder}
+                disabled={created !== null}
+                placeholder="~/projects/…"
+                spellCheck={false}
+                autoComplete="off"
+                aria-required={withMessage ? true : undefined}
+                aria-invalid={errors.folder ? true : undefined}
+                aria-describedby={errors.folder ? id("folder-e") : undefined}
+                onChange={(e) => setFolder(e.target.value)}
+              />
+              <datalist id={id("folders")}>
+                {t3Projects?.map((p) => (
+                  <option key={`t3-${p.id}`} value={p.workspaceRoot}>
+                    T3: {p.title}
+                  </option>
+                ))}
+                {workspaces
+                  .filter((w) => !t3Projects?.some((p) => p.workspaceRoot === w.path))
+                  .map((w) => (
+                    <option key={w.path} value={w.path}>
+                      {w.label}
+                    </option>
+                  ))}
+              </datalist>
+              {withMessage && provider === "t3" && t3Error ? (
+                <p className="nt-err">
+                  Could not list T3 projects ({t3Error}). Type the project's folder instead.
+                </p>
+              ) : null}
+              {errors.folder ? (
+                <p className="nt-err" id={id("folder-e")}>
+                  {errors.folder}
+                </p>
+              ) : null}
+            </div>
+          )}
           <div className="nt-field">
             <label htmlFor={id("parent")}>
               Parent <span className="nt-opt">optional</span>
@@ -322,15 +398,30 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
                 </div>
               </div>
               <div className="nt-field">
-                <label htmlFor={id("model")}>Model</label>
-                <select id={id("model")} value={model} onChange={(e) => setModel(e.target.value)}>
-                  <option value="">Default</option>
+                <label htmlFor={id("model")}>
+                  Model {modelRequired ? <span className="nt-opt">required</span> : null}
+                </label>
+                <select
+                  id={id("model")}
+                  ref={modelRef}
+                  value={model}
+                  aria-required={modelRequired ? true : undefined}
+                  aria-invalid={errors.model ? true : undefined}
+                  aria-describedby={errors.model ? id("model-e") : undefined}
+                  onChange={(e) => setModel(e.target.value)}
+                >
+                  <option value="">{modelRequired ? "Choose a model…" : "Default"}</option>
                   {choices?.models.map((m) => (
                     <option key={m} value={m}>
                       {m}
                     </option>
                   ))}
                 </select>
+                {errors.model ? (
+                  <p className="nt-err" id={id("model-e")}>
+                    {errors.model}
+                  </p>
+                ) : null}
               </div>
               <div className="nt-field">
                 <label htmlFor={id("effort")}>Effort</label>
@@ -351,7 +442,7 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
             </div>
             <p className="nt-hint">
               {provider === "t3"
-                ? `T3 uses the project's default model. A model chosen here runs on T3's "${T3_INSTANCE}" provider instance, and a project without a default model needs one.`
+                ? `T3 uses the project's default model. A model chosen here runs on T3's "${T3_INSTANCE}" provider instance${modelRequired ? ", and this project has no default model, so one is required" : ""}.`
                 : "Claude Code runs in the project folder with claude -p."}
             </p>
           </fieldset>

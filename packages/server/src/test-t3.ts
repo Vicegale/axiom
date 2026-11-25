@@ -64,6 +64,40 @@ export class T3Fixture {
     return this;
   }
 
+  /** A T3 project (synthetic): live unless `archived` or `deleted`. */
+  project(
+    id: string,
+    over: {
+      title?: string;
+      root?: string;
+      model?: boolean;
+      pinned?: boolean;
+      archived?: boolean;
+      deleted?: boolean;
+    } = {},
+  ): this {
+    const stamp = "2026-11-25T09:30:00.000Z";
+    this.db
+      .prepare(
+        `INSERT INTO projection_projects
+           (project_id, title, workspace_root, scripts_json, created_at, updated_at, deleted_at,
+            default_model_selection_json, pinned_at, archived_at)
+         VALUES (?, ?, ?, '[]', ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id,
+        over.title ?? `Project ${id}`,
+        over.root ?? `/work/${id}`,
+        stamp,
+        stamp,
+        over.deleted ? stamp : null,
+        over.model ? JSON.stringify({ instanceId: "claudeAgent", model: "claude-opus-5-5" }) : null,
+        over.pinned ? stamp : null,
+        over.archived ? stamp : null,
+      );
+    return this;
+  }
+
   touch(id: string, updatedAt: string): this {
     this.db
       .prepare("UPDATE orchestration_v2_projection_threads SET updated_at = ? WHERE thread_id = ?")

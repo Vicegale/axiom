@@ -312,6 +312,14 @@ export interface Workspace {
   source: "axiom" | "projects";
 }
 
+export interface T3Project {
+  id: string;
+  title: string;
+  workspaceRoot: string;
+  hasDefaultModel: boolean;
+  pinned: boolean;
+}
+
 export interface NewTopicBody {
   slug?: string;
   title: string;
@@ -395,6 +403,7 @@ export const api = {
     request<{ ok: true }>("POST", `/api/threads/${id}/send`, body),
   createTopic: (body: NewTopicBody) =>
     request<{ slug: string; title: string }>("POST", "/api/topics", body),
+  t3Projects: () => request<T3Project[]>("GET", "/api/t3/projects"),
   workspaces: () => request<Workspace[]>("GET", "/api/workspaces"),
   newThread: (slug: string, body: NewThreadBody) =>
     request<Thread>("POST", `/api/topics/${enc(slug)}/threads/new`, body),

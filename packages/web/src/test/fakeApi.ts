@@ -164,6 +164,16 @@ export class FakeServer {
   artifacts = new Map<string, ArtifactData>();
 
   workspaces: { path: string; label: string; source: string }[] = [];
+  /** Answers GET /api/t3/projects; `null` answers 503 unavailable. */
+  t3Projects:
+    | {
+        id: string;
+        title: string;
+        workspaceRoot: string;
+        hasDefaultModel: boolean;
+        pinned: boolean;
+      }[]
+    | null = [];
   composeOptions = {
     source: "static",
     providers: {
@@ -257,6 +267,11 @@ export class FakeServer {
         : this.json({ error: { code: "not-found", message: "no such file" } }, 404);
     }
     if (method === "GET" && path === "/api/workspaces") return this.json(this.workspaces);
+    if (method === "GET" && path === "/api/t3/projects") {
+      return this.t3Projects
+        ? this.json(this.t3Projects)
+        : this.json({ error: { code: "unavailable", message: "T3 cannot be read: gone" } }, 503);
+    }
     if (method === "GET" && path === "/api/compose/options") return this.json(this.composeOptions);
     if (method === "POST" && path === "/api/topics") {
       if (this.createTopicFails) {
