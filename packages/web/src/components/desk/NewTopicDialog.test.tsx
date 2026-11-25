@@ -66,15 +66,10 @@ const send = () =>
   within(screen.getByRole("dialog")).getByLabelText(/^(Create and start|Retry start)/);
 
 describe("+ New topic: T3 projects", () => {
-  it("offers the T3 projects in the folder suggestions when there is no first message", async () => {
+  it("sets the folder with the composer's Project chip, even without a first message", async () => {
     await openDialog();
-    await waitFor(() =>
-      expect([...document.querySelectorAll("datalist option")].map((o) => o.textContent)).toEqual([
-        "T3: Foo",
-        "T3: Bare",
-      ]),
-    );
-    expect(field(/^Project folder/)).toBeTruthy();
+    expect(screen.queryByLabelText(/^Project folder/)).toBeNull();
+    expect(chip("Project: none")).toBeTruthy();
   });
 
   it("has a Project chip for a T3 first thread and a Folder chip for Claude Code", async () => {
@@ -115,13 +110,6 @@ describe("+ New topic: T3 projects", () => {
       provider: "t3",
       project: "proj-foo",
     });
-  });
-
-  it("selects the project whose folder was typed", async () => {
-    await openDialog();
-    type(/^Project folder/, "/home/u/projects/bare/");
-    type(/^First message/, "Do the thing");
-    expect(chip("Project: Bare")).toBeTruthy();
   });
 
   it("requires a model for a project without a default model", async () => {
@@ -199,7 +187,7 @@ describe("+ New topic", () => {
     expect(dialog).toBeTruthy();
     expect(document.activeElement).toBe(field("Title"));
     expect(screen.getByRole("button", { name: "Create topic" })).toBeTruthy();
-    await waitFor(() => expect(document.querySelectorAll("datalist option")).toHaveLength(2));
+    await waitFor(() => expect(chip("Project: none")).toBeTruthy());
     await expectAccessible();
   });
 
@@ -248,7 +236,7 @@ describe("+ New topic", () => {
     await screen.findByRole("option", { name: "Big epic" });
     type("Title", "Fix it");
     type(/^Goal/, "Be done");
-    type(/^Project folder/, "/home/u/projects/foo");
+    pick("Project: none", "Foo");
     type(/^Parent/, "epic:e1");
     submit();
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -264,7 +252,7 @@ describe("+ New topic", () => {
   it("creates and starts a T3 thread, passing the Claude provider instance for a model", async () => {
     await openDialog();
     type("Title", "Fix it");
-    type(/^Project folder/, "/home/u/projects/foo");
+    pick("Project: none", "Foo");
     type(/^First message/, "Do the thing");
     expect(
       screen.getByRole("button", { name: "Create and start", description: /Ctrl\+Enter/ }),
@@ -364,7 +352,7 @@ describe("+ New topic", () => {
     server.newThreadFails = 1;
     await openDialog();
     type("Title", "Fix it");
-    type(/^Project folder/, "/home/u/projects/foo");
+    pick("Project: none", "Foo");
     type(/^First message/, "Do the thing");
     submit();
     const alert = await screen.findByText(/did not start: .*exited with 1/);

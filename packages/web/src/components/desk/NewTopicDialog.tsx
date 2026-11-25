@@ -81,7 +81,6 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
   const [options, setOptions] = useState<ComposeOptions | null>(null);
 
   const titleRef = useRef<HTMLInputElement>(null);
-  const folderRef = useRef<HTMLInputElement>(null);
   const pathRef = useRef<HTMLInputElement>(null);
   const textRef = useRef<HTMLTextAreaElement>(null);
   const projectChip = useRef<HTMLButtonElement>(null);
@@ -339,39 +338,6 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
             </select>
           </div>
         </div>
-
-        {withMessage ? null : (
-          <div className="nt-field">
-            <label htmlFor={id("folder")}>
-              Project folder <span className="nt-opt">optional</span>
-            </label>
-            <input
-              id={id("folder")}
-              ref={folderRef}
-              list={id("folders")}
-              value={folder}
-              disabled={created !== null}
-              placeholder="~/projects/…"
-              spellCheck={false}
-              autoComplete="off"
-              onChange={(e) => setFolder(e.target.value)}
-            />
-            <datalist id={id("folders")}>
-              {t3Projects?.map((p) => (
-                <option key={`t3-${p.id}`} value={p.workspaceRoot}>
-                  T3: {p.title}
-                </option>
-              ))}
-              {workspaces
-                .filter((w) => !t3Projects?.some((p) => p.workspaceRoot === w.path))
-                .map((w) => (
-                  <option key={w.path} value={w.path}>
-                    {w.label}
-                  </option>
-                ))}
-            </datalist>
-          </div>
-        )}
 
         <ComposerBox className="nt-composer">
           <ComposerText
