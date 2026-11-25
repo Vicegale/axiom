@@ -10,6 +10,7 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@axiom/core": "*"
+    "@axiom/core": "*",
+    "commander": "^15.1.0"
   }
 }
