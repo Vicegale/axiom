@@ -152,6 +152,7 @@ function ConsoleHistory({
           density="dense"
           now={now}
           onDelete={actions.onDeleteEntry}
+          quietActivity={false}
         />
       )}
     </div>
