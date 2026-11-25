@@ -162,11 +162,6 @@ describe("TopicDetail", () => {
     expect(a.onConfirmMonitor).toHaveBeenCalledWith(5);
   });
 
-  it("does not render an attach-thread control (slice S6)", () => {
-    render(<TopicDetail now={NOW} topic={detail()} entries={[]} actions={actions()} />);
-    expect(screen.queryByText(/Attach T3 thread/)).toBeNull();
-  });
-
   it("passes the density to the history and wires delete", () => {
     const a = actions();
     const { container } = render(
@@ -182,5 +177,12 @@ describe("TopicDetail", () => {
     fireEvent.click(screen.getByRole("button", { name: "Delete entry 4" }));
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(a.onDeleteEntry).toHaveBeenCalledWith(4);
+  });
+});
+
+describe("TopicDetail T3 picker", () => {
+  it("offers the Attach T3 thread button in the Threads section", () => {
+    render(<TopicDetail now={NOW} topic={detail()} entries={[]} actions={actions()} />);
+    expect(screen.getByRole("button", { name: "Attach T3 thread" })).toBeTruthy();
   });
 });

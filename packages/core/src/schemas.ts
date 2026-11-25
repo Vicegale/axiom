@@ -60,6 +60,7 @@ export const entryDataSchemas: Record<EntryKind, z.ZodType> = {
 export const settingSchemas = {
   mutedKinds: z.array(notificationKindSchema),
   staleAfterDays: z.number().int().positive(),
+  t3Pin: z.strictObject({ serverVersion: z.string().min(1), migration: z.number().int().min(0) }),
 } as const;
 
 export function parseWith<T>(schema: z.ZodType<T>, value: unknown, what: string): T {

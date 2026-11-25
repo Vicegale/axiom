@@ -37,6 +37,18 @@ interface HealthRow {
   text: string;
 }
 
+function t3Row(t3: Health["t3"], now: Date): HealthRow {
+  if (t3.state === "ok") {
+    return {
+      name: "T3",
+      state: "ok",
+      text: t3.lastReadAt ? `Read ${ago(t3.lastReadAt, now)}` : "Connected",
+    };
+  }
+  const label = t3.state === "untested-version" ? "Untested T3 version" : "T3 unavailable";
+  return { name: "T3", state: "warn", text: t3.detail ? `${label}: ${t3.detail}` : label };
+}
+
 export function healthRows(h: Health | undefined, now: Date): HealthRow[] {
   if (!h) return [];
   const backup = h.server.lastBackupAt ? stamp(h.server.lastBackupAt, now) : "none yet";
@@ -53,11 +65,7 @@ export function healthRows(h: Health | undefined, now: Date): HealthRow[] {
           text: `Last hook event ${ago(h.claudeCode.lastEventAt, now)}`,
         }
       : { name: "Claude Code", state: "warn", text: "No hook events yet" },
-    {
-      name: "T3",
-      state: h.t3.state === "ok" ? "ok" : h.t3.state === "not-configured" ? "off" : "warn",
-      text: h.t3.state === "not-configured" ? "Not configured" : h.t3.state,
-    },
+    t3Row(h.t3, now),
   ];
 }
 

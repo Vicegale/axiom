@@ -4,6 +4,7 @@ import { ago, fullStamp, idleDays, stamp } from "../lib/time";
 import { type Density, History } from "./History";
 import { Lock } from "./Icons";
 import { StatusPill } from "./StatusPill";
+import { T3Picker } from "./T3Picker";
 
 export interface TopicDetailActions {
   onToggleMute: (muted: boolean) => void;
@@ -118,7 +119,7 @@ export function TopicDetail({
             <h2 id="h-threads">Threads</h2>
             <span className="count">{t.threads.length}</span>
           </div>
-          {/* TODO(S6): the "Attach T3 thread" button and picker go here. */}
+          <T3Picker slug={t.slug} now={at} />
         </div>
         {t.threads.length ? (
           <ul className="threads">

@@ -3,6 +3,7 @@ import type { z } from "zod";
 import {
   type Actor,
   DEFAULT_STALE_AFTER_DAYS,
+  DEFAULT_T3_PIN,
   type EntryKind,
   type LinkKind,
   type MonitorState,
@@ -674,6 +675,31 @@ export class Axiom {
     return row ? camel<Thread>(row) : undefined;
   }
 
+  /** Every attached thread of a provider, oldest first. */
+  listProviderThreads(provider: Provider): Thread[] {
+    return this.all<Row>("SELECT * FROM thread WHERE provider = ? ORDER BY id", provider).map((r) =>
+      camel<Thread>(r),
+    );
+  }
+
+  /**
+   * Asks the server to re-read a provider now (a hook saw activity). Written to a setting so the
+   * server notices it through the database change counter. Never throws on a missing provider.
+   */
+  requestProviderRefresh(provider: Provider): void {
+    this.run(
+      "INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+      `providerRefresh:${provider}`,
+      JSON.stringify(this.iso()),
+    );
+  }
+
+  /** When a refresh was last requested for the provider (epoch ms), or 0. */
+  providerRefreshRequestedAt(provider: Provider): number {
+    const v = this.getSetting(`providerRefresh:${provider}`);
+    return typeof v === "string" ? Date.parse(v) || 0 : 0;
+  }
+
   getThread(id: number): Thread {
     return this.threadRow(id);
   }
@@ -1087,6 +1113,7 @@ export class Axiom {
     if (row) return JSON.parse(row.value);
     if (key === "mutedKinds") return [];
     if (key === "staleAfterDays") return DEFAULT_STALE_AFTER_DAYS;
+    if (key === "t3Pin") return { ...DEFAULT_T3_PIN };
     return undefined;
   }
 

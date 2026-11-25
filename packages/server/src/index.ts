@@ -6,6 +6,8 @@ import { serve } from "@hono/node-server";
 import { type AppContext, createApp } from "./app.js";
 import { backupDir, backupIfDue } from "./backup.js";
 import { ChangeBus } from "./events.js";
+import { T3Provider } from "./providers/t3/provider.js";
+import { t3Dir } from "./providers/t3/reader.js";
 
 export { backupDir, backupIfDue, newestBackupMs, runBackup } from "./backup.js";
 export type { InstallOptions, InstallResult } from "./install.js";
@@ -20,6 +22,10 @@ export interface StartServerOptions {
   now?: Clock;
   /** Maintenance (stale prompts, backup) interval; default one hour. */
   maintenanceMs?: number;
+  /** T3's user-data folder (default: AXIOM_T3_DIR or ~/.t3/userdata). */
+  t3Dir?: string;
+  /** How often the T3 provider reads T3; default 2 s. */
+  t3PollMs?: number;
 }
 
 export interface RunningServer {
@@ -28,6 +34,7 @@ export interface RunningServer {
 }
 
 const HOUR_MS = 60 * 60 * 1000;
+const T3_POLL_MS = 2000;
 
 export async function startServer(options: StartServerOptions = {}): Promise<RunningServer> {
   const dbPath = options.dbPath ?? defaultDatabasePath();
@@ -35,9 +42,11 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   const ax = openDatabase(dbPath, { now });
   const bus = new ChangeBus(ax.db, now);
   const streams = new Set<() => void>();
+  const t3 = new T3Provider({ ax, dir: options.t3Dir ?? t3Dir(), now });
   const ctx: AppContext = {
     ax,
     bus,
+    t3,
     dbPath,
     webDist: options.webDist ?? fileURLToPath(new URL("../../web/dist", import.meta.url)),
     startedAt: now().toISOString(),
@@ -60,6 +69,21 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
     }
   };
   maintain();
+
+  /** Syncs T3 now; tells the UI when threads changed. Never throws. */
+  const syncT3 = () => {
+    try {
+      if (t3.sync() > 0) bus.emit();
+    } catch (e) {
+      console.error("T3 sync failed:", e);
+    }
+  };
+  syncT3();
+  const t3Timer = setInterval(syncT3, options.t3PollMs ?? T3_POLL_MS);
+  // A hook asked for an immediate re-read (it wrote a setting, which the bus noticed).
+  const unsubscribeT3 = bus.subscribe(() => {
+    if (t3.refreshRequested()) syncT3();
+  });
   const timer = setInterval(maintain, options.maintenanceMs ?? HOUR_MS);
 
   const host = options.host ?? "127.0.0.1";
@@ -73,6 +97,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
     });
   } catch (e) {
     clearInterval(timer);
+    clearInterval(t3Timer);
+    unsubscribeT3();
     bus.stop();
     ax.close();
     throw e;
@@ -84,6 +110,8 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
     url: `http://${host}:${port}`,
     async close() {
       clearInterval(timer);
+      clearInterval(t3Timer);
+      unsubscribeT3();
       bus.stop();
       for (const end of [...streams]) end();
       await new Promise<void>((resolve) => {

@@ -21,7 +21,12 @@ let cli: Axiom; // a second connection, standing in for the CLI
 beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), "axiom-server-"));
   dbPath = join(dir, "axiom.db");
-  server = await startServer({ dbPath, port: 0, webDist: join(dir, "no-web") });
+  server = await startServer({
+    dbPath,
+    port: 0,
+    webDist: join(dir, "no-web"),
+    t3Dir: join(dir, "no-t3"),
+  });
   cli = openDatabase(dbPath);
 });
 
@@ -369,7 +374,11 @@ describe("health", () => {
     expect(first.server.startedAt).toBeTypeOf("string");
     expect(first.server.lastBackupAt).toBeTypeOf("string"); // the startup backup
     expect(first.claudeCode.lastEventAt).toBeNull();
-    expect(first.t3).toEqual({ state: "not-configured" });
+    expect(first.t3.state).toBe("unavailable");
+    expect(first.t3.pinned).toEqual({
+      serverVersion: "0.1.11-nightly.20261118.4890",
+      migration: 98,
+    });
 
     topic("a");
     const t = cli.attachThread("a", { provider: "claude-code", providerThreadId: "c1" }, owner);
@@ -423,7 +432,12 @@ describe("startup maintenance", () => {
     old.createTopic({ slug: "old", title: "Old" }, owner);
     old.setTopicStatus("old", "idle", owner);
     old.close();
-    const s2 = await startServer({ dbPath: join(dir, "other.db"), port: 0, webDist: dir });
+    const s2 = await startServer({
+      dbPath: join(dir, "other.db"),
+      port: 0,
+      webDist: dir,
+      t3Dir: join(dir, "no-t3"),
+    });
     try {
       const res = await fetch(`${s2.url}/api/topics/old`);
       const body = (await res.json()) as Any;
@@ -489,7 +503,12 @@ describe("static files", () => {
     mkdirSync(join(web, "assets"), { recursive: true });
     writeFileSync(join(web, "index.html"), "<h1>axiom</h1>");
     writeFileSync(join(web, "assets", "app.js"), "console.log(1)");
-    const s2 = await startServer({ dbPath: join(dir, "web.db"), port: 0, webDist: web });
+    const s2 = await startServer({
+      dbPath: join(dir, "web.db"),
+      port: 0,
+      webDist: web,
+      t3Dir: join(dir, "no-t3"),
+    });
     try {
       const root = await fetch(`${s2.url}/`);
       expect(await root.text()).toBe("<h1>axiom</h1>");

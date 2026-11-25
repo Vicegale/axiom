@@ -18,6 +18,7 @@ import { streamSSE } from "hono/streaming";
 import { z } from "zod";
 import { backupDir, newestBackupMs } from "./backup.js";
 import type { ChangeBus } from "./events.js";
+import type { T3Provider } from "./providers/t3/provider.js";
 import { serveWeb } from "./static.js";
 
 const owner: Actor = { kind: "owner" };
@@ -26,6 +27,7 @@ const PING_MS = 15_000;
 export interface AppContext {
   ax: Axiom;
   bus: ChangeBus;
+  t3: T3Provider;
   dbPath: string;
   webDist: string;
   startedAt: string;
@@ -405,8 +407,20 @@ export function createApp(ctx: AppContext): Hono {
         lastBackupAt: last === null ? null : new Date(last).toISOString(),
       },
       claudeCode: { lastEventAt: event.at },
-      t3: { state: "not-configured" },
+      t3: ctx.t3.health(),
     });
+  });
+
+  // ---- T3 threads ---------------------------------------------------------
+
+  app.get("/api/t3/threads", (c) => {
+    const unattachedOnly = ["1", "true"].includes(c.req.query("unattached") ?? "");
+    try {
+      return c.json(ctx.t3.listThreads({ unattachedOnly, limit: 50 }));
+    } catch (e) {
+      const why = e instanceof Error ? e.message : String(e);
+      return c.json(err("unavailable", `T3 cannot be read: ${why}`), 503);
+    }
   });
 
   // ---- server-sent events -------------------------------------------------

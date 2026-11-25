@@ -89,4 +89,10 @@ export type EntryAuthor = (typeof ENTRY_AUTHORS)[number];
 
 export const DEFAULT_STALE_AFTER_DAYS = 14;
 
+/** The T3 build Axiom is tested against (ADR 0005): server version and latest migration id. */
+export const DEFAULT_T3_PIN = {
+  serverVersion: "0.1.11-nightly.20261118.4890",
+  migration: 98,
+} as const;
+
 export type Actor = { kind: "owner" } | { kind: "agent"; threadId?: number } | { kind: "axiom" };

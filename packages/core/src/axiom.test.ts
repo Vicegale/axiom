@@ -507,3 +507,29 @@ describe("thread uniqueness", () => {
     ).toThrow(/CHECK/);
   });
 });
+
+describe("provider support", () => {
+  it("defaults the T3 pin and lets the owner change it", () => {
+    expect(ax.getSetting("t3Pin")).toEqual({
+      serverVersion: "0.1.11-nightly.20261118.4890",
+      migration: 98,
+    });
+    ax.setSetting("t3Pin", { serverVersion: "x", migration: 99 }, owner);
+    expect(ax.getSetting("t3Pin")).toEqual({ serverVersion: "x", migration: 99 });
+    expect(() => ax.setSetting("t3Pin", { serverVersion: "x" }, owner)).toThrow(/Invalid/);
+  });
+
+  it("records a refresh request time per provider", () => {
+    expect(ax.providerRefreshRequestedAt("t3")).toBe(0);
+    clock.set("2026-02-03T04:05:06.000Z");
+    ax.requestProviderRefresh("t3");
+    expect(ax.providerRefreshRequestedAt("t3")).toBe(Date.parse("2026-02-03T04:05:06.000Z"));
+    expect(ax.providerRefreshRequestedAt("claude-code")).toBe(0);
+  });
+
+  it("lists the attached threads of one provider", () => {
+    topicWithThread(ax);
+    ax.attachThread("demo", { provider: "t3", providerThreadId: "x" }, owner);
+    expect(ax.listProviderThreads("t3").map((t) => t.providerThreadId)).toEqual(["x"]);
+  });
+});

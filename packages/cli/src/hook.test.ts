@@ -189,6 +189,31 @@ describe("axiom hook", () => {
     expect(s.log()).toBe("");
   });
 
+  it("records a refresh request when the T3 thread is attached, and nothing when it is not", () => {
+    const s = session();
+    s.exec(["topic", "new", "demo", "--title", "Demo"]);
+    const refresh = () => {
+      const ax = openDatabase(s.db);
+      try {
+        return ax.providerRefreshRequestedAt("t3");
+      } finally {
+        ax.close();
+      }
+    };
+    s.hook("prompt", PROMPT, { T3CODE_THREAD_ID: "t3-thread-1" });
+    expect(refresh()).toBe(0); // not attached
+    expect(s.topic().status).toBe("idle");
+
+    expect(
+      s.exec(["thread", "attach", "demo", "--provider", "t3", "--id", "t3-thread-1"]).code,
+    ).toBe(0);
+    const before = Date.now();
+    s.hook("stop", STOP, { T3CODE_THREAD_ID: "t3-thread-1" });
+    expect(refresh()).toBeGreaterThanOrEqual(before - 1000);
+    expect(s.topic().status).toBe("idle"); // the hook itself records no thread event
+    expect(s.log()).toBe("");
+  });
+
   it("exits 0 with a log line on broken stdin, an empty payload and an unknown event", () => {
     const s = session();
     s.attach();

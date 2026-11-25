@@ -125,10 +125,28 @@ export interface Settings {
   theme: "dark" | "light" | "system";
 }
 
+export interface T3Health {
+  state: "ok" | "untested-version" | "unavailable";
+  lastReadAt: string | null;
+  serverVersion: string | null;
+  migration: number | null;
+  pinned: { serverVersion: string; migration: number };
+  detail: string | null;
+}
+
 export interface Health {
   server: { startedAt: string; version: string; dbPath: string; lastBackupAt: string | null };
   claudeCode: { lastEventAt: string | null };
-  t3: { state: string };
+  t3: T3Health;
+}
+
+/** A T3 thread offered by the "Attach T3 thread" picker. */
+export interface T3Thread {
+  id: string;
+  title: string;
+  environmentId: string | null;
+  status: string;
+  updatedAt: string;
 }
 
 export interface TicketItem {
@@ -183,5 +201,10 @@ export const api = {
   notifications: () => request<NotificationsResponse>("GET", "/api/notifications"),
   settings: () => request<Settings>("GET", "/api/settings"),
   putSettings: (patch: Partial<Settings>) => request<Settings>("PUT", "/api/settings", patch),
+  t3Threads: () => request<T3Thread[]>("GET", "/api/t3/threads?unattached=1"),
+  attachThread: (
+    slug: string,
+    body: { provider: Provider; providerThreadId: string; environmentId?: string; title?: string },
+  ) => request<Thread>("POST", `/api/topics/${enc(slug)}/threads`, body),
   health: () => request<Health>("GET", "/api/health"),
 };
