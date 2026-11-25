@@ -137,3 +137,45 @@ dialog.st-settings::backdrop { background: rgba(6, 7, 9, 0.55); }
 }
 .st-kind { color: var(--steward); }
 .st-kind.blind { color: var(--k-authorization); }
+
+/* the memory page (ST5): items, their hover-revealed actions, the add form */
+.st-mem-page { max-width: 56rem; }
+.st-mem-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem 1rem; flex-wrap: wrap; }
+.st-mem-head h2 { font-size: 1.0625rem; font-weight: 600; letter-spacing: -0.01em; }
+.st-mem-head .st-meta { max-width: 60ch; margin-top: 0.25rem; }
+.st-mem-head-acts { display: flex; gap: 0.5rem; align-items: center; }
+.st-sec-h h3 { font-size: 0.8125rem; font-weight: 600; }
+.st-mem-list { display: grid; }
+.st-mem-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.5rem 0.75rem; align-items: start; padding: 0.4375rem 0; border-top: 1px solid var(--line); }
+.st-mem-item:first-child { border-top: 0; }
+.st-mem-item.retired .st-mem-text { color: var(--text-2); text-decoration: line-through; text-decoration-color: var(--text-3); }
+.st-mem-main { display: grid; gap: 0.125rem; min-width: 0; }
+.st-mem-text { font-size: 0.8125rem; overflow-wrap: anywhere; white-space: pre-wrap; }
+.st-mem-acts { display: flex; gap: 0.25rem; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+.st-mem-item:hover .st-reveal, .st-mem-item:focus-within .st-reveal { opacity: 1; }
+.st-mem-edit { grid-column: 1 / -1; display: grid; gap: 0.375rem; }
+.st-mem-edit-acts { display: flex; gap: 0.375rem; align-items: center; flex-wrap: wrap; }
+.st-mem-page textarea, .st-mem-page .st-mem-add input:not([type="checkbox"]), .st-mem-page .st-mem-add select {
+  width: 100%; padding: 0.375rem 0.5rem; color: var(--text); background: var(--bg);
+  border: 1px solid var(--control); border-radius: 0.1875rem; font: inherit; font-size: 0.8125rem;
+}
+.st-mem-page textarea { resize: vertical; min-height: 3rem; }
+.st-mem-page .st-mem-add input:not([type="checkbox"]), .st-mem-page .st-mem-add select { min-height: 1.875rem; padding-block: 0.25rem; }
+.st-mem-page :focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.st-mem-add { display: grid; gap: 0.625rem; padding: 0.875rem; }
+.st-mem-add-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.625rem; }
+.st-mem-sub { margin: 0.25rem 0 0.375rem; font-size: 0.75rem; font-weight: 400; color: var(--meta); }
+.st-mem-group + .st-mem-group { margin-top: 0.5rem; }
+.st-mem-group-h { display: flex; gap: 0.375rem; align-items: baseline; font-size: 0.75rem; font-weight: 500; color: var(--text-2); scroll-margin-top: 0.75rem; }
+.st-mem-to { font: 0.625rem var(--font-mono); text-transform: uppercase; color: var(--meta); }
+.st-index { display: flex; flex-wrap: wrap; gap: 0.25rem 0.375rem; list-style: none; padding: 0; }
+.st-index a { display: inline-block; font-size: 0.75rem; padding: 0.0625rem 0.4375rem; border-radius: 0.625rem; background: var(--raised); color: var(--text-2); text-decoration: none; }
+.st-index a:hover { color: var(--text); }
+.st-warn { color: color-mix(in srgb, var(--st-error) var(--ink-mix), var(--text)); }
+.st-retired > summary { padding: 0.625rem 0.875rem; cursor: pointer; font-size: 0.8125rem; font-weight: 600; }
+.st-retired[open] > summary { padding-bottom: 0.25rem; }
+@media (max-width: 700px) {
+  .st-mem-add-row { grid-template-columns: minmax(0, 1fr); }
+  .st-mem-item { grid-template-columns: minmax(0, 1fr); }
+  .st-mem-acts { justify-content: flex-start; }
+}

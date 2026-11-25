@@ -262,7 +262,8 @@ describe("stage 2 in a wake", () => {
     expect(prompt).toContain("PR acme/app#12");
     expect(prompt).toContain("signals active now: ci failed");
     expect(prompt).toContain("The owner prefers short messages.");
-    expect(prompt).toContain("memory: Alpha ships Friday.");
+    expect(prompt).toContain("Steward's memory attached to what came up");
+    expect(prompt).toMatch(/topic alpha:\n- #\d+ Alpha ships Friday\./);
     expect(prompt).toContain(`#${open.id} finding/attention: alpha: CI is red`);
     expect(prompt).toContain("pr:acme/app#12:ci failed:abcdef1234:x");
     // The answered question and its answer are fed back; so is what the owner dismissed.

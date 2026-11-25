@@ -7,10 +7,11 @@ import { Facet } from "./Icons";
 export function PageSwitch() {
   const [onDesk] = useRoute("/desk");
   const [onSteward] = useRoute("/steward");
+  const [onMemory] = useRoute("/steward/memory");
   const { stewardCount } = useAxiom();
   return (
     <nav className="page-switch" aria-label="Pages">
-      <Link href={hrefs.all} aria-current={onDesk || onSteward ? undefined : "page"}>
+      <Link href={hrefs.all} aria-current={onDesk || onSteward || onMemory ? undefined : "page"}>
         Tracker
       </Link>
       <Link href={hrefs.desk} aria-current={onDesk ? "page" : undefined}>
@@ -19,7 +20,7 @@ export function PageSwitch() {
       <Link
         href={hrefs.steward}
         className="ps-steward"
-        aria-current={onSteward ? "page" : undefined}
+        aria-current={onSteward || onMemory ? "page" : undefined}
         aria-label={stewardCount ? `Steward, ${stewardCount} need you` : "Steward"}
       >
         <span className="ps-ic">

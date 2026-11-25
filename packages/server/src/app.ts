@@ -10,6 +10,7 @@ import {
   STEWARD_ITEM_KINDS,
   STEWARD_ITEM_STATES,
   STEWARD_LEVELS,
+  type StewardWake,
   type Subagent,
   stewardSettingsSchema,
   type Thread,
@@ -39,10 +40,13 @@ import type { T3Provider } from "./providers/t3/provider.js";
 import { livePendingApprovals, registerRequestRoutes } from "./requests.js";
 import { registerSendRoutes } from "./sending.js";
 import { serveWeb } from "./static.js";
+import { buildMemoryView, resolveAttachedKey } from "./steward/memory.js";
 import { buildStewardView, stewardCount } from "./steward/view.js";
 
 const owner: Actor = { kind: "owner" };
 const PING_MS = 15_000;
+/** The owner writes memory items up to this long (Steward writes shorter ones). */
+const OWNER_MEMORY_TEXT_MAX = 2000;
 
 export interface AppContext {
   ax: Axiom;
@@ -64,6 +68,8 @@ export interface AppContext {
   fetchImpl?: typeof fetch;
   /** When Steward's next timer wake is due (ISO), or null; set once the scheduler exists. */
   stewardNextWake?: () => string | null;
+  /** Runs the memory tidy-up now (owner's button); set once the scheduler exists. */
+  stewardTidyUp?: () => Promise<StewardWake>;
 }
 
 const STATUS_CODES = { "not-found": 404, permission: 403, validation: 400, conflict: 409 } as const;
@@ -742,6 +748,73 @@ export function createApp(ctx: AppContext): Hono {
   app.post("/api/steward/items/:id/dismiss", (c) => {
     const id = intParam(c.req.param("id"), "item id");
     return c.json(write(() => ax.dismissStewardItem(id, owner)));
+  });
+
+  // Steward's memory (ST5): the owner's view, edits, additions, retiring and deleting, and the
+  // tidy-up on demand. Owner writes carry the source `owner`.
+  const memoryText = z.string().trim().min(1).max(OWNER_MEMORY_TEXT_MAX);
+  app.get("/api/steward/memory", (c) => c.json(buildMemoryView(ax)));
+  app.post("/api/steward/memory", async (c) => {
+    const body = parse(
+      z.strictObject({
+        scope: z.enum(["core", "attached", "general"]),
+        attachedKind: z.enum(["topic", "repo", "person"]).optional(),
+        attachedKey: z.string().optional(),
+        text: memoryText,
+      }),
+      await json(c),
+    );
+    return c.json(
+      write(() => {
+        let key = body.attachedKey;
+        if (body.scope === "attached") {
+          if (!body.attachedKind) throw bad("attached memory needs attachedKind");
+          try {
+            key = resolveAttachedKey(ax, body.attachedKind, body.attachedKey ?? "");
+          } catch (e) {
+            throw bad(e instanceof Error ? e.message : String(e));
+          }
+        }
+        return ax.addStewardMemory(
+          {
+            scope: body.scope,
+            ...(body.attachedKind ? { attachedKind: body.attachedKind } : {}),
+            ...(key !== undefined ? { attachedKey: key } : {}),
+            text: body.text,
+          },
+          owner,
+        );
+      }),
+      201,
+    );
+  });
+  app.put("/api/steward/memory/:id", async (c) => {
+    const id = intParam(c.req.param("id"), "memory id");
+    const body = parse(z.strictObject({ text: memoryText }), await json(c));
+    return c.json(write(() => ax.updateStewardMemory(id, body.text, owner)));
+  });
+  app.post("/api/steward/memory/:id/retire", (c) => {
+    const id = intParam(c.req.param("id"), "memory id");
+    return c.json(write(() => ax.retireStewardMemory(id, owner)));
+  });
+  app.post("/api/steward/memory/:id/restore", (c) => {
+    const id = intParam(c.req.param("id"), "memory id");
+    return c.json(write(() => ax.restoreStewardMemory(id, owner)));
+  });
+  app.delete("/api/steward/memory/:id", (c) => {
+    const id = intParam(c.req.param("id"), "memory id");
+    write(() => ax.deleteStewardMemory(id, owner));
+    return c.json({ ok: true });
+  });
+  app.post("/api/steward/memory/tidy-up", async (c) => {
+    if (!ctx.stewardTidyUp) throw bad("Steward is not running");
+    let wake: StewardWake;
+    try {
+      wake = await ctx.stewardTidyUp();
+    } catch (e) {
+      throw bad(e instanceof Error ? e.message : String(e));
+    }
+    return c.json({ wake, memory: buildMemoryView(ax) });
   });
 
   app.post("/api/steward/actions/:id/undo", (c) => {

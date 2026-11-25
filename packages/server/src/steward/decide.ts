@@ -4,7 +4,6 @@ import {
   PR_SIGNALS,
   type StewardBlindSpot,
   type StewardItem,
-  type StewardMemory,
   type StewardPrRecord,
   type StewardWake,
   stewardComplexitySchema,
@@ -13,6 +12,14 @@ import {
 import { z } from "zod";
 import type { Gathered } from "./gather.js";
 import { prFacts } from "./gather.js";
+import {
+  applyMemoryChanges,
+  buildRecall,
+  MEMORY_RULES,
+  type Recall,
+  renderAttached,
+  renderCoreAndIndex,
+} from "./memory.js";
 import { type PrSnapshot, parsePrTarget } from "./pr.js";
 import { runStage, type StageContext } from "./runner.js";
 
@@ -73,7 +80,10 @@ export const decideSchema = z.object({
       }),
     )
     .default([]),
-  /** Reserved for ST5 (memory changes). Accepted and ignored for now. */
+  /**
+   * Memory changes (add, update, retire, delete; see `memoryChangeSchema`). Kept loose here and
+   * checked one by one when applied, so one bad change does not throw away the whole reply.
+   */
   memory: z.array(z.unknown()).default([]),
 });
 export type DecideOutput = z.infer<typeof decideSchema>;
@@ -164,19 +174,14 @@ export interface DecideInput {
       head: string;
       raised: string[];
     }[];
-    memory: string[];
   }[];
   /** What the tidy rules just changed in this wake. */
   tidied: StewardItem[];
-  core: string[];
-  general: string[];
+  /** The core, the index and the attached memory of what came up (see memory.ts). */
+  recall: Recall;
   open: StewardItem[];
   answered: StewardItem[];
   dismissed: StewardItem[];
-}
-
-function memoryTexts(items: StewardMemory[]): string[] {
-  return items.map((m) => clip(m.text, 500));
 }
 
 /** Reads everything the decide prompt needs from the tracker. */
@@ -184,7 +189,6 @@ export function buildDecideInput(
   ax: Axiom,
   o: { wake: StewardWake; now: Date; tidied: StewardItem[]; topic?: string },
 ): DecideInput {
-  const settings = ax.getStewardSettings();
   const gathered = (o.wake.gathered as Gathered | null) ?? null;
   const open = ax.listStewardItems({ state: "open" });
   const since = new Date(o.now.getTime() - RECENT_DAYS * DAY_MS).toISOString();
@@ -205,7 +209,6 @@ export function buildDecideInput(
   const prLinks = ax.listLinksOfKind("pr");
   const since24 = o.wake.lookBackFrom ?? "";
   const topics: DecideInput["topics"] = [];
-  const repos = new Set<string>();
   for (const t of ax.listTopics()) {
     if (!t.stewardEnabled || (o.topic !== undefined && t.slug !== o.topic)) continue;
     const prs: DecideInput["topics"][number]["prs"] = [];
@@ -227,7 +230,6 @@ export function buildDecideInput(
         continue;
       }
       const s = rec.snapshot as PrSnapshot;
-      repos.add(p.repo);
       prs.push({
         ref,
         title: s.title,
@@ -251,26 +253,18 @@ export function buildDecideInput(
       goal: t.goal,
       lastWorkedAt: t.lastWorkedAt,
       prs,
-      memory: memoryTexts(
-        ax.listStewardMemory({ scope: "attached", attachedKind: "topic", attachedKey: t.slug }),
-      ),
     });
   }
-  for (const r of repos) {
-    // Attached memory of a repository comes up with its PRs (ST5 builds the rest).
-    const mem = memoryTexts(
-      ax.listStewardMemory({ scope: "attached", attachedKind: "repo", attachedKey: r }),
-    );
-    if (mem.length) {
-      const holder = topics.find((t) => t.prs.some((p) => p.ref.startsWith(`${r}#`)));
-      holder?.memory.push(...mem.map((m) => `(${r}) ${m}`));
-    }
-  }
-  const budget = settings.memoryCoreTokens * 4;
-  let used = 0;
-  const core = memoryTexts(ax.listStewardMemory({ scope: "core" })).filter((m) => {
-    used += m.length;
-    return used <= budget;
+  // Recall: every topic that came up (mentioned or shown), the repositories those topics link and
+  // the people named in what was gathered.
+  const recall = buildRecall(ax, {
+    topics: new Set([...mentioned, ...topics.map((t) => t.slug)]),
+    text: [
+      o.wake.triggerDetail ?? "",
+      gathered?.summary ?? "",
+      ...(gathered?.activity ?? []).flatMap((a) => [a.what, a.source]),
+      ...o.wake.blindSpots.map((b) => b.text),
+    ],
   });
   return {
     wake: {
@@ -284,8 +278,7 @@ export function buildDecideInput(
     blindSpots: o.wake.blindSpots,
     topics,
     tidied: o.tidied,
-    core,
-    general: [],
+    recall,
     open,
     answered: recent("answered"),
     dismissed: recent("dismissed"),
@@ -306,7 +299,6 @@ function renderTopic(t: DecideInput["topics"][number]): string {
     if (p.active.length) out.push(`  - signals active now: ${p.active.join(", ")}`);
     for (const r of p.raised) out.push(`  - raised since the look-back point: ${r}`);
   }
-  for (const m of t.memory) out.push(`memory: ${m}`);
   return out.join("\n");
 }
 
@@ -337,7 +329,7 @@ You work for the tracker's owner. Stage 1 (a cheaper model) summarised what chan
 6. Blind spots: the checklist below lists what Steward could not see, numbered [B1], [B2]... Ask the owner about those that matter (set \`spot\` to the number) and add any gap of your own. Use \`kind\` "blind spot" for missing information and "judgement" for a call you cannot make alone. Do not ask what an earlier answer below already settles.
 7. \`topicUpdates\` may change a topic's goal or status note, only when an owner's answer or a clear fact settles it; \`because\` says which. Leave it empty otherwise.
 8. \`promote\` on a finding asks for a stronger model to investigate or prepare a fix, rated simple, medium or hard. Use it rarely and only for a bounded code task, such as a failing check whose cause is likely a small change.
-9. \`memory\` is reserved: return [].`);
+9. ${MEMORY_RULES}`);
   p.push(`## Stage 1's summary
 
 <<<DATA
@@ -359,12 +351,7 @@ DATA>>>`);
 <<<DATA
 ${i.tidied.map((t) => `- ${t.title}: ${clip(t.body, 200)}`).join("\n")}
 DATA>>>`);
-  if (i.core.length)
-    p.push(`## Steward's memory (core)
-
-<<<DATA
-${i.core.map((m) => `- ${m}`).join("\n")}
-DATA>>>`);
+  p.push(...renderCoreAndIndex(i.recall), ...renderAttached(i.recall));
   p.push(`## Open items (already shown to the owner)
 
 <<<DATA
@@ -388,7 +375,7 @@ Reply with exactly one JSON object and nothing else:
  "findings": [{"topic": "<slug or null>", "level": "urgent|attention|info", "signal": "<PR signal name, or a few words>", "title": "...", "body": "...", "ref": "<owner/repo#n, PR findings only>", "fingerprint": "<short stable id of the subject, optional>", "promote": {"complexity": "simple|medium|hard"}}],
  "questions": [{"topic": "<slug or null>", "kind": "judgement|blind spot", "text": "...", "source": "<what made you ask>", "spot": <checklist number or null>, "fingerprint": "<optional>"}],
  "topicUpdates": [{"topic": "<slug>", "goal": "<new goal, optional>", "statusNote": "<new note, optional>", "because": "..."}],
- "memory": []}
+ "memory": [<memory changes, usually none>]}
 Leave out "promote", "ref", "spot" and "fingerprint" when they do not apply. Empty arrays are fine and often right.`);
   return p.join("\n\n");
 }
@@ -400,6 +387,8 @@ export interface ApplyResult {
   updated: StewardItem[];
   /** Skipped because the owner dismissed or answered the same subject, or it was already open. */
   skipped: number;
+  /** Memory changes made, one line each. */
+  memory: string[];
   /** Things that could not be applied, one line each. */
   problems: string[];
 }
@@ -415,7 +404,7 @@ export function applyDecision(
   out: DecideOutput,
   spots: StewardBlindSpot[],
 ): ApplyResult {
-  const res: ApplyResult = { created: [], updated: [], skipped: 0, problems: [] };
+  const res: ApplyResult = { created: [], updated: [], skipped: 0, memory: [], problems: [] };
   const topicOf = (
     s: string | null,
     what: string,
@@ -545,6 +534,10 @@ export function applyDecision(
       res.problems.push(`update of ${u.topic}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
+
+  const mem = applyMemoryChanges(ax, out.memory, { source: "wake" });
+  res.memory = mem.applied;
+  res.problems.push(...mem.problems, ...mem.refused);
   return res;
 }
 

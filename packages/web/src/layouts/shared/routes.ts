@@ -10,6 +10,7 @@ export type Route =
   | { kind: "settings" }
   | { kind: "desk" }
   | { kind: "steward" }
+  | { kind: "steward-memory" }
   | { kind: "unknown" };
 
 export const hrefs = {
@@ -25,6 +26,7 @@ export const hrefs = {
   settings: "/settings",
   desk: "/desk",
   steward: "/steward",
+  stewardMemory: "/steward/memory",
 };
 
 /** The current location as one of the app's routes. */
@@ -38,6 +40,7 @@ export function useAppRoute(): Route {
   const [isSettings] = useRoute("/settings");
   const [isDesk] = useRoute("/desk");
   const [isSteward] = useRoute("/steward");
+  const [isStewardMemory] = useRoute("/steward/memory");
   if (isAll) return { kind: "all" };
   if (isView && viewParams && isViewId(viewParams.view)) {
     return { kind: "view", view: viewParams.view };
@@ -55,5 +58,6 @@ export function useAppRoute(): Route {
   if (isSettings) return { kind: "settings" };
   if (isDesk) return { kind: "desk" };
   if (isSteward) return { kind: "steward" };
+  if (isStewardMemory) return { kind: "steward-memory" };
   return { kind: "unknown" };
 }

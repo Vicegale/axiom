@@ -1,14 +1,18 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Link } from "wouter";
 import { api, type StewardItem, type StewardSettings, type StewardView } from "../api";
 import { SkipLink } from "../components";
 import { Facet } from "../components/Icons";
 import { PageSwitch } from "../components/PageSwitch";
+import { MemoryMeter } from "../components/steward/MemoryMeter";
 import { FindingItem, QuestionItem } from "../components/steward/StewardItems";
 import { StewardSettingsDialog } from "../components/steward/StewardSettingsDialog";
 import { useAxiom } from "../data/DataProvider";
 import { useActions } from "../data/useActions";
 import { useResource } from "../data/useResource";
+import { hrefs } from "../layouts/shared/routes";
 import { estimateTokens, familyName, STAGE_NAMES, tokens } from "../lib/steward";
+import { useTheme } from "../lib/theme";
 import { hm } from "../lib/time";
 import { useNow } from "../lib/useNow";
 import "../styles/steward.css";
@@ -38,7 +42,7 @@ function Brief({ view }: { view: StewardView }) {
   const id = useId();
   const stages = useId();
   const b = view.brief;
-  const lastWake = view.wakes[0];
+  const lastWake = view.wakes.find((w) => w.trigger !== "tidy-up");
   return (
     <section className="st-panel st-brief" aria-labelledby={id}>
       <div className="st-brief-h">
@@ -127,6 +131,7 @@ function Brief({ view }: { view: StewardView }) {
 export function StewardPage() {
   const data = useAxiom();
   const { tick, settings, topics } = data;
+  useTheme(data.settings?.theme);
   const actions = useActions();
   const now = useNow();
   const view = useResource("steward", api.steward, tick).data;
@@ -358,9 +363,9 @@ export function StewardPage() {
                   id={`${ids.mem}-h`}
                   title="Memory core"
                   end={
-                    <a className="btn ghost sm" href="#memory">
+                    <Link className="btn ghost sm" href={hrefs.stewardMemory}>
                       Open memory
-                    </a>
+                    </Link>
                   }
                 />
                 <div className="st-pad">
@@ -444,28 +449,6 @@ export function StewardPage() {
       <div className="sr-only" aria-live="polite">
         {said}
       </div>
-    </div>
-  );
-}
-
-function MemoryMeter({ used, cap }: { used: number; cap: number }) {
-  const pct = Math.min(100, Math.round((used / cap) * 100));
-  return (
-    <div className="st-core-meter">
-      <span
-        className="st-meter"
-        role="progressbar"
-        aria-label="Memory core size"
-        aria-valuemin={0}
-        aria-valuemax={cap}
-        aria-valuenow={Math.min(used, cap)}
-        aria-valuetext={`about ${tokens(used)} of ${tokens(cap)} tokens`}
-      >
-        <span style={{ width: `${pct}%` }} />
-      </span>
-      <span className="st-meta st-num">
-        {tokens(used)} / {tokens(cap)}
-      </span>
     </div>
   );
 }

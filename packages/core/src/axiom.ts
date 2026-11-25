@@ -3150,19 +3150,55 @@ export class Axiom {
     return this.memoryRow(id);
   }
 
-  updateStewardMemory(id: number, text: string, actor: Actor): StewardMemory {
+  /**
+   * Changes an item's text. The owner's edit makes it the owner's (`source` owner); Steward's edit
+   * records where it came from (`source`, default `wake`) but never takes an item over from the
+   * owner, so the owner's items stay safe from Steward's deletes.
+   */
+  updateStewardMemory(
+    id: number,
+    text: string,
+    actor: Actor,
+    source?: StewardMemorySource,
+  ): StewardMemory {
     this.memoryWriter(actor, "change Steward's memory");
     if (!text.trim()) throw new AxiomError("validation", "a memory item needs text");
+    if (source !== undefined) parseWith(stewardMemorySourceSchema, source, "memory source");
+    if (actor.kind === "steward" && source === "owner") {
+      throw new AxiomError("validation", "Steward's own memory items are not from the owner");
+    }
     return this.tx(() => {
-      this.memoryRow(id);
+      const m = this.memoryRow(id);
+      const next = actor.kind === "owner" || m.source === "owner" ? "owner" : (source ?? m.source);
       this.run(
-        "UPDATE steward_memory SET text = ?, updated_at = ? WHERE id = ?",
+        "UPDATE steward_memory SET text = ?, source = ?, updated_at = ? WHERE id = ?",
         text.trim(),
+        next,
         this.iso(),
         id,
       );
       return this.memoryRow(id);
     });
+  }
+
+  /** Runs `fn` as one unit: if it throws, everything it wrote inside is rolled back. */
+  inTransaction<T>(fn: () => T): T {
+    return this.tx(fn);
+  }
+
+  /** The index lines the last tidy-up wrote (what the general memory holds), newest write only. */
+  getStewardMemoryIndex(): { lines: string[]; at: string } | null {
+    const v = this.getSetting("stewardMemoryIndex") as { lines: string[]; at: string } | undefined;
+    return v ?? null;
+  }
+
+  setStewardMemoryIndex(lines: string[], actor: Actor): void {
+    this.memoryWriter(actor, "write the memory index");
+    this.run(
+      "INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+      "stewardMemoryIndex",
+      JSON.stringify({ lines: lines.map((l) => l.trim()).filter(Boolean), at: this.iso() }),
+    );
   }
 
   /** Keeps the item but stops loading it. */
@@ -3179,6 +3215,20 @@ export class Axiom {
           id,
         );
       }
+      return this.memoryRow(id);
+    });
+  }
+
+  /** Loads a retired item again, with its original source. Owner only. */
+  restoreStewardMemory(id: number, actor: Actor): StewardMemory {
+    ownerOnly(actor, "restore a memory item");
+    return this.tx(() => {
+      this.memoryRow(id);
+      this.run(
+        "UPDATE steward_memory SET retired_at = NULL, updated_at = ? WHERE id = ?",
+        this.iso(),
+        id,
+      );
       return this.memoryRow(id);
     });
   }

@@ -15,6 +15,7 @@ import {
 } from "./connectors.js";
 import { applyDecision, buildDecideInput, runDecide } from "./decide.js";
 import { buildGatherInput, runGather } from "./gather.js";
+import { estimateTokens, runTidyUpStage, type TidyResult } from "./memory.js";
 import { PrPoller } from "./pr.js";
 import { StageError } from "./runner.js";
 import { runTidy } from "./tidy.js";
@@ -142,7 +143,7 @@ export class Steward {
     const s = this.settings();
     if (!s.enabled) return null;
     const now = this.now();
-    const last = this.o.ax.listStewardWakes(1)[0];
+    const last = this.lastRegularWake();
     const due = last ? new Date(Date.parse(last.startedAt) + s.wakeIntervalMin * 60_000) : now;
     const next = nextWorkingTime(s.workingHours, due.getTime() > now.getTime() ? due : now);
     return next ? next.toISOString() : null;
@@ -208,9 +209,14 @@ export class Steward {
     }
   }
 
+  /** The latest wake that read the world; a tidy-up of memory does not postpone the next one. */
+  private lastRegularWake(): StewardWake | undefined {
+    return this.o.ax.listStewardWakes(20).find((w) => w.trigger !== "tidy-up");
+  }
+
   private timerWakeDue(s: StewardSettings): boolean {
     if (this.running || this.pending) return false;
-    const last = this.o.ax.listStewardWakes(1)[0];
+    const last = this.lastRegularWake();
     return !last || this.now().getTime() - Date.parse(last.startedAt) >= s.wakeIntervalMin * 60_000;
   }
 
@@ -294,7 +300,9 @@ export class Steward {
   /** Where this wake reads changes from: the last finished wake's start, else 24 hours back. */
   private lookBack(now: Date): Date {
     const dayAgo = new Date(now.getTime() - DAY_MS);
-    const last = this.o.ax.listStewardWakes(20).find((w) => w.status === "done");
+    const last = this.o.ax
+      .listStewardWakes(20)
+      .find((w) => w.status === "done" && w.trigger !== "tidy-up");
     // No wake yet, or Steward was off since the last one: the previous wake says nothing.
     if (!last || this.enabledSince === null || last.startedAt < this.enabledSince) return dayAgo;
     return new Date(last.startedAt);
@@ -318,8 +326,73 @@ export class Steward {
     };
   }
 
-  private async execute(req: WakeRequest): Promise<StewardWake> {
+  /**
+   * Whether the memory tidy-up is due (03, Decisions on memory): on the first wake of each local
+   * day when something changed since the last one, and when the core is over its budget (at most
+   * once an hour). Nothing to tidy, nothing spent.
+   */
+  tidyDue(now: Date): boolean {
     const { ax } = this.o;
+    const items = ax.listStewardMemory();
+    if (items.length === 0) return false;
+    const last = ax.listStewardWakes(500).find((w) => w.trigger === "tidy-up");
+    if (!last) return true;
+    const overBudget =
+      estimateTokens(items.filter((m) => m.scope === "core").map((m) => m.text)) >
+      this.settings().memoryCoreTokens;
+    if (overBudget && now.getTime() - Date.parse(last.startedAt) >= 3_600_000) return true;
+    if (new Date(last.startedAt).toDateString() === now.toDateString()) return false;
+    const since = last.endedAt ?? last.startedAt;
+    return items.some((m) => m.updatedAt > since);
+  }
+
+  /**
+   * Tidies the memory now, for the owner (an endpoint) and waits its turn behind a running wake.
+   * Works whether Steward is on or off, since the owner asked. Rejects when there is no memory.
+   */
+  async tidyUpNow(detail = "asked by the owner"): Promise<StewardWake> {
+    if (this.o.ax.listStewardMemory().length === 0) {
+      throw new Error("Steward's memory is empty; there is nothing to tidy");
+    }
+    while (this.running) await this.idle;
+    const req = newRequest("tidy-up", detail);
+    this.launch(req);
+    const w = await req.promise;
+    if (!w) throw new Error("the tidy-up did not run");
+    return w;
+  }
+
+  /** One tidy-up wake: the tidy-up stage alone. A failure changes nothing and is recorded. */
+  private async executeTidyUp(detail: string | undefined): Promise<StewardWake> {
+    const { ax } = this.o;
+    const wake = ax.startStewardWake({ trigger: "tidy-up", triggerDetail: detail }, actor);
+    this.o.bus?.emit();
+    const end = (status: "done" | "failed" | "cut short", error?: string, r?: TidyResult) => {
+      if (r) ax.setStewardWakeGathered(wake.id, { tidyUp: r }, actor);
+      const w = ax.finishStewardWake(wake.id, { status, error }, actor);
+      this.o.bus?.emit();
+      return w;
+    };
+    try {
+      const r = await runTidyUpStage({ ax, cli: this.cli(), env: this.o.env }, wake, this.now());
+      return end(
+        "done",
+        r.refused.length ? `left alone, the owner's notes: ${r.refused.join("; ")}` : undefined,
+        r,
+      );
+    } catch (e) {
+      if (e instanceof StageError)
+        return end(e.code === "cap" || e.code === "timeout" ? "cut short" : "failed", e.message);
+      return end("failed", e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  private async execute(req: WakeRequest): Promise<StewardWake> {
+    if (req.trigger === "tidy-up") return this.executeTidyUp(req.details.join("; ") || undefined);
+    const { ax } = this.o;
+    // The day's first wake begins with the memory tidy-up, its own wake; a failure is on record
+    // and the wake goes on.
+    if (this.tidyDue(this.now())) await this.executeTidyUp("first wake of the day");
     const now = this.now();
     const s = this.settings();
     const lookBackFrom = this.lookBack(now);

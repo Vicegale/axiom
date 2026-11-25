@@ -368,6 +368,46 @@ export interface StewardMemoryItem {
   text: string;
 }
 
+export type MemoryScope = "core" | "attached" | "general";
+export type MemoryKind = "topic" | "repo" | "person";
+
+/** One item of Steward's memory (GET /api/steward/memory). */
+export interface MemoryEntry {
+  id: number;
+  scope: MemoryScope;
+  attachedKind: MemoryKind | null;
+  attachedKey: string | null;
+  text: string;
+  source: "wake" | "chat" | "tidy-up" | "owner";
+  createdAt: string;
+  updatedAt: string;
+  retiredAt: string | null;
+}
+
+/** GET /api/steward/memory: the memory page in one read. */
+export interface MemoryView {
+  budget: number;
+  coreTokens: number;
+  overBudget: boolean;
+  /** Retired items too (they carry `retiredAt`). */
+  items: MemoryEntry[];
+  index: {
+    attached: { kind: MemoryKind; key: string; count: number }[];
+    general: string[];
+    generalCount: number;
+    writtenAt: string | null;
+  };
+  keys: { topics: { slug: string; title: string }[]; repos: string[] };
+  lastTidy: { at: string; status: string; summary: string | null } | null;
+}
+
+export interface NewMemoryBody {
+  scope: MemoryScope;
+  attachedKind?: MemoryKind;
+  attachedKey?: string;
+  text: string;
+}
+
 /** GET /api/steward: everything the Steward page shows. */
 export interface StewardView {
   enabled: boolean;
@@ -601,6 +641,14 @@ export const api = {
     request<unknown>("POST", `/api/steward/items/${id}/answer`, { text }),
   dismissStewardItem: (id: number) => request<unknown>("POST", `/api/steward/items/${id}/dismiss`),
   undoStewardAction: (id: number) => request<unknown>("POST", `/api/steward/actions/${id}/undo`),
+  stewardMemory: () => request<MemoryView>("GET", "/api/steward/memory"),
+  addMemory: (body: NewMemoryBody) => request<MemoryEntry>("POST", "/api/steward/memory", body),
+  editMemory: (id: number, text: string) =>
+    request<MemoryEntry>("PUT", `/api/steward/memory/${id}`, { text }),
+  retireMemory: (id: number) => request<MemoryEntry>("POST", `/api/steward/memory/${id}/retire`),
+  restoreMemory: (id: number) => request<MemoryEntry>("POST", `/api/steward/memory/${id}/restore`),
+  deleteMemory: (id: number) => request<{ ok: true }>("DELETE", `/api/steward/memory/${id}`),
+  tidyUpMemory: () => request<unknown>("POST", "/api/steward/memory/tidy-up"),
   health: () => request<Health>("GET", "/api/health"),
   composeOptions: () => request<ComposeOptions>("GET", "/api/compose/options"),
   sendToThread: (id: number, body: SendBody) =>

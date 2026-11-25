@@ -12,17 +12,27 @@ export const QUIET_DECISION = {
 
 /**
  * A fake `claude`: records argv and stdin per stage, prints `stdout` for stage 1 (gather) and
- * `decideOut` for stage 2 (decide, told apart by its prompt), after `sleep` seconds.
+ * `decideOut` for stage 2 (decide) and `tidyOut` for the memory tidy-up (told apart by their prompts), after `sleep` seconds.
  */
 export function fakeClaude(
   dir: string,
   stdout: string,
-  opts: { sleep?: number; exit?: number; sleepAfter?: boolean; decideOut?: string } = {},
+  opts: {
+    sleep?: number;
+    exit?: number;
+    sleepAfter?: boolean;
+    decideOut?: string;
+    tidyOut?: string;
+  } = {},
 ) {
   const folder = join(dir, "fake-claude");
   mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, "out.gather"), stdout);
   writeFileSync(join(folder, "out.decide"), opts.decideOut ?? envelope(QUIET_DECISION));
+  writeFileSync(
+    join(folder, "out.tidy"),
+    opts.tidyOut ?? envelope({ summary: "Nothing to tidy." }),
+  );
   const path = join(folder, "claude");
   writeFileSync(
     path,
@@ -30,7 +40,7 @@ export function fakeClaude(
 DIR="${folder}"
 for a in "$@"; do printf '%s\\n' "$a"; done > "$DIR/argv.tmp"
 cat > "$DIR/stdin.tmp"
-if grep -q "stage 2 (decide)" "$DIR/stdin.tmp"; then S=decide; else S=gather; fi
+if grep -q "stage 2 (decide)" "$DIR/stdin.tmp"; then S=decide; elif grep -q "Steward memory tidy-up" "$DIR/stdin.tmp"; then S=tidy; else S=gather; fi
 mv "$DIR/argv.tmp" "$DIR/argv.$S"
 mv "$DIR/stdin.tmp" "$DIR/stdin.$S"
 echo x >> "$DIR/runs.$S"
@@ -48,12 +58,13 @@ ${opts.exit ? `exit ${opts.exit}` : ""}
       return "";
     }
   };
-  type Stage = "gather" | "decide";
+  type Stage = "gather" | "decide" | "tidy";
   return {
     path,
     /** The reply of stage 1 (gather). */
     setOut: (s: string) => writeFileSync(join(folder, "out.gather"), s),
     setDecide: (s: string) => writeFileSync(join(folder, "out.decide"), s),
+    setTidy: (s: string) => writeFileSync(join(folder, "out.tidy"), s),
     argv: (stage: Stage = "gather") => read(`argv.${stage}`).trimEnd().split("\n"),
     stdin: (stage: Stage = "gather") => read(`stdin.${stage}`),
     runs: (stage: Stage = "gather") => read(`runs.${stage}`).split("\n").filter(Boolean).length,

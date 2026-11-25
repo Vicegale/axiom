@@ -111,14 +111,17 @@ function wakeView(ax: Axiom, w: StewardWake, items: StewardItem[]): StewardViewW
     q ? plural(q, "question") : "",
     s ? plural(s, "suggestion") : "",
   ].filter(Boolean);
+  const tidyUp = (w.gathered as { tidyUp?: { summary?: string } } | null)?.tidyUp;
   const summary =
     w.status === "running"
       ? "running"
       : w.status === "failed" || w.status === "cut short"
         ? w.status
-        : parts.length
-          ? parts.join(" · ")
-          : "nothing new";
+        : w.trigger === "tidy-up"
+          ? `memory: ${tidyUp?.summary ?? "tidied"}`
+          : parts.length
+            ? parts.join(" · ")
+            : "nothing new";
   const gathered = (w.gathered ?? {}) as { activity?: unknown[] };
   const runs = ax.listStewardRuns({ wakeId: w.id });
   const stages = runs.map<StewardViewStage>((r) => ({
@@ -137,11 +140,13 @@ function wakeView(ax: Axiom, w: StewardWake, items: StewardItem[]): StewardViewW
           : r.stage === "gather"
             ? plural(Array.isArray(gathered.activity) ? gathered.activity.length : 0, "item") +
               " read"
-            : r.stage === "decide"
-              ? parts.length
-                ? parts.join(", ")
-                : "nothing new"
-              : r.stage,
+            : r.stage === "tidy-up"
+              ? (tidyUp?.summary ?? "tidied the memory")
+              : r.stage === "decide"
+                ? parts.length
+                  ? parts.join(", ")
+                  : "nothing new"
+                : r.stage,
   }));
   return {
     id: w.id,

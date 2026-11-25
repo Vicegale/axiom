@@ -143,6 +143,7 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
     connectors: options.stewardConnectors,
   });
   ctx.stewardNextWake = () => steward.nextWakeAt();
+  ctx.stewardTidyUp = () => steward.tidyUpNow();
   steward.start();
   const timer = setInterval(maintain, options.maintenanceMs ?? HOUR_MS);
 

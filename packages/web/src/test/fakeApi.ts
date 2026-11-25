@@ -7,6 +7,9 @@ import type {
   DocData,
   Entry,
   EpicItem,
+  MemoryEntry,
+  MemoryView,
+  NewMemoryBody,
   PendingRequest,
   Settings,
   StewardItem,
@@ -242,6 +245,9 @@ export class FakeServer {
   };
   /** The Steward page's data (GET /api/steward). */
   steward: StewardView = emptyStewardView();
+  /** Steward's memory (GET /api/steward/memory). */
+  memory: MemoryEntry[] = [];
+  memoryKeys: MemoryView["keys"] = { topics: [], repos: [] };
   calls: Call[] = [];
   desk: DeskTopic[] = [];
   /** Full replies by thread id; a missing one is a 404. */
@@ -311,6 +317,84 @@ export class FakeServer {
       monitorTargets: [],
       ...extra,
     } as TopicDetailData;
+  }
+
+  private memoryView(): MemoryView {
+    const active = this.memory.filter((m) => !m.retiredAt);
+    const groups = new Map<
+      string,
+      { kind: MemoryEntry["attachedKind"]; key: string; count: number }
+    >();
+    for (const m of active.filter((m) => m.scope === "attached")) {
+      const g = groups.get(`${m.attachedKind}:${m.attachedKey}`) ?? {
+        kind: m.attachedKind,
+        key: m.attachedKey as string,
+        count: 0,
+      };
+      g.count++;
+      groups.set(`${m.attachedKind}:${m.attachedKey}`, g);
+    }
+    const core = active.filter((m) => m.scope === "core");
+    const general = active.filter((m) => m.scope === "general");
+    const coreTokens = Math.ceil(core.reduce((n, m) => n + m.text.length, 0) / 4);
+    return {
+      budget: 2000,
+      coreTokens,
+      overBudget: coreTokens > 2000,
+      items: this.memory,
+      index: {
+        attached: [...groups.values()] as MemoryView["index"]["attached"],
+        general: general.length ? ["general facts"] : [],
+        generalCount: general.length,
+        writtenAt: null,
+      },
+      keys: this.memoryKeys,
+      lastTidy: null,
+    };
+  }
+
+  /** The memory endpoints of the fake: add, edit, retire, delete and the tidy-up. */
+  private memoryApi(method: string, path: string, body: NewMemoryBody): Response {
+    const id = /^\/api\/steward\/memory\/(\d+)/.exec(path)?.[1];
+    const find = id ? this.memory.find((m) => m.id === Number(id)) : undefined;
+    if (method === "GET" && path === "/api/steward/memory") return this.json(this.memoryView());
+    if (method === "POST" && path === "/api/steward/memory") {
+      const m: MemoryEntry = {
+        id: Math.max(0, ...this.memory.map((x) => x.id)) + 1,
+        scope: body.scope,
+        attachedKind: body.attachedKind ?? null,
+        attachedKey: body.attachedKey ?? null,
+        text: body.text.trim(),
+        source: "owner",
+        createdAt: "2026-11-25T14:30:00.000Z",
+        updatedAt: "2026-11-25T14:30:00.000Z",
+        retiredAt: null,
+      };
+      this.memory.push(m);
+      return this.json(m, 201);
+    }
+    if (method === "POST" && path === "/api/steward/memory/tidy-up") {
+      return this.json({ wake: { id: 1 }, memory: this.memoryView() });
+    }
+    if (!find) return this.json({ error: { code: "not-found", message: "no such item" } }, 404);
+    if (method === "PUT") {
+      find.text = body.text.trim();
+      find.source = "owner";
+      return this.json(find);
+    }
+    if (method === "POST" && path.endsWith("/retire")) {
+      find.retiredAt = "2026-11-25T14:31:00.000Z";
+      return this.json(find);
+    }
+    if (method === "POST" && path.endsWith("/restore")) {
+      find.retiredAt = null;
+      return this.json(find);
+    }
+    if (method === "DELETE") {
+      this.memory = this.memory.filter((m) => m !== find);
+      return this.json({ ok: true });
+    }
+    return this.json({ error: { code: "not-found", message: "no route" } }, 404);
   }
 
   private async handle(input: string, init?: RequestInit): Promise<Response> {
@@ -433,6 +517,7 @@ export class FakeServer {
     if (method === "GET" && path === "/api/steward") {
       return this.json({ ...this.steward, enabled: this.settings.steward.enabled });
     }
+    if (path.startsWith("/api/steward/memory")) return this.memoryApi(method, path, body);
     if (method === "GET" && path === "/api/steward/count") {
       const v = this.steward;
       return this.json({ count: v.needs.length + v.questions.length + v.ready.length });

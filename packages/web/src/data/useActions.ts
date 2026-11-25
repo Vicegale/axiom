@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { api, type Settings } from "../api";
+import { api, type NewMemoryBody, type Settings } from "../api";
 import type { TaskStatus } from "../lib/domain";
 import { useAxiom } from "./DataProvider";
 
@@ -38,6 +38,12 @@ export function useActions() {
       answerSteward: (id: number, text: string) => run(() => api.answerStewardItem(id, text)),
       dismissSteward: (id: number) => run(() => api.dismissStewardItem(id)),
       undoSteward: (id: number) => run(() => api.undoStewardAction(id)),
+      addMemory: (body: NewMemoryBody) => run(() => api.addMemory(body)),
+      editMemory: (id: number, text: string) => run(() => api.editMemory(id, text)),
+      retireMemory: (id: number) => run(() => api.retireMemory(id)),
+      restoreMemory: (id: number) => run(() => api.restoreMemory(id)),
+      deleteMemory: (id: number) => run(() => api.deleteMemory(id)),
+      tidyUpMemory: () => run(() => api.tidyUpMemory()),
       saveSettings: (patch: Partial<Settings>) =>
         run(async () => applySettings(await api.putSettings(patch))),
     }),
