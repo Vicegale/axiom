@@ -1,0 +1,29 @@
+/* Shared Axiom mockup tokens. Dark is the default; light via [data-theme="light"]. */
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap");
+:root {
+  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SF Mono", monospace;
+  --bg: #0b0c0e; --bg-dots: #1a1c20; --panel: #111316; --panel-2: #16191d; --raised: #1b1f24;
+  --line: #24282e; --line-strong: #323840;
+  --text: #e6e8eb; --text-2: #a3a9b2; --text-3: #848b95;
+  --focus: #7aa2ff;
+  /* topic statuses */
+  --st-idle: #7b838d; --st-wip: #5b9dff; --st-hitl: #ffb547; --st-monitoring: #38c6b6; --st-blocked: #c77dff;
+  --st-review: #8f8bff; --st-done: #4fbf74; --st-stale: #8a7a64; --st-error: #ff5d5d;
+  /* history entry kinds */
+  --k-note: #8b93a0; --k-decision: #f5a524; --k-finding: #ff8a3d; --k-verification: #3fcf8e; --k-owner: #ff6b9a;
+  --k-authorization: #b48cff; --k-next: #46b7ff; --k-axiom: #5c6470;
+  --radius: 6px;
+  color-scheme: dark;
+}
+[data-theme="light"] {
+  --bg: #f6f6f4; --bg-dots: #e2e2de; --panel: #ffffff; --panel-2: #fafaf8; --raised: #f0f0ed;
+  --line: #e4e4e0; --line-strong: #d2d2cc;
+  --text: #17191c; --text-2: #4e545c; --text-3: #6c727b;
+  --focus: #2f5fd0;
+  --st-idle: #7a828c; --st-wip: #2f6fe0; --st-hitl: #c27a00; --st-monitoring: #0f9488; --st-blocked: #9a46d6;
+  --st-review: #5b55e0; --st-done: #23914a; --st-stale: #8a7556; --st-error: #d93636;
+  --k-note: #6b7380; --k-decision: #b87400; --k-finding: #d1601a; --k-verification: #1d9a5f; --k-owner: #d43c72;
+  --k-authorization: #7b52d6; --k-next: #1f7fc4; --k-axiom: #8b929b;
+  color-scheme: light;
+}
