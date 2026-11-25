@@ -1,9 +1,11 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { statSync } from "node:fs";
 import { type Actor, type Axiom, AxiomError, type Thread } from "@axiom/core";
 import type { Context, Hono } from "hono";
 import { z } from "zod";
 import type { ChangeBus } from "./events.js";
+import type { T3Project } from "./providers/t3/reader.js";
 import { defaultT3Cli } from "./providers/t3/replies.js";
 
 const owner: Actor = { kind: "owner" };
@@ -201,7 +203,17 @@ export interface SendingOptions {
   t3Cli?: string;
   claudeCli: string;
   graceMs?: number;
+  /** The live T3 projects; throws when T3 cannot be read. */
+  listProjects?: () => T3Project[];
 }
+
+const isDir = (p: string) => {
+  try {
+    return statSync(p).isDirectory();
+  } catch {
+    return false;
+  }
+};
 
 const firstLine = (text: string) => (text.trim().split("\n")[0] ?? "").trim().slice(0, 120);
 
@@ -314,6 +326,20 @@ export function registerSendRoutes(app: Hono, o: SendingOptions): void {
             "validation",
             "no project: give `project`, or link a repository to the topic",
           );
+        }
+        if (!input.project && repo) {
+          // The server fell back to the repository link: check T3 would accept it.
+          const bad = `This topic's folder ${repo} isn't a T3 project. Choose a project.`;
+          if (!isDir(repo)) throw new AxiomError("validation", bad);
+          let projects: T3Project[] | undefined;
+          try {
+            projects = o.listProjects?.();
+          } catch {
+            projects = undefined; // T3 unreadable: let the CLI decide
+          }
+          const inside = (p: T3Project) =>
+            repo === p.workspaceRoot || repo.startsWith(`${p.workspaceRoot.replace(/\/+$/, "")}/`);
+          if (projects && !projects.some(inside)) throw new AxiomError("validation", bad);
         }
         if (input.effort !== undefined && input.model === undefined) {
           throw new AxiomError("validation", "effort needs a model");

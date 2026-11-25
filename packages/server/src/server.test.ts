@@ -83,6 +83,18 @@ describe("link descriptions", () => {
     expect(clear.body.description).toBeNull();
   });
 
+  it("corrects a link's target, checking repository folders", async () => {
+    topic("t");
+    const l = cli.addLink("t", { kind: "repository", target: "/home/x/project/axiom" }, owner);
+    const url = `/api/topics/t/links/${l.id}`;
+    const bad = await api(url, { method: "PATCH", body: { target: join(dir, "missing") } });
+    expect(bad.status).toBe(400);
+    const ok = await api(url, { method: "PATCH", body: { target: dir } });
+    expect(ok.status).toBe(200);
+    expect(ok.body.target).toBe(dir);
+    expect(cli.getTopic("t").links[0]?.target).toBe(dir);
+  });
+
   it("rejects bad link edits", async () => {
     topic("t");
     const l = cli.addLink("t", { kind: "artifact", target: "a.md" }, owner);

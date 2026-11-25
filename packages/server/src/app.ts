@@ -83,7 +83,11 @@ const bodies = {
   status: z.strictObject({ status: topicStatusSchema, reason: z.string().optional() }),
   taskStatus: z.strictObject({ status: taskStatusSchema }),
   mute: z.strictObject({ muted: z.boolean() }),
-  linkUpdate: z.strictObject({ label: z.string().optional(), description: z.string().optional() }),
+  linkUpdate: z.strictObject({
+    target: z.string().optional(),
+    label: z.string().optional(),
+    description: z.string().optional(),
+  }),
   thread: z.strictObject({
     provider: providerSchema,
     providerThreadId: z.string().min(1),
@@ -427,6 +431,7 @@ export function createApp(ctx: AppContext): Hono {
           deskOrder: s.deskOrder,
           taskCounts: s.taskCounts,
           linkCount: d.links.length,
+          repository: d.links.find((l) => l.kind === "repository")?.target ?? null,
           lastWorkedAt: s.lastWorkedAt,
           highlighted: s.highlighted,
           attention: attentionOf(ax, s),
@@ -708,6 +713,7 @@ export function createApp(ctx: AppContext): Hono {
     t3Cli: ctx.t3Cli,
     claudeCli: ctx.claudeCli ?? "claude",
     graceMs: ctx.sendGraceMs,
+    listProjects: () => ctx.t3.listProjects(),
   });
 
   app.all("/api/*", (c) => c.json(err("not-found", "no such endpoint"), 404));

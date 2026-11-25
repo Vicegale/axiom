@@ -13,6 +13,7 @@ import { type Actor, type Axiom, openDatabase } from "@axiom/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { type RunningServer, type StartServerOptions, startServer } from "./index.js";
 import { agentEnv, parseStartedThreadId } from "./sending.js";
+import { T3Fixture } from "./test-t3.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: test code reads untyped JSON
 type Any = any;
@@ -280,8 +281,13 @@ describe("POST /api/topics/:slug/threads/new", () => {
   it("starts a T3 thread in the topic's repository and attaches it", async () => {
     const t3 = fake("t3", "", '{"threadId":"new-9"}');
     topic();
-    cli.addLink("demo", { kind: "repository", target: "/home/me/repo" }, owner);
-    await start({ t3Cli: t3.path });
+    const repo = join(dir, "repo");
+    mkdirSync(repo);
+    const fixture = new T3Fixture(join(dir, "t3"));
+    fixture.project("p1", { root: dir });
+    fixture.close();
+    cli.addLink("demo", { kind: "repository", target: repo }, owner);
+    await start({ t3Cli: t3.path, t3Dir: join(dir, "t3") });
     const r = await api("/api/topics/demo/threads/new", {
       method: "POST",
       body: {
@@ -296,7 +302,7 @@ describe("POST /api/topics/:slug/threads/new", () => {
     expect(t3.argv()).toEqual([
       "thread",
       "start",
-      "/home/me/repo",
+      repo,
       "-",
       "--title",
       "Build the thing",
@@ -340,6 +346,32 @@ describe("POST /api/topics/:slug/threads/new", () => {
       body: { text: "Hi", provider: "t3" },
     });
     expect(r.status).toBe(400);
+    expect(t3.ran()).toBe(false);
+    expect(cli.getTopic("demo").threads).toHaveLength(0);
+  });
+
+  it("400 when the repository folder is missing or in no T3 project, and t3 never runs", async () => {
+    const t3 = fake("t3", "", '{"threadId":"n"}');
+    topic();
+    const fixture = new T3Fixture(join(dir, "t3"));
+    fixture.project("p1", { root: join(dir, "elsewhere") });
+    fixture.close();
+    await start({ t3Cli: t3.path, t3Dir: join(dir, "t3") });
+    const post = () =>
+      api("/api/topics/demo/threads/new", { method: "POST", body: { text: "Hi", provider: "t3" } });
+    const missing = join(dir, "no-such-folder");
+    const link = cli.addLink("demo", { kind: "repository", target: missing }, owner);
+    let r = await post();
+    expect(r.status).toBe(400);
+    expect(r.body.error.message).toBe(
+      `This topic's folder ${missing} isn't a T3 project. Choose a project.`,
+    );
+    const unlisted = join(dir, "unlisted");
+    mkdirSync(unlisted);
+    cli.updateLink("demo", link.id, { target: unlisted }, owner);
+    r = await post();
+    expect(r.status).toBe(400);
+    expect(r.body.error.message).toContain("isn't a T3 project");
     expect(t3.ran()).toBe(false);
     expect(cli.getTopic("demo").threads).toHaveLength(0);
   });

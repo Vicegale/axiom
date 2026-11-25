@@ -521,22 +521,30 @@ export function buildProgram(env: NodeJS.ProcessEnv, write: (s: string) => void)
         return { data: link, text: `Added ${link.kind} link #${link.id}.` };
       }),
     );
-  sub(linkGroup, "update", "change a link's label or description (an empty string clears it)")
+  sub(
+    linkGroup,
+    "update",
+    "change a link's target, label or description (an empty string clears a label or description)",
+  )
     .argument("<id>", "link id (shown by `topic show`)")
+    .option(
+      "--target <target>",
+      "new URL, path or name (a repository or worktree must be an existing folder)",
+    )
     .option("--label <label>", "label (at most 120 characters)")
     .option("--description <text>", "one-line description (at most 200 characters)")
     .option("--topic <topic>", "topic slug (default: current)")
     .action(
       run((ctx, [id], o) => {
-        if (o.label === undefined && o.description === undefined) {
-          throw new UsageError("pass --label and/or --description");
+        if (o.label === undefined && o.description === undefined && o.target === undefined) {
+          throw new UsageError("pass --target, --label and/or --description");
         }
         const linkId = Number(id);
         if (!Number.isInteger(linkId)) throw new UsageError(`not a link id: ${id}`);
         const link = ctx.axiom.updateLink(
           ctx.topic(o.topic),
           linkId,
-          { label: o.label, description: o.description },
+          { target: o.target, label: o.label, description: o.description },
           ctx.actor,
         );
         return { data: link, text: `Updated ${link.kind} link #${link.id}.` };
