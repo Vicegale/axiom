@@ -99,6 +99,7 @@ export function deskThread(over: Partial<DeskThread> & { id: number }): DeskThre
     summaryError: null,
     activity: null,
     runtime: null,
+    subagents: [],
     hasReply: false,
     pendingRequests: 0,
     ...over,

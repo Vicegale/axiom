@@ -864,6 +864,80 @@ describe("the Desk: replies, summaries, arrangement", () => {
     expect(ax.listEntries("demo")).toHaveLength(before);
   });
 
+  it("tracks running subagents: queued call names the start, stop removes, no history", () => {
+    const { thread } = topicWithThread(ax);
+    const before = ax.listEntries("demo").length;
+    ax.queueSubagentCall(thread.id, { title: "Check the schema", agentType: "Explore" });
+    ax.queueSubagentCall(thread.id, { title: "Review", agentType: "general-purpose" });
+    ax.queueSubagentCall(thread.id, { title: "Review 2", agentType: "general-purpose" });
+    // The oldest call of the same type names it, not the oldest call overall.
+    expect(ax.subagentStarted(thread.id, "a1", "general-purpose")).toBe(true);
+    expect(ax.subagentStarted(thread.id, "a1", "general-purpose")).toBe(false);
+    expect(ax.subagentStarted(thread.id, "a2", "general-purpose")).toBe(true);
+    // No call of that type left: no title.
+    expect(ax.subagentStarted(thread.id, "a3", "general-purpose")).toBe(true);
+    const list = ax.listSubagents().get(thread.id) ?? [];
+    expect(list.map((s) => [s.key, s.title, s.agentType])).toEqual([
+      ["a1", "Review", "general-purpose"],
+      ["a2", "Review 2", "general-purpose"],
+      ["a3", null, "general-purpose"],
+    ]);
+    expect(ax.subagentStopped(thread.id, "a1")).toBe(true);
+    expect(ax.subagentStopped(thread.id, "a1")).toBe(false);
+    expect(ax.listEntries("demo")).toHaveLength(before);
+  });
+
+  it("drops announced calls that never started after a while", () => {
+    const { thread } = topicWithThread(ax);
+    ax.queueSubagentCall(thread.id, { title: "Denied", agentType: "general-purpose" });
+    clock.advanceMs(31 * 60_000);
+    ax.queueSubagentCall(thread.id, { title: "Fresh", agentType: "general-purpose" });
+    ax.subagentStarted(thread.id, "a1", "general-purpose");
+    expect(ax.listSubagents().get(thread.id)?.[0]?.title).toBe("Fresh");
+  });
+
+  it("a stop keeps the subagents it lists, clears the rest, and leaves unknown ids alone", () => {
+    const { thread } = topicWithThread(ax);
+    for (const k of ["a1", "a2"]) ax.subagentStarted(thread.id, k, "general-purpose");
+    // Ids of another kind than ours: nothing to compare, nothing removed.
+    expect(ax.keepSubagents(thread.id, ["x9"])).toBe(false);
+    expect(ax.listSubagents().get(thread.id)).toHaveLength(2);
+    expect(ax.keepSubagents(thread.id, ["a2"])).toBe(true);
+    expect(
+      ax
+        .listSubagents()
+        .get(thread.id)
+        ?.map((s) => s.key),
+    ).toEqual(["a2"]);
+    expect(ax.keepSubagents(thread.id, [])).toBe(true);
+    expect(ax.listSubagents().has(thread.id)).toBe(false);
+  });
+
+  it("ending a thread forgets its subagents", () => {
+    const { thread } = topicWithThread(ax);
+    ax.subagentStarted(thread.id, "a1", "Explore");
+    ax.threadEnded(thread.id, "done");
+    expect(ax.listSubagents().has(thread.id)).toBe(false);
+  });
+
+  it("replaces a provider's subagent list, writing only differences", () => {
+    const { thread } = topicWithThread(ax);
+    const one = {
+      key: "s1",
+      title: "Explore",
+      agentType: null,
+      model: "claude-haiku-5",
+      progress: "Reading",
+      startedAt: "2026-01-01T00:00:00.000Z",
+    };
+    expect(ax.setSubagents(thread.id, [one])).toBe(true);
+    expect(ax.setSubagents(thread.id, [one])).toBe(false);
+    expect(ax.setSubagents(thread.id, [{ ...one, progress: "Writing" }])).toBe(true);
+    expect(ax.listSubagents().get(thread.id)?.[0]?.progress).toBe("Writing");
+    expect(ax.setSubagents(thread.id, [])).toBe(true);
+    expect(ax.listSubagents().has(thread.id)).toBe(false);
+  });
+
   it("lists threads whose reply has no summary, and overwrites the summary each time", () => {
     const { thread } = topicWithThread(ax);
     expect(ax.threadsNeedingSummary(10)).toEqual([]);

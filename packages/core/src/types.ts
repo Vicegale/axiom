@@ -98,6 +98,29 @@ export interface RuntimePatch {
   contextMax?: number | null;
 }
 
+/** A subagent working now (ephemeral: gone when it stops). `key` is the provider's own id. */
+export interface Subagent {
+  id: number;
+  threadId: number;
+  key: string;
+  title: string | null;
+  agentType: string | null;
+  model: string | null;
+  /** The latest step it reported (T3 only). */
+  progress: string | null;
+  startedAt: string;
+}
+
+/** What a provider says of a running subagent (T3 sync). */
+export interface SubagentSnapshot {
+  key: string;
+  title: string | null;
+  agentType: string | null;
+  model: string | null;
+  progress: string | null;
+  startedAt: string;
+}
+
 export interface Link {
   id: number;
   topicId: number;

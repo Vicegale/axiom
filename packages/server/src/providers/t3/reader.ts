@@ -39,6 +39,11 @@
  *   `$.tokenUsage.usedTokens` (with `$.tokenUsage.maxTokens` when known; `$.model` is the model the
  *   turn ran on, used when the thread names none).
  *
+ * - `orchestration_v2_projection_subagents`: `subagent_id`, `thread_id`, `status`, `started_at`,
+ *   `completed_at`, `updated_at`, `payload_json` (`$.title`, `$.model`, `$.progress` the latest
+ *   step). Running = no `completed_at` and a status other than `completed`, `failed`, `cancelled`,
+ *   `interrupted`.
+ *
  * - `projection_projects`: `project_id`, `title`, `workspace_root`, `default_model_selection_json`
  *   (null or `null` when the project has no default model), `pinned_at`, `archived_at`,
  *   `deleted_at`. Read for the new-topic dialog's project select (live projects only).
@@ -50,7 +55,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { describeToolUse, oneLine } from "@axiom/core";
+import { describeToolUse, oneLine, type SubagentSnapshot } from "@axiom/core";
 
 export type T3SessionStatus =
   | "idle"
@@ -99,6 +104,8 @@ export interface T3ThreadState {
   activity: { text: string; at: string } | null;
   /** Model, effort and context use, or null when T3 says nothing of them. */
   runtime: T3Runtime | null;
+  /** The subagents running now (none once they complete, fail, are cancelled or interrupted). */
+  subagents: SubagentSnapshot[];
 }
 
 /** What a T3 thread runs on; a field is null when T3 does not say. */
@@ -223,6 +230,14 @@ const CONTEXT_SQL = `SELECT json_extract(payload_json, '$.model') AS model,
   WHERE thread_id = ? AND json_valid(payload_json)
     AND json_extract(payload_json, '$.tokenUsage.usedTokens') IS NOT NULL
   ORDER BY started_at DESC, ordinal DESC LIMIT 1`;
+
+// A subagent is running until T3 gives it a completion time or a terminal status; any other status
+// (`running` is the one seen) counts, so a new in-flight status is not missed.
+const SUBAGENTS_SQL = `SELECT subagent_id, started_at, updated_at, payload_json
+  FROM orchestration_v2_projection_subagents
+  WHERE thread_id = ? AND completed_at IS NULL
+    AND status NOT IN ('completed', 'failed', 'cancelled', 'interrupted')
+  ORDER BY started_at, subagent_id`;
 
 const PROJECTS_SQL = `SELECT project_id, title, workspace_root, default_model_selection_json, pinned_at
   FROM projection_projects WHERE deleted_at IS NULL AND archived_at IS NULL
@@ -421,6 +436,7 @@ export class T3Db {
     this.db.prepare(ACTIVITY_SQL);
     this.db.prepare(MODEL_SQL);
     this.db.prepare(CONTEXT_SQL);
+    this.db.prepare(SUBAGENTS_SQL);
     this.db.prepare(PROJECTS_SQL);
   }
 
@@ -477,6 +493,32 @@ export class T3Db {
     return Object.values(runtime).some((v) => v !== null) ? runtime : null;
   }
 
+  /** The thread's subagents that are running now, oldest first. */
+  subagents(threadId: string): SubagentSnapshot[] {
+    const rows = this.db.prepare(SUBAGENTS_SQL).all(threadId) as {
+      subagent_id: string;
+      started_at: string | null;
+      updated_at: string;
+      payload_json: string;
+    }[];
+    return rows.map((r) => {
+      let p: Record<string, unknown> = {};
+      try {
+        const v: unknown = JSON.parse(r.payload_json);
+        if (typeof v === "object" && v !== null) p = v as Record<string, unknown>;
+      } catch {}
+      const text = (v: unknown) => (typeof v === "string" && v.trim() !== "" ? v.trim() : null);
+      return {
+        key: r.subagent_id,
+        title: text(p.title),
+        agentType: null,
+        model: text(p.model) ?? text((p.modelSelection as { model?: unknown } | null)?.model),
+        progress: text(p.progress),
+        startedAt: r.started_at ?? text(p.startedAt) ?? r.updated_at,
+      };
+    });
+  }
+
   private pending(threadId: string): T3Request[] {
     const requests = this.db.prepare(PENDING_SQL).all(threadId) as {
       runtime_request_id: string;
@@ -530,6 +572,7 @@ export class T3Db {
       latestRunId: row.run_id ?? null,
       activity: removed ? null : this.activity(row.thread_id),
       runtime: removed ? null : this.runtime(row.thread_id),
+      subagents: removed ? [] : this.subagents(row.thread_id),
     };
   }
 

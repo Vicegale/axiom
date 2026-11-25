@@ -254,6 +254,42 @@ if [ "$(wc -l < "$DIR/calls")" -lt 2 ]; then echo "I cannot do that"; else echo 
     expect(first("b").artifacts).toEqual([]);
   });
 
+  it("GET /api/desk lists a thread's running subagents, none for an ended thread", async () => {
+    const a = thread("a", "s1");
+    const b = thread("b", "s2");
+    cli.subagentStarted(a.id, "x1", "Explore");
+    cli.setSubagents(a.id, [
+      {
+        key: "t3-1",
+        title: "Review",
+        agentType: null,
+        model: "claude-haiku-5",
+        progress: "Reading",
+        startedAt: "2026-11-25T10:00:00.000Z",
+      },
+    ]);
+    await start({ claudeCli: claudeSaying(GOOD) });
+    const find = (body: Any, slug: string) => body.topics.find((t: Any) => t.slug === slug);
+    let body = (await api("/api/desk")).body;
+    // setSubagents made the list exactly the T3 one.
+    expect(find(body, "a").threads[0].subagents).toEqual([
+      {
+        id: expect.any(Number),
+        title: "Review",
+        agentType: null,
+        model: "claude-haiku-5",
+        progress: "Reading",
+        startedAt: "2026-11-25T10:00:00.000Z",
+      },
+    ]);
+    expect(find(body, "b").threads[0].subagents).toEqual([]);
+    cli.subagentStarted(b.id, "y1", "Explore");
+    body = (await api("/api/desk")).body;
+    expect(find(body, "b").threads[0].subagents).toMatchObject([
+      { title: null, agentType: "Explore" },
+    ]);
+  });
+
   it("a missing binary is an error on the thread, not a crash", async () => {
     const th = thread();
     cli.setThreadReply(th.id, "reply");

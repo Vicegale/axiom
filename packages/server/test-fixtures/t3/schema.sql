@@ -94,3 +94,19 @@ CREATE TABLE projection_projects (
       deleted_at TEXT
     , default_model_selection_json TEXT, project_icon_json TEXT, default_thread_env_mode TEXT, favicon_path TEXT, auto_pull INTEGER NOT NULL DEFAULT 0, pinned_at TEXT, archived_at TEXT, has_custom_title INTEGER NOT NULL DEFAULT 0);
 CREATE UNIQUE INDEX orchestration_v2_projection_runs_thread_ordinal_idx ON orchestration_v2_projection_runs(thread_id, ordinal);
+CREATE TABLE orchestration_v2_projection_subagents (
+      subagent_id TEXT PRIMARY KEY,
+      thread_id TEXT NOT NULL,
+      run_id TEXT,
+      parent_node_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      provider_thread_id TEXT,
+      child_thread_id TEXT,
+      origin TEXT NOT NULL,
+      status TEXT NOT NULL,
+      started_at TEXT,
+      completed_at TEXT,
+      updated_at TEXT NOT NULL,
+      payload_json TEXT NOT NULL
+    , driver TEXT, provider_instance_id TEXT, completion_delivery_state TEXT);
+CREATE INDEX orchestration_v2_projection_subagents_thread_idx ON orchestration_v2_projection_subagents(thread_id, started_at, subagent_id);

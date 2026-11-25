@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { DeskSubagent } from "../api";
 import { deskThread, deskTopic } from "../test/fakeApi";
 import {
   activityAge,
@@ -9,7 +10,10 @@ import {
   ownerIsNext,
   runLine,
   runningActivity,
+  runningFor,
   sortDesk,
+  subagentCount,
+  subagentNames,
   threadsByActivity,
   tokenCount,
 } from "./desk";
@@ -149,5 +153,44 @@ describe("token counts and the context meter", () => {
     expect(contextLevel(0.81)).toBe("warn");
     expect(contextLevel(0.95)).toBe("warn");
     expect(contextLevel(0.96)).toBe("full");
+  });
+});
+
+describe("subagents", () => {
+  const sub = (over: Partial<DeskSubagent> = {}): DeskSubagent => ({
+    id: 1,
+    title: null,
+    agentType: null,
+    model: null,
+    progress: null,
+    startedAt: "2026-11-25T10:00:00Z",
+    ...over,
+  });
+  it("counts them", () => {
+    expect(subagentCount(1)).toBe("1 subagent");
+    expect(subagentCount(3)).toBe("3 subagents");
+  });
+  it("says how long one has run", () => {
+    const at = "2026-11-25T10:00:00Z";
+    expect(runningFor(at, new Date("2026-11-25T10:00:30Z"))).toBe("<1 min");
+    expect(runningFor(at, new Date("2026-11-25T10:03:10Z"))).toBe("3 min");
+    expect(runningFor(at, new Date("2026-11-25T12:00:00Z"))).toBe("2 h");
+    expect(runningFor("nonsense", new Date())).toBe("<1 min");
+  });
+  it("names by title, else type, else model, and adds the type or model when it adds something", () => {
+    expect(subagentNames(sub({ title: "Check", agentType: "Explore" }))).toEqual({
+      name: "Check",
+      kind: "Explore",
+    });
+    expect(subagentNames(sub({ title: "Check", model: "claude-haiku-5" }))).toEqual({
+      name: "Check",
+      kind: "Haiku 5",
+    });
+    expect(subagentNames(sub({ agentType: "Explore" }))).toEqual({ name: "Explore", kind: null });
+    expect(subagentNames(sub({ model: "claude-haiku-5" }))).toEqual({
+      name: "Haiku 5",
+      kind: null,
+    });
+    expect(subagentNames(sub())).toEqual({ name: "Subagent", kind: null });
   });
 });

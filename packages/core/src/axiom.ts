@@ -56,6 +56,8 @@ import type {
   Notification,
   Ref,
   RuntimePatch,
+  Subagent,
+  SubagentSnapshot,
   Task,
   TaskDetail,
   Thread,
@@ -82,6 +84,10 @@ export const MAX_REPLY_CHARS = 200_000;
 
 /** The longest activity line kept on a thread, in characters. */
 export const MAX_ACTIVITY_CHARS = 300;
+const MAX_SUBAGENT_TITLE_CHARS = 200;
+const MAX_SUBAGENT_TYPE_CHARS = 80;
+/** How long an announced Agent/Task call waits for its subagent to start. */
+const QUEUED_CALL_TTL_MS = 30 * 60 * 1000;
 
 function camel<T>(row: Row | undefined): T {
   if (!row) throw new AxiomError("not-found", "row not found");
@@ -209,6 +215,11 @@ export class Axiom {
 
   private get<T>(sql: string, ...params: unknown[]): T | undefined {
     return this.stmt(sql).get(...(params as SQLInputValue[])) as unknown as T | undefined;
+  }
+
+  /** Runs a statement and returns how many rows it changed. */
+  private change(sql: string, ...params: unknown[]): number {
+    return Number(this.stmt(sql).run(...(params as SQLInputValue[])).changes);
   }
 
   private run(sql: string, ...params: unknown[]): number {
@@ -997,6 +1008,177 @@ export class Axiom {
     return true;
   }
 
+  // ---- working subagents (02, D11) -----------------------------------------
+
+  /**
+   * Claude Code announced an Agent/Task tool call (PreToolUse). `SubagentStart` has no description,
+   * so the call waits here until the subagent of its type starts and takes its title. Calls older
+   * than `QUEUED_CALL_TTL_MS` (denied, never started) are dropped.
+   */
+  queueSubagentCall(threadId: number, call: { title?: string | null; agentType: string }): void {
+    const now = this.clock();
+    this.run(
+      "DELETE FROM subagent_call WHERE thread_id = ? AND created_at < ?",
+      threadId,
+      new Date(now.getTime() - QUEUED_CALL_TTL_MS).toISOString(),
+    );
+    this.run(
+      "INSERT INTO subagent_call (thread_id, title, agent_type, created_at) VALUES (?, ?, ?, ?)",
+      threadId,
+      call.title ? oneLine(call.title, MAX_SUBAGENT_TITLE_CHARS) || null : null,
+      oneLine(call.agentType, MAX_SUBAGENT_TYPE_CHARS) || "general-purpose",
+      now.toISOString(),
+    );
+  }
+
+  /**
+   * A subagent started (`SubagentStart`). Titled from the oldest queued call of its type, which it
+   * uses up. Seeing the same `key` again changes nothing. Returns whether a row was added.
+   */
+  subagentStarted(threadId: number, key: string, agentType?: string | null): boolean {
+    return this.tx(() => {
+      if (this.get("SELECT 1 FROM subagent WHERE thread_id = ? AND key = ?", threadId, key)) {
+        return false;
+      }
+      const type = agentType ? oneLine(agentType, MAX_SUBAGENT_TYPE_CHARS) || null : null;
+      const call = this.get<{ id: number; title: string | null }>(
+        `SELECT id, title FROM subagent_call WHERE thread_id = ? AND agent_type = ?
+         ORDER BY id LIMIT 1`,
+        threadId,
+        type ?? "general-purpose",
+      );
+      if (call) this.run("DELETE FROM subagent_call WHERE id = ?", call.id);
+      this.run(
+        "INSERT INTO subagent (thread_id, key, title, agent_type, started_at) VALUES (?, ?, ?, ?, ?)",
+        threadId,
+        key,
+        call?.title ?? null,
+        type,
+        this.iso(),
+      );
+      return true;
+    });
+  }
+
+  /** A subagent stopped (`SubagentStop`). Returns whether it was listed. */
+  subagentStopped(threadId: number, key: string): boolean {
+    return this.change("DELETE FROM subagent WHERE thread_id = ? AND key = ?", threadId, key) > 0;
+  }
+
+  /**
+   * The parent's Stop says which subagents still run (`background_tasks` ids). With none left,
+   * every row goes. Otherwise rows whose id is not listed go, but only when the list names at least
+   * one of ours: when the ids are another kind altogether the rows are left alone. Queued calls
+   * that never started are dropped. Returns whether a row went.
+   */
+  keepSubagents(threadId: number, runningKeys: readonly string[]): boolean {
+    return this.tx(() => {
+      this.run("DELETE FROM subagent_call WHERE thread_id = ?", threadId);
+      const rows = this.all<{ key: string }>(
+        "SELECT key FROM subagent WHERE thread_id = ?",
+        threadId,
+      );
+      const known = rows.some((r) => runningKeys.includes(r.key));
+      if (runningKeys.length > 0 && !known) return false;
+      let removed = 0;
+      for (const r of rows) {
+        if (runningKeys.includes(r.key)) continue;
+        removed += this.change(
+          "DELETE FROM subagent WHERE thread_id = ? AND key = ?",
+          threadId,
+          r.key,
+        );
+      }
+      return removed > 0;
+    });
+  }
+
+  /** Forgets the thread's subagents and queued calls (session ended). Returns whether a row went. */
+  clearSubagents(threadId: number): boolean {
+    this.run("DELETE FROM subagent_call WHERE thread_id = ?", threadId);
+    return this.change("DELETE FROM subagent WHERE thread_id = ?", threadId) > 0;
+  }
+
+  /** The running subagents of every thread, oldest first, by thread id (for the Desk). */
+  listSubagents(): Map<number, Subagent[]> {
+    const out = new Map<number, Subagent[]>();
+    for (const r of this.all<Row>("SELECT * FROM subagent ORDER BY started_at, id")) {
+      const s = camel<Subagent>(r);
+      const list = out.get(s.threadId);
+      if (list) list.push(s);
+      else out.set(s.threadId, [s]);
+    }
+    return out;
+  }
+
+  /**
+   * Makes the thread's subagent rows match what the provider reports now (T3 sync): adds, updates
+   * and removes, writing only differences. Returns whether anything changed.
+   */
+  setSubagents(threadId: number, now: readonly SubagentSnapshot[]): boolean {
+    return this.tx(() => {
+      const have = new Map(
+        this.all<Row>("SELECT * FROM subagent WHERE thread_id = ?", threadId).map((r) => {
+          const s = camel<Subagent>(r);
+          return [s.key, s] as const;
+        }),
+      );
+      let changed = false;
+      const text = (v: string | null, max: number) => (v ? oneLine(v, max) || null : null);
+      const seen = new Set<string>();
+      for (const n of now) {
+        if (seen.has(n.key)) continue;
+        seen.add(n.key);
+        const next = {
+          title: text(n.title, MAX_SUBAGENT_TITLE_CHARS),
+          agentType: text(n.agentType, MAX_SUBAGENT_TYPE_CHARS),
+          model: text(n.model, MAX_SUBAGENT_TYPE_CHARS),
+          progress: text(n.progress, MAX_ACTIVITY_CHARS),
+          startedAt: n.startedAt,
+        };
+        const cur = have.get(n.key);
+        if (!cur) {
+          this.run(
+            `INSERT INTO subagent (thread_id, key, title, agent_type, model, progress, started_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            threadId,
+            n.key,
+            next.title,
+            next.agentType,
+            next.model,
+            next.progress,
+            next.startedAt,
+          );
+          changed = true;
+        } else if (
+          cur.title !== next.title ||
+          cur.agentType !== next.agentType ||
+          cur.model !== next.model ||
+          cur.progress !== next.progress ||
+          cur.startedAt !== next.startedAt
+        ) {
+          this.run(
+            `UPDATE subagent SET title = ?, agent_type = ?, model = ?, progress = ?, started_at = ?
+             WHERE id = ?`,
+            next.title,
+            next.agentType,
+            next.model,
+            next.progress,
+            next.startedAt,
+            cur.id,
+          );
+          changed = true;
+        }
+      }
+      for (const [key] of have) {
+        if (seen.has(key)) continue;
+        this.run("DELETE FROM subagent WHERE thread_id = ? AND key = ?", threadId, key);
+        changed = true;
+      }
+      return changed;
+    });
+  }
+
   /** Threads whose latest reply has no summary yet (never summarised, or the reply is newer). */
   threadsNeedingSummary(limit: number): Thread[] {
     return this.all<Row>(
@@ -1215,6 +1397,7 @@ export class Axiom {
           reason ?? null,
           threadId,
         );
+        this.clearSubagents(threadId);
         // A thread that ends while still running (killed, crashed session) is no longer working.
         if (th.status === "wip") {
           this.run(

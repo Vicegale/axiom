@@ -12,6 +12,8 @@ export const CLAUDE_EVENT: Record<HookEvent, string> = {
   permission: "PermissionRequest",
   stop: "Stop",
   "session-end": "SessionEnd",
+  "subagent-start": "SubagentStart",
+  "subagent-stop": "SubagentStop",
 };
 
 type Json = Record<string, unknown>;

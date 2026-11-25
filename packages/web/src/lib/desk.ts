@@ -1,4 +1,4 @@
-import type { DeskThread, DeskTopic } from "../api";
+import type { DeskSubagent, DeskThread, DeskTopic } from "../api";
 import { ago } from "./time";
 
 export type DeskSort = "ready" | "fixed";
@@ -128,4 +128,26 @@ export function contextRatio(used: number | null, max: number | null): number | 
 /** The meter's colour step: neutral, `warn` above 80 %, `full` above 95 %. */
 export function contextLevel(ratio: number): "ok" | "warn" | "full" {
   return ratio > 0.95 ? "full" : ratio > 0.8 ? "warn" : "ok";
+}
+
+/** "1 subagent", "2 subagents". */
+export function subagentCount(n: number): string {
+  return `${n} ${n === 1 ? "subagent" : "subagents"}`;
+}
+
+/** How long a subagent has run: "<1 min", "3 min", "2 h". */
+export function runningFor(startedAt: string, now: Date): string {
+  const ms = now.getTime() - new Date(startedAt).getTime();
+  return !Number.isFinite(ms) || ms < 60_000 ? "<1 min" : ago(startedAt, now, true);
+}
+
+/**
+ * What a listed subagent is called (its title, else its type, else its model) and what else is
+ * known of it (type or model, when the name is not already that).
+ */
+export function subagentNames(s: DeskSubagent): { name: string; kind: string | null } {
+  const model = s.model === null ? null : modelName(s.model);
+  const name = s.title ?? s.agentType ?? model ?? "Subagent";
+  const kind = s.agentType ?? model;
+  return { name, kind: kind === name ? null : kind };
 }

@@ -604,6 +604,117 @@ describe("model, effort and context", () => {
   });
 });
 
+describe("working subagents on the card", () => {
+  const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
+  const setSubagents = (list: DeskThread["subagents"], index = 1) => {
+    const th = server.desk[0]?.threads[index];
+    if (th) th.subagents = list;
+  };
+  const two = (): DeskThread["subagents"] => [
+    {
+      id: 1,
+      title: "Check the schema",
+      agentType: "Explore",
+      model: null,
+      progress: null,
+      startedAt: minutesAgo(3),
+    },
+    {
+      id: 2,
+      title: "Review the diff",
+      agentType: null,
+      model: "claude-haiku-5",
+      progress: "Reading reader.ts",
+      startedAt: minutesAgo(12),
+    },
+  ];
+  const countButton = () =>
+    within(card("Alpha")).queryByRole("button", { name: /\d+ subagents?/ }) as HTMLElement | null;
+
+  it("shows nothing when there are none", async () => {
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    expect(countButton()).toBeNull();
+    expect(card("Alpha").querySelector(".dk-agents")).toBeNull();
+    expect(card("Alpha").querySelector(".dk-run")?.textContent).toBe("running");
+  });
+
+  it("says `running · 2 subagents` for a running thread, with the count as a button", async () => {
+    setSubagents(two());
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    const run = card("Alpha").querySelector(".dk-run") as HTMLElement;
+    expect(run.textContent).toBe("running ·2 subagents");
+    const btn = countButton() as HTMLElement;
+    expect(btn.textContent).toBe("2 subagents");
+    expect(btn.getAttribute("aria-expanded")).toBe("false");
+    expect(card("Alpha").querySelector(".dk-agents")).toBeNull();
+  });
+
+  it("keeps the newest step and puts the button after it", async () => {
+    setSubagents(two());
+    const th = server.desk[0]?.threads[1];
+    if (th) th.activity = { text: "Reading app.ts", at: minutesAgo(0) };
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    const run = card("Alpha").querySelector(".dk-run") as HTMLElement;
+    expect(run.textContent).toContain("running · Reading app.ts");
+    expect(run.lastElementChild).toBe(countButton());
+  });
+
+  it("opens a list with name, type or model, time running and progress, and closes again", async () => {
+    setSubagents(two());
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    const btn = countButton() as HTMLElement;
+    fireEvent.click(btn);
+    expect(btn.getAttribute("aria-expanded")).toBe("true");
+    const list = within(card("Alpha")).getByRole("list", { name: "Working subagents" });
+    expect(btn.getAttribute("aria-controls")).toBe(list.id);
+    const items = within(list).getAllByRole("listitem");
+    expect(items.map((i) => i.textContent)).toEqual([
+      "Check the schemaExplore · 3 min",
+      "Review the diffHaiku 5 · 12 minReading reader.ts",
+    ]);
+    fireEvent.click(btn);
+    expect(btn.getAttribute("aria-expanded")).toBe("false");
+    expect(card("Alpha").querySelector(".dk-agents")).toBeNull();
+  });
+
+  it("names an untitled subagent by its type and says `waiting on` for an idle thread", async () => {
+    setSubagents(
+      [
+        {
+          id: 5,
+          title: null,
+          agentType: "Explore",
+          model: null,
+          progress: null,
+          startedAt: minutesAgo(0),
+        },
+      ],
+      0,
+    );
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    // The newest thread (the one shown) has none; pick the older one, which has one.
+    fireEvent.change(within(card("Alpha")).getByRole("combobox"), { target: { value: "1" } });
+    const run = card("Alpha").querySelector(".dk-run") as HTMLElement;
+    expect(run.textContent).toBe("waiting on1 subagent");
+    fireEvent.click(countButton() as HTMLElement);
+    expect(card("Alpha").querySelector(".dk-agent")?.textContent).toBe("Explore<1 min");
+  });
+
+  it("is accessible, open and closed", async () => {
+    setSubagents(two());
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    await expectAccessible();
+    fireEvent.click(countButton() as HTMLElement);
+    await expectAccessible();
+  });
+});
+
 describe("the Artifacts menu on the card", () => {
   const artifacts = [
     { id: 11, kind: "artifact", target: "docs/plan.md", label: "Plan", description: "The plan" },

@@ -1,6 +1,12 @@
 import { type KeyboardEvent, type PointerEvent, useId, useState } from "react";
 import { Link } from "wouter";
-import { api, type DeskThread, type DeskTopic, type ThreadRuntime } from "../../api";
+import {
+  api,
+  type DeskSubagent,
+  type DeskThread,
+  type DeskTopic,
+  type ThreadRuntime,
+} from "../../api";
 import { useResource } from "../../data/useResource";
 import { hrefs } from "../../layouts/shared/routes";
 import { isPlainClick } from "../../lib/click";
@@ -11,6 +17,9 @@ import {
   modelName,
   runLine,
   runningActivity,
+  runningFor,
+  subagentCount,
+  subagentNames,
   threadLabel,
   threadsByActivity,
   tokenCount,
@@ -155,23 +164,91 @@ function Runtime({ runtime: r }: { runtime: ThreadRuntime | null }) {
   );
 }
 
-/** One fixed-height line: the run state, and for a running thread its newest step. */
+/** The subagents working now: name, type or model, how long, and (T3) the latest step. */
+function SubagentList({
+  id,
+  subagents,
+  now,
+}: {
+  id: string;
+  subagents: DeskSubagent[];
+  now: Date;
+}) {
+  return (
+    <ul className="dk-agents" id={id} aria-label="Working subagents">
+      {subagents.map((s) => {
+        const { name, kind } = subagentNames(s);
+        return (
+          <li key={s.id} className="dk-agent">
+            <span className="dk-agent-head">
+              <span className="dk-agent-name" title={name}>
+                {name}
+              </span>
+              <span className="dk-agent-meta">
+                {kind ? `${kind} · ` : ""}
+                <time dateTime={s.startedAt}>{runningFor(s.startedAt, now)}</time>
+              </span>
+            </span>
+            {s.progress ? (
+              <span className="dk-agent-step" title={s.progress}>
+                {s.progress}
+              </span>
+            ) : null}
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
+ * One fixed-height line: the run state, and for a running thread its newest step. Working
+ * subagents add a button with their count ("running · 2 subagents", "waiting on 1 subagent") that
+ * opens the list under the line.
+ */
 function RunLine({ thread, now }: { thread: DeskThread; now: Date }) {
   const step = runningActivity(thread);
+  const listId = useId();
+  const [open, setOpen] = useState(false);
+  const subs = thread.subagents;
+  const busy = subs.length > 0;
+  const shown = open && busy;
+  // An idle thread with subagents is waiting on them; a running one says "running ·" before the count.
+  const text = !busy
+    ? runLine(thread, now)
+    : thread.status === "wip"
+      ? "running ·"
+      : thread.status === "hitl" || thread.status === "error"
+        ? runLine(thread, now)
+        : "waiting on";
   return (
-    <p className={`dk-run${step ? " live" : ""}`}>
-      <span className={`dk-rundot s-${thread.status}`} aria-hidden="true" />
-      {step ? (
-        <>
-          <span className="dk-runtext" title={`running · ${step}`}>
-            running · <span className="dk-act">{step}</span>
-          </span>
-          {thread.activity ? <ActivityAge at={thread.activity.at} /> : null}
-        </>
-      ) : (
-        <span className="dk-runtext">{runLine(thread, now)}</span>
-      )}
-    </p>
+    <>
+      <p className={`dk-run${step ? " live" : ""}`}>
+        <span className={`dk-rundot s-${thread.status}`} aria-hidden="true" />
+        {step ? (
+          <>
+            <span className="dk-runtext" title={`running · ${step}`}>
+              running · <span className="dk-act">{step}</span>
+            </span>
+            {thread.activity ? <ActivityAge at={thread.activity.at} /> : null}
+          </>
+        ) : (
+          <span className="dk-runtext">{text}</span>
+        )}
+        {busy ? (
+          <button
+            type="button"
+            className="dk-agentsbtn"
+            aria-expanded={shown}
+            aria-controls={shown ? listId : undefined}
+            onClick={() => setOpen(!open)}
+          >
+            {subagentCount(subs.length)}
+          </button>
+        ) : null}
+      </p>
+      {shown ? <SubagentList id={listId} subagents={subs} now={now} /> : null}
+    </>
   );
 }
 
@@ -308,7 +385,7 @@ export function DeskCard({ topic, now, theme, move, onFavorite, onHide, onOpen, 
       {thread ? (
         <>
           <Runtime runtime={thread.runtime} />
-          <RunLine thread={thread} now={now} />
+          <RunLine key={thread.id} thread={thread} now={now} />
           <RequestsPanel thread={thread} />
           <div className="dk-now" aria-busy={thread.summaryPending ? true : undefined}>
             <p className="dk-label">

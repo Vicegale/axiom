@@ -268,6 +268,117 @@ describe("axiom hook", () => {
     }
   });
 
+  describe("subagents", () => {
+    const AGENT = payload("PreToolUse", {
+      tool_name: "Agent",
+      tool_input: {
+        description: "Ping reply subagent",
+        prompt: "say pong",
+        subagent_type: "general-purpose",
+      },
+      tool_use_id: "toolu_1",
+    });
+    const start = (id: string, type = "general-purpose", sid = SID) =>
+      payload("SubagentStart", { agent_id: id, agent_type: type }, sid);
+    const stopOf = (id: string) =>
+      payload("SubagentStop", {
+        agent_id: id,
+        agent_type: "general-purpose",
+        agent_transcript_path: "/tmp/x.jsonl",
+        last_assistant_message: "pong",
+        background_tasks: [],
+        stop_hook_active: false,
+      });
+    const rows = (db: string) => {
+      const ax = openDatabase(db);
+      try {
+        return [...ax.listSubagents().values()].flat().map((r) => [r.key, r.title, r.agentType]);
+      } finally {
+        ax.close();
+      }
+    };
+
+    it("lists a subagent from the Agent call and its start, and drops it at its own stop", () => {
+      const s = session();
+      s.attach();
+      s.hook("prompt", PROMPT);
+      s.hook("pre-tool", AGENT);
+      s.hook("subagent-start", start("abde0fbea64120847"));
+      s.hook("subagent-start", start("a2", "Explore"));
+      expect(rows(s.db)).toEqual([
+        ["abde0fbea64120847", "Ping reply subagent", "general-purpose"],
+        ["a2", null, "Explore"],
+      ]);
+      // A subagent's stop is not the parent's: the thread keeps working.
+      s.hook("subagent-stop", stopOf("abde0fbea64120847"));
+      expect(rows(s.db)).toEqual([["a2", null, "Explore"]]);
+      expect(s.topic().status).toBe("wip");
+      expect(s.notifications()).toEqual([]);
+      expect(s.log()).toBe("");
+    });
+
+    it("an older tool name (Task) names the subagent too", () => {
+      const s = session();
+      s.attach();
+      s.hook(
+        "pre-tool",
+        payload("PreToolUse", {
+          tool_name: "Task",
+          tool_input: { description: "Old", prompt: "p" },
+        }),
+      );
+      s.hook("subagent-start", start("a1"));
+      expect(rows(s.db)).toEqual([["a1", "Old", "general-purpose"]]);
+    });
+
+    it("the parent's stop keeps the subagents it still lists; none left clears them", () => {
+      const s = session();
+      s.attach();
+      s.hook("prompt", PROMPT);
+      for (const id of ["a1", "a2"]) s.hook("subagent-start", start(id));
+      s.hook(
+        "stop",
+        payload("Stop", { background_tasks: [{ id: "a2", type: "subagent", status: "running" }] }),
+      );
+      expect(rows(s.db)).toEqual([["a2", null, "general-purpose"]]);
+      expect(s.topic().status).toBe("wip");
+      s.hook("stop", STOP);
+      expect(rows(s.db)).toEqual([]);
+    });
+
+    it("session-end and a fresh session-start clear them; a compaction does not", () => {
+      const s = session();
+      s.attach();
+      s.hook("subagent-start", start("a1"));
+      s.hook("session-start", payload("SessionStart", { source: "compact" }));
+      expect(rows(s.db)).toHaveLength(1);
+      s.hook("session-start", payload("SessionStart", { source: "resume" }));
+      expect(rows(s.db)).toEqual([]);
+      s.hook("subagent-start", start("a1"));
+      s.hook("session-end", SESSION_END);
+      expect(rows(s.db)).toEqual([]);
+    });
+
+    it("does nothing for unattached sessions, AXIOM_INTERNAL runs, T3 sessions and bad payloads", () => {
+      const s = session();
+      s.attach();
+      s.hook("subagent-start", start("x", "general-purpose", "other-session"));
+      s.hook("pre-tool", payload("PreToolUse", { tool_name: "Agent", tool_input: {} }, "other"));
+      s.hook("subagent-start", start("y"), { AXIOM_INTERNAL: "1" });
+      s.hook("subagent-start", start("z"), { T3CODE_THREAD_ID: "t3-other" });
+      s.hook("subagent-start", payload("SubagentStart", {}));
+      s.hook("subagent-start", "not json");
+      expect(rows(s.db)).toEqual([]);
+
+      // Inside an attached T3 session the T3 sync owns the rows.
+      s.exec(["thread", "attach", "demo", "--provider", "t3", "--id", "t3-sub"]);
+      const t3 = { T3CODE_THREAD_ID: "t3-sub" };
+      s.hook("pre-tool", AGENT, t3);
+      s.hook("subagent-start", start("w"), t3);
+      expect(rows(s.db)).toEqual([]);
+    });
+  });
+
   it("stores the stop payload's last_assistant_message on the attached thread, replacing the old one", () => {
     const s = session();
     s.attach();
@@ -642,6 +753,8 @@ describe("axiom hooks install / uninstall", () => {
     "PermissionRequest",
     "Stop",
     "SessionEnd",
+    "SubagentStart",
+    "SubagentStop",
   ];
   const axiomCmds = (h: any, name: string): string[] =>
     (h[name] ?? [])
@@ -662,6 +775,8 @@ describe("axiom hooks install / uninstall", () => {
       ["PermissionRequest", "permission"],
       ["Stop", "stop"],
       ["SessionEnd", "session-end"],
+      ["SubagentStart", "subagent-start"],
+      ["SubagentStop", "subagent-stop"],
     ] as const) {
       // The permission hook waits for the owner, so its entry carries a long timeout.
       const timeout = ev === "permission" ? { timeout: 620 } : {};

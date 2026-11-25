@@ -7,6 +7,7 @@ import {
   type Epic,
   notificationKindSchema,
   providerSchema,
+  type Subagent,
   type Thread,
   type Ticket,
   TOPIC_STATUSES,
@@ -384,7 +385,10 @@ export function createApp(ctx: AppContext): Hono {
 
   // ---- the Desk (02) ------------------------------------------------------
 
-  function deskThread(t: TopicDetail["threads"][number]) {
+  function deskThread(
+    t: TopicDetail["threads"][number],
+    subagents: ReadonlyMap<number, Subagent[]>,
+  ) {
     return {
       id: t.id,
       provider: t.provider,
@@ -414,6 +418,15 @@ export function createApp(ctx: AppContext): Hono {
               contextMax: t.contextMax,
               at: t.runtimeAt,
             },
+      // Subagents running now (the card says how many and lists them).
+      subagents: (t.endedAt === null ? (subagents.get(t.id) ?? []) : []).map((s) => ({
+        id: s.id,
+        title: s.title,
+        agentType: s.agentType,
+        model: s.model,
+        progress: s.progress,
+        startedAt: s.startedAt,
+      })),
       // Questions and permission requests waiting on the owner (the card fetches them when > 0).
       pendingRequests: pendingRequestCount(t),
       hasReply: t.lastReply !== null,
@@ -439,6 +452,7 @@ export function createApp(ctx: AppContext): Hono {
   }
 
   app.get("/api/desk", (c) => {
+    const subagents = ax.listSubagents();
     const topics = ax
       .listTopics()
       // Closed topics leave the Desk unless the owner favourited them.
@@ -469,7 +483,7 @@ export function createApp(ctx: AppContext): Hono {
           lastWorkedAt: s.lastWorkedAt,
           highlighted: s.highlighted,
           attention: attentionOf(ax, s),
-          threads: d.threads.map(deskThread),
+          threads: d.threads.map((t) => deskThread(t, subagents)),
         };
       });
     return c.json({ topics });

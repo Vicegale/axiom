@@ -85,7 +85,7 @@ export class T3Provider {
   private pendingChanged = false;
   private runtimeChanged = false;
 
-  /** True once after a sync changed some thread's model, effort or context (the cards show them). */
+  /** True once after a sync changed some thread's model, effort, context or subagents (the cards show them). */
   takeRuntimeChanged(): boolean {
     const v = this.runtimeChanged;
     this.runtimeChanged = false;
@@ -263,6 +263,11 @@ export class T3Provider {
         // A window size T3 stops reporting is kept.
         if (r.contextMax !== null) patch.contextMax = r.contextMax;
         if (this.ax.setThreadRuntime(th.id, patch)) this.runtimeChanged = true;
+      }
+      // Subagents running now: the rows follow T3 exactly (added, updated, removed).
+      for (const { th, state } of planned) {
+        if (!state || state.removed) continue;
+        if (this.ax.setSubagents(th.id, state.subagents)) this.runtimeChanged = true;
       }
       for (const { th, action } of planned) {
         if (!action) continue;

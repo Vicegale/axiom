@@ -93,6 +93,30 @@
 .dk-runtext { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dk-act { font-family: var(--font-mono); font-size: 0.6875rem; color: var(--text); }
 .dk-actage { flex: none; color: var(--text-3); white-space: nowrap; }
+/* Working subagents (D11): a count button on the run line, and the list it opens under it. */
+.dk-agentsbtn {
+  flex: none; display: inline-flex; align-items: center; gap: 0.25rem; height: 1.125rem; padding: 0 0.375rem;
+  background: var(--raised); border: 1px solid var(--control); border-radius: 0.1875rem;
+  color: var(--text-2); font: inherit; line-height: 1; cursor: pointer; white-space: nowrap;
+}
+.dk-agentsbtn:hover { color: var(--text); }
+.dk-agentsbtn::after {
+  content: ""; width: 0.3125rem; height: 0.3125rem; margin-top: -0.125rem;
+  border: solid currentColor; border-width: 0 1px 1px 0; transform: rotate(45deg);
+}
+.dk-agentsbtn[aria-expanded="true"]::after { margin-top: 0.125rem; transform: rotate(225deg); }
+.dk-agents {
+  display: grid; gap: 0.375rem; margin: 0; padding: 0.375rem 0.625rem; list-style: none;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); font-size: 0.75rem;
+}
+.dk-agent { display: grid; gap: 0.125rem; min-width: 0; }
+.dk-agent-head { display: flex; align-items: baseline; gap: 0.5rem; min-width: 0; }
+.dk-agent-name { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.dk-agent-meta { flex: none; color: var(--meta); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.dk-agent-step {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2);
+  font-family: var(--font-mono); font-size: 0.6875rem;
+}
 @keyframes dk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .dk-label { font: 500 0.625rem/1 var(--font-mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--meta); margin-bottom: 0.25rem; }
 .dk-now { padding: 0.5rem 0.625rem; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); }
@@ -111,7 +135,7 @@
 
 
 @media (forced-colors: active) {
-  .dk-card, .dk-now, .dk-md { border: 1px solid CanvasText; }
+  .dk-card, .dk-now, .dk-md, .dk-agents { border: 1px solid CanvasText; }
   .dk-card.hl { border-width: 2px; }
 }
 /* The reply renders with the document viewer's prose styles, tightened for a card. */

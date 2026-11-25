@@ -29,6 +29,7 @@ const mk = (over: Partial<DeskThread>): DeskThread => ({
   summaryError: null,
   activity: null,
   runtime: null,
+  subagents: [],
   hasReply: false,
   pendingRequests: 0,
   ...over,

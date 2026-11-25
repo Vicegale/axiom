@@ -18,6 +18,8 @@ export const HOOK_EVENTS = [
   "permission",
   "stop",
   "session-end",
+  "subagent-start",
+  "subagent-stop",
 ] as const;
 export type HookEvent = (typeof HOOK_EVENTS)[number];
 
@@ -35,6 +37,11 @@ interface HookPayload {
   tool_input?: unknown;
   transcript_path?: unknown;
   effort?: unknown;
+  /** `SessionStart`: startup, resume, clear or compact. */
+  source?: string;
+  /** `SubagentStart` / `SubagentStop`. */
+  agent_id?: unknown;
+  agent_type?: unknown;
 }
 
 /** The reasoning effort level a payload carries (`effort: {level: "high"}`), when it does. */
@@ -67,17 +74,34 @@ export function logFailure(env: NodeJS.ProcessEnv, event: string, error: unknown
   }
 }
 
+/** The running subagents a Stop payload lists in `background_tasks` (background shells don't count). */
+function runningSubagentIds(p: HookPayload): string[] {
+  const tasks = (p as { background_tasks?: unknown }).background_tasks;
+  if (!Array.isArray(tasks)) return [];
+  const out: string[] = [];
+  for (const t of tasks) {
+    if (typeof t !== "object" || t === null) continue;
+    const { type, status, id } = t as { type?: unknown; status?: unknown; id?: unknown };
+    if (type === "subagent" && status === "running") out.push(typeof id === "string" ? id : "");
+  }
+  return out;
+}
+
 /** Running subagents listed in a Stop payload's `background_tasks` (background shells don't count). */
 export function runningSubagentCount(p: HookPayload): number {
-  const tasks = (p as { background_tasks?: unknown }).background_tasks;
-  if (!Array.isArray(tasks)) return 0;
-  return tasks.filter(
-    (t) =>
-      typeof t === "object" &&
-      t !== null &&
-      (t as { type?: unknown }).type === "subagent" &&
-      (t as { status?: unknown }).status === "running",
-  ).length;
+  return runningSubagentIds(p).length;
+}
+
+/** The Agent (called Task in older versions) tool: the one that starts a subagent. */
+function isSubagentTool(name: string): boolean {
+  return name === "Agent" || name === "Task";
+}
+
+/** The text of a string field of an object, or undefined. */
+function field(o: unknown, key: string): string | undefined {
+  if (typeof o !== "object" || o === null) return undefined;
+  const v = (o as Record<string, unknown>)[key];
+  return typeof v === "string" && v.trim() !== "" ? v.trim() : undefined;
 }
 
 /**
@@ -149,6 +173,13 @@ export function runHook(
           // T3 reports its own threads' effort; a direct session's comes with the payload.
           const effort = t3Id ? undefined : effortLevel(payload);
           if (effort) axiom.setThreadRuntime(thread.id, { effort });
+          // A direct session's subagent starts without a description: queue this call's.
+          if (!t3Id && isSubagentTool(payload.tool_name)) {
+            axiom.queueSubagentCall(thread.id, {
+              title: field(payload.tool_input, "description"),
+              agentType: field(payload.tool_input, "subagent_type") ?? "general-purpose",
+            });
+          }
         }
       } finally {
         axiom.close();
@@ -201,6 +232,8 @@ export function runHook(
           break; // handled above
         case "session-start":
           axiom.threadReopened(thread.id);
+          // Whatever a crashed run left is gone; a compaction keeps the same run going.
+          if (payload.source !== "compact") axiom.clearSubagents(thread.id);
           break;
         case "prompt":
           // A direct Claude Code session has no name of its own: the first prompt names it.
@@ -220,8 +253,22 @@ export function runHook(
           // Waiting on running subagents is not stopping: the thread stays wip until it is
           // re-invoked and stops again with none left.
           axiom.setRunningSubagents(thread.id, subagents);
+          axiom.keepSubagents(thread.id, runningSubagentIds(payload));
           if (subagents === 0) axiom.threadStopped(thread.id);
           recordRuntime(axiom, thread.id, payload);
+          break;
+        }
+        // Not the parent's Stop: one subagent finished (or began) while the parent goes on.
+        case "subagent-start": {
+          const id = field(payload, "agent_id");
+          if (id && thread.endedAt === null) {
+            axiom.subagentStarted(thread.id, id, field(payload, "agent_type"));
+          }
+          break;
+        }
+        case "subagent-stop": {
+          const id = field(payload, "agent_id");
+          if (id) axiom.subagentStopped(thread.id, id);
           break;
         }
         case "session-end":

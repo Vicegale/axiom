@@ -274,6 +274,51 @@ export class T3Fixture {
     return this;
   }
 
+  /** A subagent of a thread (synthetic); running unless `status` is terminal or `completedAt` is set. */
+  subagent(
+    threadId: string,
+    id: string,
+    over: {
+      status?: string;
+      title?: string;
+      model?: string;
+      progress?: string;
+      startedAt?: string;
+      completedAt?: string | null;
+    } = {},
+  ): this {
+    const status = over.status ?? "running";
+    const startedAt = over.startedAt ?? "2026-11-25T09:00:00.000Z";
+    this.db
+      .prepare(
+        `INSERT INTO orchestration_v2_projection_subagents
+           (subagent_id, thread_id, parent_node_id, provider, origin, status, started_at,
+            completed_at, updated_at, payload_json)
+         VALUES (?, ?, 'node-sub', 'claude', 'provider_native', ?, ?, ?, ?, ?)
+         ON CONFLICT (subagent_id) DO UPDATE SET status = excluded.status,
+           completed_at = excluded.completed_at, updated_at = excluded.updated_at,
+           payload_json = excluded.payload_json`,
+      )
+      .run(
+        id,
+        threadId,
+        status,
+        startedAt,
+        over.completedAt ?? null,
+        startedAt,
+        JSON.stringify({
+          id,
+          threadId,
+          status,
+          startedAt,
+          ...(over.title ? { title: over.title } : {}),
+          ...(over.model ? { model: over.model } : {}),
+          ...(over.progress ? { progress: over.progress } : {}),
+        }),
+      );
+    return this;
+  }
+
   resolve(requestId: string): this {
     this.db
       .prepare(
