@@ -62,7 +62,16 @@ import type {
 export type Clock = () => Date;
 
 type Row = Record<string, unknown>;
-const BOOLEAN_COLUMNS = new Set(["muted", "stale_prompt_dismissed", "waiting_on_owner"]);
+const BOOLEAN_COLUMNS = new Set([
+  "muted",
+  "stale_prompt_dismissed",
+  "waiting_on_owner",
+  "favorite",
+  "desk_hidden",
+]);
+
+/** The longest reply kept on a thread, in characters. */
+export const MAX_REPLY_CHARS = 200_000;
 
 function camel<T>(row: Row | undefined): T {
   if (!row) throw new AxiomError("not-found", "row not found");
@@ -850,6 +859,96 @@ export class Axiom {
     return this.threadRow(id);
   }
 
+  // ---- the Desk (02): latest replies, summaries, arrangement ----------------
+
+  /**
+   * Stores the thread's latest reply (capped). Blank text and a reply identical to the stored one
+   * change nothing, so the same reply seen twice (hook, then T3 sync) is not summarised twice.
+   * Not a history entry.
+   */
+  setThreadReply(threadId: number, text: string, at?: string): void {
+    if (!text.trim()) return;
+    const th = this.threadRow(threadId);
+    const capped = text.length > MAX_REPLY_CHARS ? text.slice(0, MAX_REPLY_CHARS) : text;
+    if (th.lastReply === capped) return;
+    this.run(
+      "UPDATE thread SET last_reply = ?, last_reply_at = ?, summary_error = NULL WHERE id = ?",
+      capped,
+      at ?? this.iso(),
+      threadId,
+    );
+  }
+
+  /** Stores the summary of the reply made at `replyAt`. Ephemeral: overwrites the last one. */
+  setThreadSummary(
+    threadId: number,
+    summary: { now: string; next: string },
+    replyAt: string,
+  ): void {
+    this.threadRow(threadId);
+    this.run(
+      `UPDATE thread SET summary_now = ?, summary_next = ?, summary_at = ?, summary_reply_at = ?,
+         summary_error = NULL WHERE id = ?`,
+      summary.now,
+      summary.next,
+      this.iso(),
+      replyAt,
+      threadId,
+    );
+  }
+
+  setThreadSummaryError(threadId: number, message: string): void {
+    this.threadRow(threadId);
+    this.run("UPDATE thread SET summary_error = ? WHERE id = ?", message, threadId);
+  }
+
+  /** Threads whose latest reply has no summary yet (never summarised, or the reply is newer). */
+  threadsNeedingSummary(limit: number): Thread[] {
+    return this.all<Row>(
+      `SELECT * FROM thread
+       WHERE last_reply IS NOT NULL AND last_reply_at IS NOT NULL
+         AND (summary_reply_at IS NULL OR last_reply_at > summary_reply_at)
+       ORDER BY last_reply_at DESC, id DESC LIMIT ?`,
+      limit,
+    ).map((r) => camel<Thread>(r));
+  }
+
+  setTopicFavorite(topic: TopicRef, on: boolean, actor: Actor): void {
+    ownerOnly(actor, "favourite a topic");
+    this.run("UPDATE topic SET favorite = ? WHERE id = ?", on ? 1 : 0, this.topicRow(topic).id);
+  }
+
+  setTopicDeskHidden(topic: TopicRef, hidden: boolean, actor: Actor): void {
+    ownerOnly(actor, "hide a topic from the Desk");
+    this.run(
+      "UPDATE topic SET desk_hidden = ? WHERE id = ?",
+      hidden ? 1 : 0,
+      this.topicRow(topic).id,
+    );
+  }
+
+  /**
+   * The owner's drag order: the listed topics get positions 0..n-1 in that order; any other topic
+   * that had a position keeps its relative order after them.
+   */
+  setDeskOrder(slugs: string[], actor: Actor): void {
+    ownerOnly(actor, "arrange the Desk");
+    if (new Set(slugs).size !== slugs.length) {
+      throw new AxiomError("validation", "a topic is listed twice");
+    }
+    this.tx(() => {
+      const ids = slugs.map((s) => this.topicRow(s).id);
+      const rest = this.all<{ id: number }>(
+        "SELECT id FROM topic WHERE desk_order IS NOT NULL ORDER BY desk_order, id",
+      )
+        .map((r) => r.id)
+        .filter((id) => !ids.includes(id));
+      [...ids, ...rest].forEach((id, i) => {
+        this.run("UPDATE topic SET desk_order = ? WHERE id = ?", i, id);
+      });
+    });
+  }
+
   /** A new turn started: the thread is working, and what it declared before no longer holds. */
   threadWorking(threadId: number): Thread {
     return this.tx(() => {
@@ -1507,6 +1606,7 @@ export class Axiom {
     if (row) return JSON.parse(row.value);
     if (key === "mutedKinds") return [];
     if (key === "staleAfterDays") return DEFAULT_STALE_AFTER_DAYS;
+    if (key === "summaries") return { enabled: true };
     if (key === "t3Pin") return { ...DEFAULT_T3_PIN };
     return undefined;
   }

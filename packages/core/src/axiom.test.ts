@@ -757,3 +757,77 @@ describe("tasks", () => {
     expect(ax.findThread({ provider: "claude-code", providerThreadId: "y" })).toBeUndefined();
   });
 });
+
+describe("the Desk: replies, summaries, arrangement", () => {
+  it("stores the latest reply (capped), ignores blank or identical text, writes no history", () => {
+    const { thread } = topicWithThread(ax);
+    const before = ax.listEntries("demo").length;
+    ax.setThreadReply(thread.id, "   ");
+    expect(ax.getThread(thread.id).lastReply).toBeNull();
+    ax.setThreadReply(thread.id, "first", "2026-01-01T00:00:00.000Z");
+    ax.setThreadReply(thread.id, "first", "2026-01-02T00:00:00.000Z");
+    expect(ax.getThread(thread.id)).toMatchObject({
+      lastReply: "first",
+      lastReplyAt: "2026-01-01T00:00:00.000Z",
+    });
+    ax.setThreadReply(thread.id, "x".repeat(250_000));
+    expect(ax.getThread(thread.id).lastReply).toHaveLength(200_000);
+    expect(ax.getThread(thread.id).lastReplyAt).toBe(clock.now().toISOString());
+    expect(ax.listEntries("demo")).toHaveLength(before);
+  });
+
+  it("lists threads whose reply has no summary, and overwrites the summary each time", () => {
+    const { thread } = topicWithThread(ax);
+    expect(ax.threadsNeedingSummary(10)).toEqual([]);
+    ax.setThreadReply(thread.id, "one", "2026-01-01T00:00:00.000Z");
+    expect(ax.threadsNeedingSummary(10).map((t) => t.id)).toEqual([thread.id]);
+    ax.setThreadSummary(thread.id, { now: "n1", next: "x1" }, "2026-01-01T00:00:00.000Z");
+    expect(ax.threadsNeedingSummary(10)).toEqual([]);
+    expect(ax.getThread(thread.id)).toMatchObject({ summaryNow: "n1", summaryNext: "x1" });
+    ax.setThreadReply(thread.id, "two", "2026-01-02T00:00:00.000Z");
+    expect(ax.threadsNeedingSummary(10)).toHaveLength(1);
+    ax.setThreadSummaryError(thread.id, "boom");
+    expect(ax.getThread(thread.id).summaryError).toBe("boom");
+    expect(ax.getThread(thread.id).summaryNow).toBe("n1"); // the old one stays until replaced
+    ax.setThreadSummary(thread.id, { now: "n2", next: "Nothing" }, "2026-01-02T00:00:00.000Z");
+    expect(ax.getThread(thread.id)).toMatchObject({ summaryNow: "n2", summaryError: null });
+    expect(ax.threadsNeedingSummary(10)).toEqual([]);
+    expect(ax.listEntries("demo").some((e) => /n1|n2/.test(e.body ?? ""))).toBe(false);
+  });
+
+  it("a new reply clears an old summary error; the limit applies, newest first", () => {
+    const a = topicWithThread(ax, "a", "ta").thread;
+    const b = topicWithThread(ax, "b", "tb").thread;
+    ax.setThreadReply(a.id, "A", "2026-01-01T00:00:00.000Z");
+    ax.setThreadSummaryError(a.id, "boom");
+    ax.setThreadReply(b.id, "B", "2026-01-02T00:00:00.000Z");
+    expect(ax.threadsNeedingSummary(1).map((t) => t.id)).toEqual([b.id]);
+    ax.setThreadReply(a.id, "A2", "2026-01-03T00:00:00.000Z");
+    expect(ax.getThread(a.id).summaryError).toBeNull();
+  });
+
+  it("favourite, hidden and order are owner only and per topic", () => {
+    ax.createTopic({ slug: "a", title: "A" }, owner);
+    ax.createTopic({ slug: "b", title: "B" }, owner);
+    ax.createTopic({ slug: "c", title: "C" }, owner);
+    expect(() => ax.setTopicFavorite("a", true, agent())).toThrow(AxiomError);
+    expect(() => ax.setTopicDeskHidden("a", true, agent())).toThrow(AxiomError);
+    expect(() => ax.setDeskOrder(["a"], agent())).toThrow(AxiomError);
+    ax.setTopicFavorite("a", true, owner);
+    ax.setTopicDeskHidden("b", true, owner);
+    expect(ax.getTopic("a")).toMatchObject({ favorite: true, deskHidden: false });
+    expect(ax.getTopic("b")).toMatchObject({ favorite: false, deskHidden: true });
+    ax.setTopicFavorite("a", false, owner);
+    expect(ax.getTopic("a").favorite).toBe(false);
+    expect(() => ax.setTopicFavorite("missing", true, owner)).toThrow(/not found/);
+
+    ax.setDeskOrder(["c", "a"], owner);
+    const order = () => ["a", "b", "c"].map((s) => ax.getTopic(s).deskOrder);
+    expect(order()).toEqual([1, null, 0]);
+    ax.setDeskOrder(["b"], owner); // c and a keep their relative order after b
+    expect(order()).toEqual([2, 0, 1]);
+    expect(() => ax.setDeskOrder(["a", "a"], owner)).toThrow(/twice/);
+    expect(() => ax.setDeskOrder(["a", "nope"], owner)).toThrow(/not found/);
+    expect(order()).toEqual([2, 0, 1]); // a failed call changes nothing
+  });
+});

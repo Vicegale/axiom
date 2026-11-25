@@ -41,7 +41,7 @@ describe("opening", () => {
     expect(pragma("journal_mode")).toBe("wal");
     expect(pragma("foreign_keys")).toBe(1);
     expect(pragma("busy_timeout")).toBe(5000);
-    expect(pragma("user_version")).toBe(3);
+    expect(pragma("user_version")).toBe(4);
     const names = (
       ax.db
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
@@ -62,7 +62,7 @@ describe("opening", () => {
     a.close();
     const b = openDatabase(path);
     expect(b.getTopic("keep").title).toBe("keep");
-    expect(Object.values(b.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(3);
+    expect(Object.values(b.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(4);
     b.close();
   });
 
@@ -94,13 +94,50 @@ describe("opening", () => {
     );
     raw.close();
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(3);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(4);
     const links = ax.getTopic("t").links;
     expect(links).toHaveLength(1);
     expect(links[0]).toMatchObject({ label: "A", description: null });
     expect(
       ax.updateLink("t", links[0].id, { description: "d" }, { kind: "owner" }).description,
     ).toBe("d");
+    ax.close();
+  });
+
+  it("upgrades a version 3 database: threads and topics gain the Desk columns and keep their rows", () => {
+    const path = join(dir, "v3.db");
+    const raw = new DatabaseSync(path);
+    const read = (f: string) =>
+      readFileSync(fileURLToPath(new URL(`../migrations/${f}`, import.meta.url)), "utf8");
+    migrate(raw, [
+      { version: 1, sql: read("0001_init.sql") },
+      { version: 2, sql: read("0002_tasks.sql") },
+      { version: 3, sql: read("0003_link_description.sql") },
+    ]);
+    raw.exec(
+      "INSERT INTO topic (slug, title, created_at, last_worked_at) VALUES ('t', 'T', 'x', 'x')",
+    );
+    raw.exec(
+      `INSERT INTO thread (topic_id, provider, provider_thread_id, status_changed_at, started_at)
+       VALUES (1, 'claude-code', 's1', 'x', 'x')`,
+    );
+    raw.close();
+    const ax = openDatabase(path);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(4);
+    const t = ax.getTopic("t");
+    expect(t).toMatchObject({ title: "T", favorite: false, deskHidden: false, deskOrder: null });
+    expect(t.threads[0]).toMatchObject({
+      providerThreadId: "s1",
+      lastReply: null,
+      lastReplyAt: null,
+      summaryNow: null,
+      summaryNext: null,
+      summaryAt: null,
+      summaryReplyAt: null,
+      summaryError: null,
+    });
+    ax.setThreadReply(t.threads[0].id, "hello");
+    expect(ax.getThread(t.threads[0].id).lastReply).toBe("hello");
     ax.close();
   });
 
@@ -135,9 +172,9 @@ describe("opening", () => {
         );
       });
     const results = await Promise.all(Array.from({ length: 6 }, run));
-    expect(results).toEqual(Array(6).fill("3 wal"));
+    expect(results).toEqual(Array(6).fill("4 wal"));
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(3);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(4);
     ax.close();
   }, 60_000);
 });
