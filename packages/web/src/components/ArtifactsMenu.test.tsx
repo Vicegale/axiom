@@ -109,6 +109,19 @@ describe("ArtifactsMenu", () => {
     expect(zip?.getAttribute("aria-disabled")).toBe("true");
   });
 
+  it("keeps the arrow keys and Escape from reaching the layouts' window shortcuts", () => {
+    mount();
+    const seen: string[] = [];
+    const spy = (e: KeyboardEvent) => seen.push(e.key);
+    window.addEventListener("keydown", spy);
+    fireEvent.click(trigger());
+    fireEvent.keyDown(document.activeElement as Element, { key: "ArrowDown" });
+    fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
+    window.removeEventListener("keydown", spy);
+    expect(seen).toEqual([]);
+    expect(isOpen()).toBe(false);
+  });
+
   it("closes after an item is activated", () => {
     mount();
     fireEvent.click(trigger());

@@ -90,7 +90,11 @@ if (
     const target = invoker && document.getElementById(invoker.getAttribute("popovertarget") ?? "");
     target?.togglePopover();
   });
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") openPopovers.at(-1)?.hidePopover();
-  });
+  document.addEventListener(
+    "keydown",
+    (e) => {
+      if (e.key === "Escape") openPopovers.at(-1)?.hidePopover();
+    },
+    true,
+  );
 }

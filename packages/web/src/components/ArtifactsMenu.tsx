@@ -141,6 +141,8 @@ export function ArtifactsMenu({ links, slug }: { links: readonly LinkItem[]; slu
   }
 
   function onKeyDown(e: KeyboardEvent) {
+    // The layouts bind the arrow keys (next topic) and Escape (close the drawer) on the window.
+    if (e.key === "Escape") e.stopPropagation();
     const list = items();
     if (!list.length) return;
     const at = list.indexOf(document.activeElement as HTMLElement);
@@ -151,6 +153,7 @@ export function ArtifactsMenu({ links, slug }: { links: readonly LinkItem[]; slu
     else if (e.key === "End") next = list.length - 1;
     if (next === null) return;
     e.preventDefault();
+    e.stopPropagation();
     list[next]?.focus();
   }
 
