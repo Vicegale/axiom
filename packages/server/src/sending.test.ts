@@ -213,6 +213,7 @@ describe("POST /api/threads/:id/send", () => {
       "-p",
       "--resume",
       "sess-1",
+      "--allowedTools=Bash(axiom *)",
       "--model",
       "claude-sonnet-5-5",
       "--effort",
@@ -235,7 +236,7 @@ describe("POST /api/threads/:id/send", () => {
     cli.threadEnded(th.id, "other");
     await start({ claudeCli: claude.path });
     await api(`/api/threads/${th.id}/send`, { method: "POST", body: { text: "hi" } });
-    expect(claude.argv()).toEqual(["-p", "--resume", "sess-2"]);
+    expect(claude.argv()).toEqual(["-p", "--resume", "sess-2", "--allowedTools=Bash(axiom *)"]);
   });
 
   it("answers 409 with the resume command while the session is open, and runs nothing", async () => {
@@ -414,6 +415,7 @@ describe("POST /api/topics/:slug/threads/new", () => {
       "-p",
       "--session-id",
       id,
+      "--allowedTools=Bash(axiom *)",
       "--model",
       "claude-haiku-5-5",
       "--effort",

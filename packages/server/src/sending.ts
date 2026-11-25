@@ -232,7 +232,12 @@ export function registerSendRoutes(app: Hono, o: SendingOptions): void {
     return c.json({ error: { code: "provider", message: e.message } }, 502);
   };
 
+  // Sessions Axiom starts run with `-p`, where nobody can answer a prompt in a terminal:
+  // the agent's own record keeping (the `axiom` CLI) is always allowed; anything else
+  // still asks, through the PermissionRequest hook (the Desk card). The `=` form keeps
+  // the variadic flag from swallowing later arguments.
   const claudeFlags = (model?: string, effort?: string) => [
+    "--allowedTools=Bash(axiom *)",
     ...(model ? ["--model", model] : []),
     ...(effort ? ["--effort", effort] : []),
   ];
