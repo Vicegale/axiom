@@ -533,3 +533,170 @@ describe("provider support", () => {
     expect(ax.listProviderThreads("t3").map((t) => t.providerThreadId)).toEqual(["x"]);
   });
 });
+
+describe("tasks", () => {
+  const keys = (topic = "demo") => ax.listTasks(topic).map((t) => t.key);
+
+  beforeEach(() => {
+    ax.createTopic({ slug: "demo", title: "demo" }, owner);
+    ax.createTopic({ slug: "other", title: "other" }, owner);
+  });
+
+  it("creates tasks in order with dependencies, and keeps keys unique per topic", () => {
+    ax.createTask("demo", { key: "S0", title: "Setup", doneWhen: "It builds" }, owner);
+    ax.createTask("demo", { key: "S1", title: "Core", dependsOn: ["S0"] }, owner);
+    expect(keys()).toEqual(["S0", "S1"]);
+    expect(ax.getTask("demo", "S0")).toMatchObject({
+      doneWhen: "It builds",
+      status: "to do",
+      position: 1,
+      dependents: ["S1"],
+      dependsOn: [],
+    });
+    expect(() => ax.createTask("demo", { key: "S0", title: "again" }, owner)).toThrow(/already/);
+    // the same key is fine in another topic
+    ax.createTask("other", { key: "S0", title: "elsewhere" }, owner);
+    expect(() =>
+      ax.createTask("demo", { key: "S2", title: "x", dependsOn: ["nope"] }, owner),
+    ).toThrow(/not found/);
+    expect(() =>
+      ax.createTask("demo", { key: "S2", title: "x", dependsOn: ["S2"] }, owner),
+    ).toThrow(/itself/);
+    expect(keys()).toEqual(["S0", "S1"]);
+    expect(() => ax.createTask("demo", { key: "bad key", title: "x" }, owner)).toThrow(/key/);
+  });
+
+  it("rejects a direct cycle, an indirect cycle and a self dependency", () => {
+    ax.createTask("demo", { key: "A", title: "a" }, owner);
+    ax.createTask("demo", { key: "B", title: "b", dependsOn: ["A"] }, owner);
+    ax.createTask("demo", { key: "C", title: "c", dependsOn: ["B"] }, owner);
+    expect(() => ax.addTaskDependency("demo", "A", "B", owner)).toThrow(/cycle/);
+    expect(() => ax.addTaskDependency("demo", "A", "C", owner)).toThrow(
+      /cycle: A waits for C waits for B waits for A/,
+    );
+    expect(() => ax.addTaskDependency("demo", "A", "A", owner)).toThrow(/itself/);
+    expect(ax.getTask("demo", "A").dependsOn).toEqual([]);
+    // a diamond is not a cycle, and adding an edge twice is harmless
+    ax.createTask("demo", { key: "D", title: "d", dependsOn: ["A"] }, owner);
+    ax.addTaskDependency("demo", "C", "D", owner);
+    ax.addTaskDependency("demo", "C", "D", owner);
+    expect(ax.getTask("demo", "C").dependsOn).toEqual(["B", "D"]);
+  });
+
+  it("only allows dependencies inside one topic", () => {
+    ax.createTask("demo", { key: "A", title: "a" }, owner);
+    ax.createTask("other", { key: "X", title: "x" }, owner);
+    expect(() => ax.addTaskDependency("demo", "A", "X", owner)).toThrow(/not found: X/);
+    expect(() => ax.createTask("demo", { key: "B", title: "b", dependsOn: ["X"] }, owner)).toThrow(
+      /not found/,
+    );
+  });
+
+  it("computes waiting from the dependencies' statuses and removes dependencies", () => {
+    ax.createTask("demo", { key: "A", title: "a" }, owner);
+    ax.createTask("demo", { key: "B", title: "b", dependsOn: ["A"] }, owner);
+    expect(ax.getTask("demo", "A").waiting).toBe(false);
+    expect(ax.getTask("demo", "B").waiting).toBe(true);
+    ax.setTaskStatus("demo", "A", "wip", owner);
+    expect(ax.getTask("demo", "B").waiting).toBe(true);
+    ax.setTaskStatus("demo", "A", "done", owner);
+    expect(ax.getTask("demo", "B").waiting).toBe(false);
+    ax.setTaskStatus("demo", "A", "blocked", owner);
+    expect(ax.getTask("demo", "B").waiting).toBe(true);
+    ax.removeTaskDependency("demo", "B", "A", owner);
+    expect(ax.getTask("demo", "B")).toMatchObject({ waiting: false, dependsOn: [] });
+  });
+
+  it("writes a status change entry, bumps last worked and counts tasks", () => {
+    ax.createTask("demo", { key: "A", title: "a" }, owner);
+    ax.createTask("demo", { key: "B", title: "b" }, owner);
+    clock.advanceDays(1);
+    ax.setTaskStatus("demo", "A", "done", { kind: "agent" });
+    ax.setTaskStatus("demo", "A", "done", { kind: "agent" }); // no change, no entry
+    const entries = ax.listEntries("demo").filter((e) => e.kind === "status change");
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      author: "axiom",
+      data: { task: "A", from: "to do", to: "done", by: "agent" },
+    });
+    expect(ax.getTopic("demo").lastWorkedAt).toBe(clock.now().toISOString());
+    expect(ax.getTopic("demo").taskCounts).toEqual({ total: 2, done: 1 });
+    expect(ax.getTopic("other").taskCounts).toEqual({ total: 0, done: 0 });
+    expect(ax.listTopics().find((t) => t.slug === "demo")?.taskCounts.total).toBe(2);
+    expect(() => ax.setTaskStatus("demo", "A", "stale" as never, owner)).toThrow(/status/);
+  });
+
+  it("bumps last worked on create, update and dependency changes", () => {
+    clock.advanceDays(1);
+    ax.createTask("demo", { key: "A", title: "a" }, owner);
+    expect(ax.getTopic("demo").lastWorkedAt).toBe(clock.now().toISOString());
+    clock.advanceDays(1);
+    ax.updateTask("demo", "A", { title: "renamed", doneWhen: "x" }, owner);
+    expect(ax.getTask("demo", "A")).toMatchObject({ title: "renamed", doneWhen: "x" });
+    expect(ax.getTopic("demo").lastWorkedAt).toBe(clock.now().toISOString());
+  });
+
+  it("groups by a spec link of the same topic only", () => {
+    const spec = ax.addLink("demo", { kind: "spec", target: "docs/plan.md" }, owner);
+    const pr = ax.addLink("demo", { kind: "pr", target: "o/r#1" }, owner);
+    const foreign = ax.addLink("other", { kind: "spec", target: "docs/x.md" }, owner);
+    ax.createTask("demo", { key: "A", title: "a", specLinkId: spec.id }, owner);
+    expect(ax.getTask("demo", "A").specLinkId).toBe(spec.id);
+    expect(() => ax.createTask("demo", { key: "B", title: "b", specLinkId: pr.id }, owner)).toThrow(
+      /spec link/,
+    );
+    expect(() => ax.updateTask("demo", "A", { specLinkId: foreign.id }, owner)).toThrow(
+      /spec link/,
+    );
+    ax.updateTask("demo", "A", { specLinkId: null }, owner);
+    expect(ax.getTask("demo", "A").specLinkId).toBeNull();
+  });
+
+  it("sets the thread's task to wip when it works, and leaves it alone on stop and end", () => {
+    const { thread } = topicWithThread(ax, "work");
+    ax.createTask("work", { key: "S1", title: "one" }, owner);
+    ax.createTask("work", { key: "S2", title: "two" }, owner);
+    ax.setThreadTask(thread.id, "S1", owner);
+    expect(ax.getThread(thread.id).taskId).toBe(ax.getTask("work", "S1").id);
+    ax.threadWorking(thread.id);
+    expect(ax.getTask("work", "S1").status).toBe("wip");
+    expect(ax.getTask("work", "S2").status).toBe("to do");
+    ax.threadStopped(thread.id);
+    expect(ax.getTask("work", "S1").status).toBe("wip");
+    ax.threadEnded(thread.id);
+    expect(ax.getTask("work", "S1").status).toBe("wip");
+    const change = ax
+      .listEntries("work")
+      .find((e) => e.kind === "status change" && (e.data as { task?: string }).task);
+    expect(change).toMatchObject({ threadId: thread.id, data: { task: "S1", by: "axiom" } });
+    ax.setThreadTask(thread.id, null, owner);
+    expect(ax.getThread(thread.id).taskId).toBeNull();
+  });
+
+  it("a thread without a task changes no task, and a task must be in the thread's topic", () => {
+    const { thread } = topicWithThread(ax, "work");
+    ax.createTask("work", { key: "S1", title: "one" }, owner);
+    ax.threadWorking(thread.id);
+    expect(ax.getTask("work", "S1").status).toBe("to do");
+    ax.createTask("other", { key: "X", title: "x" }, owner);
+    expect(() => ax.setThreadTask(thread.id, "X", owner)).toThrow(/not found/);
+  });
+
+  it("attaches a thread to a task at attach time", () => {
+    ax.createTask("demo", { key: "S1", title: "one" }, owner);
+    const th = ax.attachThread(
+      "demo",
+      { provider: "claude-code", providerThreadId: "x", taskKey: "S1" },
+      owner,
+    );
+    expect(th.taskId).toBe(ax.getTask("demo", "S1").id);
+    expect(() =>
+      ax.attachThread(
+        "demo",
+        { provider: "claude-code", providerThreadId: "y", taskKey: "no" },
+        owner,
+      ),
+    ).toThrow(/not found/);
+    expect(ax.findThread({ provider: "claude-code", providerThreadId: "y" })).toBeUndefined();
+  });
+});

@@ -6,6 +6,7 @@ import type {
   NotificationKind,
   Provider,
   RefType,
+  TaskStatus,
   TopicStatus,
   View,
   WorkItemStatus,
@@ -56,6 +57,8 @@ export interface Thread {
   status: TopicStatus;
   declaredStatus: TopicStatus | null;
   waitingOnOwner: boolean;
+  /** The task this thread works on, if it named one. */
+  taskId: number | null;
   statusChangedAt: string;
   statusChangedSeq: number;
   startedAt: string;
@@ -106,7 +109,33 @@ export interface Notification {
   dismissedAt: string | null;
 }
 
+export interface Task {
+  id: number;
+  topicId: number;
+  key: string;
+  title: string;
+  doneWhen: string | null;
+  status: TaskStatus;
+  position: number;
+  specLinkId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A task with its dependency picture. `waiting` = some dependency is not done. */
+export interface TaskDetail extends Task {
+  dependsOn: string[];
+  dependents: string[];
+  waiting: boolean;
+}
+
+export interface TaskCounts {
+  total: number;
+  done: number;
+}
+
 export interface TopicSummary extends Topic {
+  taskCounts: TaskCounts;
   views: View[];
   highlighted: boolean;
   openThreadStatuses: TopicStatus[];

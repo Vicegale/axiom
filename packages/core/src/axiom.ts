@@ -9,6 +9,7 @@ import {
   type MonitorState,
   type NotificationKind,
   type Provider,
+  type TaskStatus,
   type TopicStatus,
   type View,
   type WorkItemStatus,
@@ -36,6 +37,8 @@ import {
   refsSchema,
   settingSchemas,
   slugSchema,
+  taskKeySchema,
+  taskStatusSchema,
   topicStatusSchema,
   workItemStatusSchema,
 } from "./schemas.js";
@@ -46,6 +49,8 @@ import type {
   MonitorTarget,
   Notification,
   Ref,
+  Task,
+  TaskDetail,
   Thread,
   Ticket,
   Topic,
@@ -85,6 +90,8 @@ export interface CreateWorkItemInput {
 }
 
 export interface AttachThreadInput {
+  /** The key of a task of the topic this thread works on. */
+  taskKey?: string;
   provider: Provider;
   providerThreadId: string;
   environmentId?: string | null;
@@ -97,6 +104,25 @@ export interface EntryInput {
   data?: unknown;
   refs?: Ref[];
   correctsEntryId?: number;
+}
+
+export interface CreateTaskInput {
+  key: string;
+  title: string;
+  doneWhen?: string;
+  /** A `spec` link of the same topic, for grouping. */
+  specLinkId?: number;
+  /** Keys of tasks of the same topic this one waits for. */
+  dependsOn?: string[];
+  /** Order within the topic. Default: after the last task. */
+  position?: number;
+}
+
+export interface UpdateTaskInput {
+  title?: string;
+  doneWhen?: string | null;
+  specLinkId?: number | null;
+  position?: number;
 }
 
 export interface ListTopicsFilter {
@@ -363,8 +389,13 @@ export class Axiom {
       "SELECT status FROM thread WHERE topic_id = ? AND ended_at IS NULL ORDER BY id",
       t.id,
     ).map((r) => r.status);
+    const counts = this.get<{ total: number; done: number }>(
+      "SELECT COUNT(*) AS total, COALESCE(SUM(status = 'done'), 0) AS done FROM task WHERE topic_id = ?",
+      t.id,
+    );
     return {
       ...t,
+      taskCounts: { total: counts?.total ?? 0, done: counts?.done ?? 0 },
       views: viewsOfTopic(t.status, openThreadStatuses),
       highlighted: this.isHighlighted(t.id),
       openThreadStatuses,
@@ -644,6 +675,13 @@ export class Axiom {
         at,
         at,
       );
+      if (input.taskKey !== undefined) {
+        this.run(
+          "UPDATE thread SET task_id = ? WHERE id = ?",
+          this.taskRow(t.id, input.taskKey).id,
+          id,
+        );
+      }
       return this.threadRow(id);
     });
   }
@@ -706,11 +744,19 @@ export class Axiom {
 
   /** A new turn started: the thread is working, and what it declared before no longer holds. */
   threadWorking(threadId: number): Thread {
-    return this.threadEvent(threadId, {
-      event: "working",
-      status: "wip",
-      body: "Thread working",
-      clear: true,
+    return this.tx(() => {
+      const th = this.threadEvent(threadId, {
+        event: "working",
+        status: "wip",
+        body: "Thread working",
+        clear: true,
+      });
+      // The thread's task, if it named one, is being worked on (01, Tasks). Stopping or ending
+      // never touches it: the agent sets `done` or `blocked`.
+      if (th.taskId !== null) {
+        this.applyTaskStatus(this.taskById(th.taskId), "wip", { kind: "axiom" }, threadId);
+      }
+      return th;
     });
   }
 
@@ -875,6 +921,234 @@ export class Axiom {
     if (threads.length === 0) return;
     const fresh = this.topicRow(topic.id);
     this.applyTopicStatus(fresh, topicStatusFromThreads(threads), reason, threadId);
+  }
+
+  // ---- tasks (01, Tasks) ----------------------------------------------------
+
+  private taskById(id: number): Task {
+    const row = this.get<Row>("SELECT * FROM task WHERE id = ?", id);
+    if (!row) throw new AxiomError("not-found", `task not found: ${id}`);
+    return camel<Task>(row);
+  }
+
+  private taskRow(topicId: number, key: string): Task {
+    const row = this.get<Row>("SELECT * FROM task WHERE topic_id = ? AND key = ?", topicId, key);
+    if (!row) throw new AxiomError("not-found", `task not found: ${key}`);
+    return camel<Task>(row);
+  }
+
+  private touchTopic(topicId: number): void {
+    this.run("UPDATE topic SET last_worked_at = ? WHERE id = ?", this.iso(), topicId);
+  }
+
+  private checkSpecLink(topicId: number, linkId: number): void {
+    const link = this.get<Row>("SELECT topic_id, kind FROM link WHERE id = ?", linkId);
+    if (!link || link.topic_id !== topicId || link.kind !== "spec") {
+      throw new AxiomError("validation", "a task's spec must be a spec link of the same topic");
+    }
+  }
+
+  createTask(topic: TopicRef, input: CreateTaskInput, _actor: Actor): TaskDetail {
+    const key = parseWith(taskKeySchema, input.key, "task key");
+    if (!input.title.trim()) throw new AxiomError("validation", "task title is required");
+    return this.tx(() => {
+      const t = this.topicRow(topic);
+      if (this.get("SELECT 1 FROM task WHERE topic_id = ? AND key = ?", t.id, key)) {
+        throw new AxiomError("conflict", `task key already exists in ${t.slug}: ${key}`);
+      }
+      if (input.specLinkId !== undefined) this.checkSpecLink(t.id, input.specLinkId);
+      const deps = [...new Set(input.dependsOn ?? [])].map((k) => {
+        if (k === key) throw new AxiomError("validation", `task ${key} cannot depend on itself`);
+        return this.taskRow(t.id, k);
+      });
+      const at = this.iso();
+      const position =
+        input.position ??
+        (this.get<{ p: number }>(
+          "SELECT COALESCE(MAX(position), 0) + 1 AS p FROM task WHERE topic_id = ?",
+          t.id,
+        )?.p as number);
+      const id = this.run(
+        `INSERT INTO task (topic_id, key, title, done_when, position, spec_link_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        t.id,
+        key,
+        input.title,
+        input.doneWhen ?? null,
+        position,
+        input.specLinkId ?? null,
+        at,
+        at,
+      );
+      // A new task has no dependents yet, so these edges cannot close a cycle.
+      for (const d of deps) {
+        this.run(
+          "INSERT INTO task_dependency (task_id, depends_on_task_id) VALUES (?, ?)",
+          id,
+          d.id,
+        );
+      }
+      this.touchTopic(t.id);
+      return this.taskDetail(this.taskById(id));
+    });
+  }
+
+  updateTask(topic: TopicRef, key: string, changes: UpdateTaskInput, _actor: Actor): TaskDetail {
+    return this.tx(() => {
+      const t = this.topicRow(topic);
+      const task = this.taskRow(t.id, key);
+      if (changes.title !== undefined && !changes.title.trim()) {
+        throw new AxiomError("validation", "task title is required");
+      }
+      if (changes.specLinkId !== undefined && changes.specLinkId !== null) {
+        this.checkSpecLink(t.id, changes.specLinkId);
+      }
+      this.run(
+        `UPDATE task SET title = ?, done_when = ?, spec_link_id = ?, position = ?, updated_at = ?
+         WHERE id = ?`,
+        changes.title ?? task.title,
+        changes.doneWhen === undefined ? task.doneWhen : changes.doneWhen,
+        changes.specLinkId === undefined ? task.specLinkId : changes.specLinkId,
+        changes.position ?? task.position,
+        this.iso(),
+        task.id,
+      );
+      this.touchTopic(t.id);
+      return this.taskDetail(this.taskById(task.id));
+    });
+  }
+
+  /**
+   * Sets a task's status and writes a `status change` entry (author `axiom`, as 08 requires for
+   * that kind; `data.task` is the key and `data.by` who asked). Anyone may set a task's status.
+   */
+  setTaskStatus(topic: TopicRef, key: string, status: TaskStatus, actor: Actor): TaskDetail {
+    const parsed = parseWith(taskStatusSchema, status, "task status");
+    return this.tx(() => {
+      const t = this.topicRow(topic);
+      const task = this.taskRow(t.id, key);
+      const threadId = this.knownThreadId(actor.kind === "agent" ? actor.threadId : null);
+      this.applyTaskStatus(task, parsed, actor, threadId);
+      return this.taskDetail(this.taskById(task.id));
+    });
+  }
+
+  private applyTaskStatus(task: Task, to: TaskStatus, actor: Actor, threadId: number | null): void {
+    if (task.status === to) return;
+    this.run("UPDATE task SET status = ?, updated_at = ? WHERE id = ?", to, this.iso(), task.id);
+    this.insertEntry({
+      topicId: task.topicId,
+      author: "axiom",
+      threadId,
+      kind: "status change",
+      body: `Task ${task.key}: ${task.status} -> ${to}`,
+      data: { task: task.key, from: task.status, to, by: actor.kind },
+    });
+  }
+
+  /** `key` now waits for `dependsOn`. Same topic only; rejects itself and cycles. */
+  addTaskDependency(topic: TopicRef, key: string, dependsOn: string, _actor: Actor): TaskDetail {
+    return this.tx(() => {
+      const t = this.topicRow(topic);
+      const task = this.taskRow(t.id, key);
+      if (key === dependsOn) {
+        throw new AxiomError("validation", `task ${key} cannot depend on itself`);
+      }
+      const dep = this.taskRow(t.id, dependsOn);
+      // A cycle appears when the new prerequisite already (transitively) waits for this task.
+      const path = this.dependencyPath(dep.id, task.id);
+      if (path) {
+        const chain = [key, ...path.map((id) => this.taskById(id).key)];
+        throw new AxiomError("validation", `dependency cycle: ${chain.join(" waits for ")}`);
+      }
+      this.run(
+        "INSERT OR IGNORE INTO task_dependency (task_id, depends_on_task_id) VALUES (?, ?)",
+        task.id,
+        dep.id,
+      );
+      this.touchTopic(t.id);
+      return this.taskDetail(task);
+    });
+  }
+
+  removeTaskDependency(topic: TopicRef, key: string, dependsOn: string, _actor: Actor): TaskDetail {
+    return this.tx(() => {
+      const t = this.topicRow(topic);
+      const task = this.taskRow(t.id, key);
+      const dep = this.taskRow(t.id, dependsOn);
+      this.run(
+        "DELETE FROM task_dependency WHERE task_id = ? AND depends_on_task_id = ?",
+        task.id,
+        dep.id,
+      );
+      this.touchTopic(t.id);
+      return this.taskDetail(task);
+    });
+  }
+
+  /** Task ids from `from` to `to` following "waits for" edges, or null when `to` is unreachable. */
+  private dependencyPath(from: number, to: number): number[] | null {
+    const seen = new Map<number, number | null>([[from, null]]);
+    const queue = [from];
+    while (queue.length) {
+      const id = queue.shift() as number;
+      if (id === to) {
+        const path: number[] = [];
+        for (let at: number | null = id; at !== null; at = seen.get(at) ?? null) path.unshift(at);
+        return path;
+      }
+      for (const r of this.all<{ depends_on_task_id: number }>(
+        "SELECT depends_on_task_id FROM task_dependency WHERE task_id = ?",
+        id,
+      )) {
+        if (!seen.has(r.depends_on_task_id)) {
+          seen.set(r.depends_on_task_id, id);
+          queue.push(r.depends_on_task_id);
+        }
+      }
+    }
+    return null;
+  }
+
+  private taskDetail(task: Task): TaskDetail {
+    const dependsOn = this.all<{ key: string; status: TaskStatus }>(
+      `SELECT d.key AS key, d.status AS status FROM task_dependency x JOIN task d ON d.id = x.depends_on_task_id
+       WHERE x.task_id = ? ORDER BY d.position, d.id`,
+      task.id,
+    );
+    const dependents = this.all<{ key: string }>(
+      `SELECT d.key AS key FROM task_dependency x JOIN task d ON d.id = x.task_id
+       WHERE x.depends_on_task_id = ? ORDER BY d.position, d.id`,
+      task.id,
+    );
+    return {
+      ...task,
+      dependsOn: dependsOn.map((d) => d.key),
+      dependents: dependents.map((d) => d.key),
+      waiting: dependsOn.some((d) => d.status !== "done"),
+    };
+  }
+
+  getTask(topic: TopicRef, key: string): TaskDetail {
+    return this.taskDetail(this.taskRow(this.topicRow(topic).id, key));
+  }
+
+  /** The topic's tasks in order, with dependencies, dependents and the `waiting` flag. */
+  listTasks(topic: TopicRef): TaskDetail[] {
+    const t = this.topicRow(topic);
+    return this.all<Row>("SELECT * FROM task WHERE topic_id = ? ORDER BY position, id", t.id).map(
+      (r) => this.taskDetail(camel<Task>(r)),
+    );
+  }
+
+  /** Names (or clears, with null) the task a thread works on. The task must be in its topic. */
+  setThreadTask(threadId: number, key: string | null, _actor: Actor): Thread {
+    return this.tx(() => {
+      const th = this.threadRow(threadId);
+      const task = key === null ? null : this.taskRow(th.topicId, key);
+      this.run("UPDATE thread SET task_id = ? WHERE id = ?", task?.id ?? null, threadId);
+      return this.threadRow(threadId);
+    });
   }
 
   // ---- entries ------------------------------------------------------------
