@@ -24,7 +24,7 @@
 .pill.task-st { position: relative; padding-right: 4px; cursor: pointer; }
 .pill.task-st select {
   appearance: none; border: 0; background: transparent; color: inherit; font: inherit;
-  padding: 0 14px 0 0; cursor: pointer; outline-offset: 3px;
+  padding: 0 14px 0 0; cursor: pointer; outline-offset: 3px; field-sizing: content;
 }
 .pill.task-st::after { content: "▾"; position: absolute; right: 4px; font-size: 8px; pointer-events: none; opacity: 0.8; }
 .pill.task-st select option { background: var(--panel); color: var(--text); }
@@ -38,7 +38,7 @@
   background-image: radial-gradient(var(--bg-dots) 1px, transparent 1.3px);
   background-size: 18px 18px;
 }
-.graph { display: block; }
+.graph { display: block; max-width: 100%; height: auto; }
 .g-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 11px; color: var(--meta); }
 .g-legend li { display: inline-flex; align-items: center; gap: 5px; }
 .g-legend .g-wait { opacity: 0.8; }

@@ -53,6 +53,16 @@ interface MockTopic {
   links?: { kind: LinkKind; target: string; label?: string }[];
   monitors?: { kind: string; target: string; state: "suggested" | "confirmed" }[];
   entries?: MockEntry[];
+  tasks?: MockTask[];
+}
+interface MockTask {
+  key: string;
+  title: string;
+  status: "to do" | "wip" | "blocked" | "done";
+  dependsOn?: string[];
+  doneWhen?: string;
+  /** The spec link (by target) the task belongs to. */
+  spec?: string;
 }
 
 interface MockWorkItem {
@@ -87,6 +97,10 @@ const TICKETS: MockWorkItem[] = [
   },
   { slug: "ahoy-usability", title: "Usability pass", epics: ["ahoy"], status: "wip" },
 ];
+
+/** Puts every task under the build plan spec link. */
+const planTasks = (tasks: Omit<MockTask, "spec">[]): MockTask[] =>
+  tasks.map((t) => ({ ...t, spec: "docs/plan/v1-tracker.md" }));
 
 const TOPICS: MockTopic[] = [
   {
@@ -125,6 +139,34 @@ const TOPICS: MockTopic[] = [
       { kind: "spec", target: "docs/plan/v1-tracker.md", label: "Build plan" },
       { kind: "artifact", target: "docs/design/references/relay.png", label: "Visual reference" },
     ],
+    tasks: planTasks([
+      {
+        key: "S0",
+        title: "Repo scaffold",
+        status: "done",
+        doneWhen: "npm run build and test pass",
+      },
+      { key: "S1", title: "Core database and rules", status: "done", dependsOn: ["S0"] },
+      {
+        key: "S2",
+        title: "CLI",
+        status: "done",
+        dependsOn: ["S1"],
+        doneWhen: "Every command has an e2e test",
+      },
+      { key: "S3", title: "Hooks for Claude Code", status: "done", dependsOn: ["S2"] },
+      { key: "S4", title: "Server and API", status: "done", dependsOn: ["S1"] },
+      { key: "S5", title: "T3 provider", status: "done", dependsOn: ["S4"] },
+      { key: "S5b", title: "T3 thread picker", status: "done", dependsOn: ["S5"] },
+      { key: "S6", title: "Web: Inbox layout", status: "done", dependsOn: ["S3", "S4"] },
+      {
+        key: "S7",
+        title: "Board and Console layouts",
+        status: "wip",
+        dependsOn: ["S2", "S3", "S5"],
+        doneWhen: "All three layouts share one TopicDetail",
+      },
+    ]),
     entries: [
       {
         at: "2026-11-25T09:31:00",
@@ -770,6 +812,28 @@ function run(ax: Axiom, setNow: (t: number) => void, shift: number): void {
         { kind: mon.kind, linkId: linkIds.get(mon.target), state: mon.state },
         owner,
       );
+    }
+
+    for (const task of m.tasks ?? []) {
+      at(m.createdAt);
+      ax.createTask(
+        m.slug,
+        {
+          key: task.key,
+          title: task.title,
+          doneWhen: task.doneWhen,
+          dependsOn: task.dependsOn,
+          specLinkId: task.spec ? linkIds.get(task.spec) : undefined,
+        },
+        owner,
+      );
+    }
+    let taskTime = t(m.createdAt);
+    for (const task of m.tasks ?? []) {
+      if (task.status === "to do") continue;
+      taskTime += 600_000;
+      setNow(taskTime);
+      ax.setTaskStatus(m.slug, task.key, task.status, { kind: "agent" });
     }
 
     const entries = [...(m.entries ?? [])].sort((a, b) => a.at.localeCompare(b.at));

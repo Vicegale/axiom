@@ -34,9 +34,9 @@ export interface GraphLayout {
   height: number;
 }
 
-export const NODE_W = 156;
+export const NODE_W = 140;
 export const NODE_H = 46;
-const GAP_X = 52;
+const GAP_X = 44;
 const GAP_Y = 14;
 const PAD = 20;
 
