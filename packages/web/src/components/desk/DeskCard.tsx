@@ -200,17 +200,31 @@ export function DeskCard({ topic, now, theme, move, onFavorite, onHide, onOpen, 
             <span className={`dk-rundot s-${thread.status}`} aria-hidden="true" />
             {runLine(thread, now)}
           </p>
-          <div className="dk-now">
-            <p className="dk-label">Now</p>
+          <div className="dk-now" aria-busy={thread.summaryPending ? true : undefined}>
+            <p className="dk-label">
+              Now
+              {thread.summaryPending ? (
+                <span className="dk-gen" role="status">
+                  {thread.summary ? "Updating…" : "Generating…"}
+                </span>
+              ) : null}
+            </p>
             {thread.summary ? (
-              <>
+              <div className={thread.summaryPending ? "dk-stale" : undefined}>
                 <p className="dk-now-text">{thread.summary.now}</p>
                 {next && next.toLowerCase() !== "nothing" ? (
                   <p className="dk-next">
                     <span>Next for you</span> {next}
                   </p>
                 ) : null}
-              </>
+              </div>
+            ) : thread.summaryPending ? (
+              // Placeholder lines the size of a typical summary, so the card doesn't jump.
+              <div className="dk-skel" aria-hidden="true">
+                <span />
+                <span />
+                <span className="short" />
+              </div>
             ) : (
               <p className="dk-note">{thread.summaryError ?? "No summary yet"}</p>
             )}

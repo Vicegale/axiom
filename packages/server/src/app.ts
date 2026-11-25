@@ -390,7 +390,18 @@ export function createApp(ctx: AppContext): Hono {
           : { now: t.summaryNow, next: t.summaryNext ?? "Nothing", at: t.summaryAt },
       summaryError: t.summaryError,
       hasReply: t.lastReply !== null,
+      // A reply newer than its summary, with summaries on and no error: one is being made.
+      summaryPending:
+        t.lastReply !== null &&
+        t.summaryError === null &&
+        summariesEnabled() &&
+        (t.summaryReplyAt === null || (t.lastReplyAt ?? "") > t.summaryReplyAt),
     };
+  }
+
+  function summariesEnabled(): boolean {
+    const v = ax.getSetting("summaries") as { enabled?: boolean } | null | undefined;
+    return v?.enabled !== false;
   }
 
   app.get("/api/desk", (c) => {

@@ -101,3 +101,17 @@
 .dk-md.dv-prose p, .dk-md.dv-prose ul, .dk-md.dv-prose ol, .dk-md.dv-prose pre { margin-bottom: 0.625rem; }
 .dk-thpill { display: inline-flex; align-items: center; gap: 0.25rem; }
 .dk-thpill-l { font-size: 0.6875rem; color: var(--text-3); }
+.dk-gen { margin-left: 0.5rem; font-size: 0.6875rem; font-weight: 400; color: var(--text-3); text-transform: none; letter-spacing: 0; }
+.dk-stale { opacity: 0.55; transition: opacity 0.2s ease; }
+.dk-skel { display: grid; gap: 0.4rem; padding: 0.2rem 0 0.35rem; }
+.dk-skel span {
+  display: block; height: 0.7rem; border-radius: 3px;
+  background: linear-gradient(90deg, var(--raised), var(--line-strong), var(--raised));
+  background-size: 200% 100%; animation: dk-shimmer 1.4s ease-in-out infinite;
+}
+.dk-skel span.short { width: 60%; }
+@keyframes dk-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .dk-skel span { animation: none; }
+  .dk-stale { transition: none; }
+}
