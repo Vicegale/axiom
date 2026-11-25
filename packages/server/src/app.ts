@@ -29,6 +29,7 @@ import {
   resolveArtifact,
 } from "./docs.js";
 import type { ChangeBus } from "./events.js";
+import { registerNewTopicRoutes } from "./newtopic.js";
 import type { T3Provider } from "./providers/t3/provider.js";
 import { registerSendRoutes } from "./sending.js";
 import { serveWeb } from "./static.js";
@@ -688,6 +689,7 @@ export function createApp(ctx: AppContext): Hono {
     }),
   );
 
+  registerNewTopicRoutes(app, { ax, bus });
   registerSendRoutes(app, {
     ax,
     bus,
