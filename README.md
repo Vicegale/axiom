@@ -23,13 +23,18 @@ scripts/install.sh                       # --help for options
 axiom server                             # then open http://127.0.0.1:4477
 ```
 
-The script checks the requirements, runs `npm ci` and the build, links `axiom` and `axiom-server` into `~/.local/bin` (`--bin-dir` to change it; it tells you if that folder isn't on PATH), links the `axiom` skill into `~/.claude/skills`, and asks before adding Axiom's hooks to `~/.claude/settings.json` (a backup is made; `--yes` / `--no-hooks` to skip the question). `--service` also writes the server's user service, never enabling it. It never starts anything and never touches `~/.t3`.
+The script checks the requirements, runs `npm ci` and the build, links `axiom` and `axiom-server` into `~/.local/bin` (`--bin-dir` to change it; it tells you if that folder isn't on PATH), and links the `axiom` skill into `~/.claude/skills`. Then it asks two questions (both default to no, and are skipped without a terminal):
 
-**Updating:** `git pull && scripts/install.sh`, then restart the server (the web app shows a banner when the server is older than the build).
+1. Add Axiom's hooks to `~/.claude/settings.json`? (a backup is made; `--hooks` / `--no-hooks` answer it)
+2. Start the server now and at every login? This sets up a user service, systemd on Linux and launchd on macOS (`--service` / `--no-service`). Once set up, every later run restarts it on the new build without asking.
+
+`--yes` answers yes to both. The script never touches `~/.t3`.
+
+**Updating:** `git pull && scripts/install.sh`. The service, if you set one up, is restarted; a server started by hand needs a restart (the web app shows a banner when the server is older than the build).
 
 **Another machine:** the repository is local only. Either clone it over SSH from the machine that has it (`git clone ssh://<host>/home/<you>/projects/axiom`, then `git pull` to update), or carry a bundle: `git bundle create axiom.bundle --all` here, `git clone axiom.bundle ~/projects/axiom` there. Never copy `node_modules`: the install builds it for that system.
 
-**Running the server as a service:** `axiom server install` writes `~/.config/systemd/user/axiom.service` (Linux) or `~/Library/LaunchAgents/local.axiom.server.plist` (macOS, logs in `~/Library/Logs/axiom/`) and prints the `systemctl --user` / `launchctl` commands to enable it. The service keeps the PATH you installed with, so it finds `claude` and `t3`; re-run it after moving them.
+**The service by hand:** `axiom server install` writes `~/.config/systemd/user/axiom.service` (Linux) or `~/Library/LaunchAgents/local.axiom.server.plist` (macOS, logs in `~/Library/Logs/axiom/`) and prints the `systemctl --user` / `launchctl` commands to enable it. The service keeps the PATH you installed with, so it finds `claude` and `t3`; re-run it after moving them.
 
 **Paths:** the database is `$AXIOM_DB`, else `$XDG_DATA_HOME/axiom/axiom.db`, else `~/.local/share/axiom/axiom.db` (macOS too). T3's data folder is `~/.t3/userdata` (`AXIOM_T3_DIR` overrides it). The hooks call the `node` that ran the install by its full path: after switching Node versions (nvm, fnm), re-run `scripts/install.sh`.
 

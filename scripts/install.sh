@@ -2,36 +2,42 @@
 # Installs Axiom from this checkout, on Linux or macOS. Safe to re-run: it is also the update step
 # (after `git pull`). Written for bash 3.2, the version macOS ships.
 #
-#   scripts/install.sh [--yes] [--no-hooks] [--no-skill] [--service] [--bin-dir DIR]
+#   scripts/install.sh [--yes] [--no-hooks] [--no-service] [--no-skill] [--bin-dir DIR]
 #
-#   --yes        don't ask before adding Axiom's hooks to ~/.claude/settings.json (a backup is made)
-#   --no-hooks   leave ~/.claude/settings.json alone
-#   --no-skill   don't link the axiom skill into ~/.claude/skills
-#   --service    also write the server's user service (systemd / launchd); it is never enabled
-#   --bin-dir    where the `axiom` and `axiom-server` links go (default: ~/.local/bin)
+#   --yes         answer yes to both questions: add the hooks, run the server as a service
+#   --hooks       add Axiom's hooks to ~/.claude/settings.json without asking (a backup is made)
+#   --no-hooks    leave ~/.claude/settings.json alone
+#   --service     run the server now and at every login (systemd / launchd) without asking
+#   --no-service  don't set up the service (start it by hand: axiom server)
+#   --no-skill    don't link the axiom skill into ~/.claude/skills
+#   --bin-dir     where the `axiom` and `axiom-server` links go (default: ~/.local/bin)
 #
-# Never starts the server, enables a service or touches ~/.t3.
+# Without a terminal to ask in, the questions default to no. A service set up before is restarted
+# on every run, so it serves the new build. Never touches ~/.t3.
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_DIR="$HOME/.local/bin"
 HOOKS="ask"
 SKILL=1
-SERVICE=0
+SERVICE="ask"
+PORT="${AXIOM_PORT:-4477}"
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --yes | -y) HOOKS="yes" ;;
+    --yes | -y) HOOKS="yes" SERVICE="yes" ;;
+    --hooks) HOOKS="yes" ;;
     --no-hooks) HOOKS="no" ;;
+    --service) SERVICE="yes" ;;
+    --no-service) SERVICE="no" ;;
     --no-skill) SKILL=0 ;;
-    --service) SERVICE=1 ;;
     --bin-dir)
       [ $# -ge 2 ] || { echo "--bin-dir needs a folder" >&2; exit 2; }
       BIN_DIR="$2"
       shift
       ;;
     -h | --help)
-      sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
@@ -44,6 +50,14 @@ step() { printf '\n%s==> %s%s\n' "$B" "$1" "$X"; }
 ok() { printf '  %s✓%s %s\n' "$G" "$X" "$1"; }
 warn() { printf '  %s!%s %s\n' "$Y" "$X" "$1"; }
 die() { printf '%serror:%s %s\n' "$R" "$X" "$1" >&2; exit 1; }
+# ask <question> -> 0 for yes. No terminal to ask in: no.
+ask() {
+  [ -t 0 ] || return 1
+  local answer
+  printf '  %s [y/N] ' "$1"
+  read -r answer || return 1
+  case "$answer" in [yY]*) return 0 ;; *) return 1 ;; esac
+}
 
 OS="$(uname -s)"
 case "$OS" in
@@ -145,13 +159,7 @@ step "Claude Code hooks"
 echo "  Axiom's hooks (in ~/.claude/settings.json) record attached sessions, show their live step,"
 echo "  and send their permission prompts to the Desk card."
 if [ "$HOOKS" = ask ]; then
-  if [ -t 0 ]; then
-    printf '  Add them now? A backup of the settings file is made first. [y/N] '
-    read -r answer
-    case "$answer" in [yY]*) HOOKS=yes ;; *) HOOKS=no ;; esac
-  else
-    HOOKS=no
-  fi
+  if ask "Add them now? A backup of the settings file is made first."; then HOOKS=yes; else HOOKS=no; fi
 fi
 if [ "$HOOKS" = yes ]; then
   "$AXIOM" hooks install | sed 's/^/  /'
@@ -160,14 +168,99 @@ else
 fi
 
 # ---- server ---------------------------------------------------------------------------------
-if [ "$SERVICE" = 1 ]; then
-  step "Server service"
-  "$AXIOM" server install | sed 's/^/  /'
+step "Server"
+URL="http://127.0.0.1:$PORT"
+UID_NUM="$(id -u)"
+LABEL="local.axiom.server"
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+
+healthy() {
+  node -e 'fetch(process.argv[1], { signal: AbortSignal.timeout(1000) }).then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))' "$URL/api/health"
+}
+wait_healthy() {
+  local i=0
+  while [ $i -lt 20 ]; do
+    healthy && return 0
+    sleep 0.5
+    i=$((i + 1))
+  done
+  return 1
+}
+service_loaded() {
+  if [ "$PLATFORM" = darwin ]; then
+    launchctl print "gui/$UID_NUM/$LABEL" >/dev/null 2>&1
+  else
+    systemctl --user is-enabled --quiet axiom.service 2>/dev/null ||
+      systemctl --user is-active --quiet axiom.service 2>/dev/null
+  fi
+}
+service_logs() {
+  if [ "$PLATFORM" = darwin ]; then echo "$HOME/Library/Logs/axiom/server.log"; else echo "journalctl --user -u axiom.service"; fi
+}
+# Writes the service file (with this PATH and build) and (re)starts it.
+start_service() {
+  # The service gets the database this install uses ($AXIOM_DB) and its port.
+  if [ -n "${AXIOM_DB:-}" ]; then
+    "$AXIOM" server install --platform "$PLATFORM" --port "$PORT" --db "$AXIOM_DB" >/dev/null
+  else
+    "$AXIOM" server install --platform "$PLATFORM" --port "$PORT" >/dev/null
+  fi
+  if [ "$PLATFORM" = darwin ]; then
+    if launchctl print "gui/$UID_NUM/$LABEL" >/dev/null 2>&1; then
+      launchctl bootout "gui/$UID_NUM/$LABEL" >/dev/null 2>&1 || true
+      local i=0 # bootout returns before the job is gone; bootstrap fails until it is
+      while [ $i -lt 25 ] && launchctl print "gui/$UID_NUM/$LABEL" >/dev/null 2>&1; do
+        sleep 0.2
+        i=$((i + 1))
+      done
+    fi
+    launchctl bootstrap "gui/$UID_NUM" "$PLIST"
+  else
+    systemctl --user daemon-reload
+    systemctl --user enable axiom.service >/dev/null 2>&1
+    systemctl --user restart axiom.service
+  fi
+}
+
+SERVICE_RUNNING=0
+if [ "$PLATFORM" = linux ] && ! systemctl --user show-environment >/dev/null 2>&1; then
+  [ "$SERVICE" = no ] || warn "no systemd user session here; start the server by hand: axiom server"
+  SERVICE=no
+elif service_loaded; then
+  if [ "$SERVICE" = no ]; then
+    warn "the Axiom service is set up but was left as it is (restart it to serve this build)"
+  else
+    SERVICE=yes # chosen on an earlier run: keep it, restarted on the new build
+  fi
+elif [ "$SERVICE" = ask ]; then
+  [ -t 0 ] && echo "  The server can run as a user service: started now, and again at every login."
+  if ask "Start the Axiom server now and at every login?"; then SERVICE=yes; else SERVICE=no; fi
+fi
+
+if [ "$SERVICE" = yes ]; then
+  if ! service_loaded && healthy; then
+    warn "something already answers on $URL (a server started by hand?)."
+    warn "stop it, then run: scripts/install.sh --service"
+  elif start_service && wait_healthy; then
+    SERVICE_RUNNING=1
+    ok "the Axiom service is running at $URL and starts at every login"
+    ok "logs: $(service_logs)"
+  else
+    warn "the service didn't come up at $URL; logs: $(service_logs)"
+  fi
 fi
 
 step "Done"
-echo "  Start the server:  axiom server        (then open http://127.0.0.1:4477)"
-if [ "$SERVICE" = 0 ]; then
-  echo "  Run it as a service instead:  axiom server install   (writes the file; you enable it)"
+if [ "$SERVICE_RUNNING" = 1 ]; then
+  echo "  Open $URL"
+  if [ "$PLATFORM" = darwin ]; then
+    echo "  Stop the service:  launchctl bootout gui/\$(id -u)/$LABEL"
+  else
+    echo "  Stop the service:  systemctl --user disable --now axiom.service"
+  fi
+  echo "  Update later:  git pull && scripts/install.sh   (restarts the service)"
+else
+  echo "  Start the server:  axiom server        (then open $URL)"
+  echo "  Or as a service:   scripts/install.sh --service"
+  echo "  Update later:  git pull && scripts/install.sh   (then restart the server)"
 fi
-echo "  Update later:  git pull && scripts/install.sh   (then restart the server)"
