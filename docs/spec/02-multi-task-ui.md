@@ -41,6 +41,7 @@ The owner's reference for it is a screen called **Desk** ([docs/design/reference
 - 2026-11-25: Sort orders: "Ready first" puts topics where the owner is next on top (waiting for them, stopped with a question, in review); "Fixed" is the owner's drag order. Favourites are always first in both.
 - 2026-11-25: Hiding a topic hides it from the Desk only; it stays in the tracker.
 - 2026-11-25: The owner can approve or deny a thread's permission prompt from its card.
+- 2026-11-25: The composer always shows where the message goes: a `This thread | New thread` switch (no longer only an option of the thread chip); the thread chip remains for topics with several threads.
 - 2026-11-25: The card shows the selected thread's current model, effort and context usage, and the topic's Artifacts menu (plan D9, D10).
 - 2026-11-25: "Steward" is the proactive agent (03), shown on the Desk as an on/off toggle. It is built later; the toggle comes with it.
 
