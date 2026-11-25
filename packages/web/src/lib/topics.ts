@@ -1,4 +1,4 @@
-import type { AxiomNotification, Entry, TopicListItem } from "../api";
+import type { TopicListItem } from "../api";
 import { PILES, type TopicStatus, VIEW_IDS, VIEW_STATUSES, type ViewId } from "./domain";
 
 /** The statuses that place a topic in views: its own, or (when null) its open threads'. */
@@ -36,43 +36,4 @@ export function matchesQuery(t: TopicListItem, query: string): boolean {
   const parts = [t.title, t.slug, t.statusNote ?? "", t.goal ?? "", t.status ?? ""];
   for (const p of t.parents) parts.push(p.title, p.jiraKey ?? "");
   return parts.join(" ").toLowerCase().includes(q);
-}
-
-export interface Attention {
-  reason: string;
-  text: string;
-}
-
-const ATTENTION_KINDS = ["agent asked", "error"];
-
-/**
- * Why a topic is in "requires attention". Prefers the latest waiting-on-owner or error thread
- * event in the history (it survives the notification being dismissed), then an open notification.
- */
-export function attentionOf(
-  topic: Pick<TopicListItem, "slug" | "status" | "threads">,
-  notifications: readonly AxiomNotification[],
-  entries?: readonly Entry[],
-): Attention | null {
-  if (!inView(topic, "attention")) return null;
-  if (entries) {
-    let best: Entry | undefined;
-    for (const e of entries) {
-      const ev = (e.data as { event?: string } | null)?.event;
-      if (e.kind === "thread event" && (ev === "waiting on owner" || ev === "error")) {
-        if (!best || e.id > best.id) best = e;
-      }
-    }
-    if (best) {
-      const ev = (best.data as { event: string }).event;
-      const text = (best.body ?? "")
-        .replace(/^Waiting on the owner:\s*/, "")
-        .replace(/^Thread error:\s*/, "");
-      return { reason: ev === "error" ? "error" : "agent asked", text };
-    }
-  }
-  const n = notifications.find(
-    (x) => x.topicSlug === topic.slug && ATTENTION_KINDS.includes(x.kind),
-  );
-  return n ? { reason: n.kind, text: n.body ?? "" } : null;
 }

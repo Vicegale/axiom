@@ -191,6 +191,72 @@ describe("topics", () => {
   });
 });
 
+describe("attention reason", () => {
+  function threadOf(slug: string) {
+    return cli.attachThread(
+      slug,
+      { provider: "claude-code", providerThreadId: `t-${slug}` },
+      owner,
+    );
+  }
+
+  it("is the question the agent asked, and survives opening the topic", async () => {
+    topic("a");
+    const th = threadOf("a");
+    cli.threadWaitingOnOwner(th.id, "Which way?");
+    const list = (await api("/api/topics")).body;
+    expect(list[0].attention).toMatchObject({ reason: "agent asked", text: "Which way?" });
+    expect(typeof list[0].attention.at).toBe("string");
+    await post("/api/topics/a/open");
+    expect((await api("/api/topics")).body[0].attention.text).toBe("Which way?");
+    expect((await api("/api/topics/a")).body.attention).toMatchObject({ reason: "agent asked" });
+  });
+
+  it("is the error message for an error thread", async () => {
+    topic("a");
+    cli.threadError(threadOf("a").id, "process exited (code 1)");
+    expect((await api("/api/topics/a")).body.attention).toMatchObject({
+      reason: "error",
+      text: "process exited (code 1)",
+    });
+  });
+
+  it("uses a newer manual status change with its reason", async () => {
+    topic("a");
+    cli.threadWaitingOnOwner(threadOf("a").id, "old question");
+    cli.setTopicStatus("a", "wip", owner);
+    cli.setTopicStatus("a", "hitl", owner, "need a decision on scope");
+    expect((await api("/api/topics/a")).body.attention).toMatchObject({
+      reason: "agent asked",
+      text: "need a decision on scope",
+    });
+  });
+
+  it("is null outside hitl and error", async () => {
+    topic("a");
+    const th = threadOf("a");
+    cli.threadWaitingOnOwner(th.id, "q");
+    cli.threadWorking(th.id);
+    expect((await api("/api/topics/a")).body.attention).toBeNull();
+    topic("b");
+    expect((await api("/api/topics")).body.every((t: Any) => t.attention === null)).toBe(true);
+  });
+
+  it("covers a null-status topic with an open hitl thread", async () => {
+    topic("a");
+    const t1 = threadOf("a");
+    const t2 = cli.attachThread("a", { provider: "claude-code", providerThreadId: "t2" }, owner);
+    const t3 = cli.attachThread("a", { provider: "claude-code", providerThreadId: "t3" }, owner);
+    cli.threadWorking(t1.id);
+    cli.threadWorking(t2.id);
+    expect((await api("/api/topics/a")).body.attention).toBeNull();
+    cli.threadWaitingOnOwner(t3.id, "which?");
+    const d = (await api("/api/topics/a")).body;
+    expect(d.status).toBeNull();
+    expect(d.attention).toMatchObject({ reason: "agent asked", text: "which?" });
+  });
+});
+
 describe("monitors and entries", () => {
   it("confirms a monitor target", async () => {
     topic("a");

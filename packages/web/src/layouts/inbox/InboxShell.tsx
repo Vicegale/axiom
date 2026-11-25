@@ -164,7 +164,6 @@ export function InboxShell() {
                 <TopicList
                   view={list}
                   topics={topics}
-                  notifications={notifications}
                   selected={selected}
                   query={query}
                   now={now}
@@ -175,7 +174,7 @@ export function InboxShell() {
               )}
             </div>
           </section>
-          <Reader slug={selected} notifications={notifications} now={now} />
+          <Reader slug={selected} now={now} />
         </>
       )}
       <StatusBar topics={topics} live={data.live} now={now} />

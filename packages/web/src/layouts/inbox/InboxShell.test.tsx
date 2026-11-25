@@ -33,6 +33,7 @@ function seed() {
       title: "Needs me",
       status: "hitl",
       highlighted: true,
+      attention: { reason: "agent asked", text: "Which way?", at: "2026-11-25T09:30:00.000Z" },
       lastWorkedAt: "2026-11-25T09:30:00.000Z",
     }),
     topic({
@@ -180,12 +181,16 @@ describe("Inbox shell", () => {
     );
   });
 
-  it("explains why a topic needs attention, from the history after the notification is gone", async () => {
+  it("shows why a topic needs attention in the row and the callout, after opening too", async () => {
     seed();
-    open("/topic/ask");
+    open("/");
+    const row = (await screen.findByText("Needs me")).closest("a") as HTMLElement;
+    expect(row.querySelector(".row-reason")?.textContent).toBe("agent asked: Which way?");
+    fireEvent.click(row);
     const callout = await screen.findByRole("note");
-    expect(callout.textContent).toContain("agent asked:");
-    expect(callout.textContent).toContain("Which way?");
+    expect(callout.textContent).toContain("agent asked: Which way?");
+    await waitFor(() => expect(row.className).not.toContain("is-unread"));
+    expect(row.querySelector(".row-reason")?.textContent).toBe("agent asked: Which way?");
   });
 
   it("mutes the open topic", async () => {

@@ -1,8 +1,7 @@
 /* Shared Axiom mockup tokens. Dark is the default; light via [data-theme="light"]. */
-@import url("https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap");
 :root {
-  --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", ui-monospace, "SF Mono", monospace;
+  --font-sans: "Geist Variable", "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SF Mono", monospace;
   --bg: #0b0c0e; --bg-dots: #1a1c20; --panel: #111316; --panel-2: #16191d; --raised: #1b1f24;
   --line: #24282e; --line-strong: #323840;
   --text: #e6e8eb; --text-2: #a3a9b2; --text-3: #848b95;

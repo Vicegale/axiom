@@ -33,9 +33,13 @@ describe("TopicDetail", () => {
     render(
       <TopicDetail
         now={NOW}
-        topic={detail({ status: "hitl", goal: "Ship it", statusNote: "waiting" })}
+        topic={detail({
+          status: "hitl",
+          goal: "Ship it",
+          statusNote: "waiting",
+          attention: { reason: "agent asked", text: "Which way?", at: "2026-11-25T09:00:00.000Z" },
+        })}
         entries={[]}
-        attention={{ reason: "agent asked", text: "Which way?" }}
         actions={actions()}
       />,
     );

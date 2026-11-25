@@ -1,17 +1,15 @@
-import { ApiError, type AxiomNotification } from "../../api";
+import { ApiError } from "../../api";
 import { TopicDetail } from "../../components";
 import { useActions } from "../../data/useActions";
 import { useTopicDetail } from "../../data/useTopicDetail";
-import { attentionOf } from "../../lib/topics";
 
 interface Props {
   slug: string | undefined;
-  notifications: readonly AxiomNotification[];
   now: Date;
 }
 
 /** The right-hand reading pane: the selected topic, or a hint. */
-export function Reader({ slug, notifications, now }: Props) {
+export function Reader({ slug, now }: Props) {
   const actions = useActions();
   const { data, error } = useTopicDetail(slug);
 
@@ -37,21 +35,6 @@ export function Reader({ slug, notifications, now }: Props) {
           entries={entries}
           ticketEpics={ticketEpics}
           now={now}
-          attention={attentionOf(
-            {
-              slug: topic.slug,
-              status: topic.status,
-              threads: topic.threads.map((t) => ({
-                id: t.id,
-                provider: t.provider,
-                title: t.title,
-                status: t.status,
-                open: t.endedAt === null,
-              })),
-            },
-            notifications,
-            entries,
-          )}
           actions={{
             onToggleMute: (muted) => void actions.setMuted(topic.slug, muted),
             onMarkStale: () => void actions.markStale(topic.slug),

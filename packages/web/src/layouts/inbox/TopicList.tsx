@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import type { AxiomNotification, TopicListItem } from "../../api";
+import type { Attention, TopicListItem } from "../../api";
 import { ParentChip } from "../../components";
 import { StatusPill } from "../../components/StatusPill";
 import {
@@ -12,13 +12,12 @@ import {
   type ViewId,
 } from "../../lib/domain";
 import { ago } from "../../lib/time";
-import { attentionOf, inView, matchesQuery, sectionOf, spineStatus } from "../../lib/topics";
+import { inView, matchesQuery, sectionOf, spineStatus } from "../../lib/topics";
 import { hrefs } from "./routes";
 
 interface Props {
   view: "all" | ViewId;
   topics: readonly TopicListItem[];
-  notifications: readonly AxiomNotification[];
   selected: string | undefined;
   query: string;
   now: Date;
@@ -51,7 +50,7 @@ export function TopicRow({
   onOpen,
 }: {
   topic: TopicListItem;
-  attention: { reason: string; text: string } | null;
+  attention: Attention | null;
   selected: boolean;
   now: Date;
   onOpen: (slug: string) => void;
@@ -110,7 +109,7 @@ export function TopicRow({
   );
 }
 
-export function TopicList({ view, topics, notifications, selected, query, now, onOpen }: Props) {
+export function TopicList({ view, topics, selected, query, now, onOpen }: Props) {
   const [piles, setPiles] = useState<Record<string, boolean>>({});
   const items = visibleTopics(topics, view, query);
   if (!items.length) {
@@ -122,7 +121,7 @@ export function TopicList({ view, topics, notifications, selected, query, now, o
     <TopicRow
       key={t.slug}
       topic={t}
-      attention={attentionOf(t, notifications)}
+      attention={t.attention}
       selected={t.slug === selected}
       now={now}
       onOpen={onOpen}

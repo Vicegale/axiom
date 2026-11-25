@@ -1,7 +1,6 @@
 import type { Entry, LinkItem, MonitorTarget, Parent, Thread, TopicDetailData } from "../api";
 import { LINK_LABEL, LINK_ORDER, PROVIDER_LABEL } from "../lib/domain";
 import { ago, fullStamp, idleDays, stamp } from "../lib/time";
-import type { Attention } from "../lib/topics";
 import { type Density, History } from "./History";
 import { Lock } from "./Icons";
 import { StatusPill } from "./StatusPill";
@@ -18,7 +17,6 @@ interface Props {
   topic: TopicDetailData;
   /** undefined while the history is still loading. */
   entries: readonly Entry[] | undefined;
-  attention?: Attention | null;
   /** Ticket slug to the title of the epic it sits under, for "in <epic>". */
   ticketEpics?: Record<string, string>;
   density?: Density;
@@ -33,7 +31,6 @@ interface Props {
 export function TopicDetail({
   topic: t,
   entries,
-  attention,
   ticketEpics = {},
   density = "roomy",
   now,
@@ -76,9 +73,9 @@ export function TopicDetail({
           shows until you open it.
         </p>
       ) : null}
-      {attention ? (
+      {t.attention ? (
         <div className={`callout s-${attnStatus}`} role="note">
-          <strong>{attention.reason}:</strong> {attention.text}
+          <strong>{t.attention.reason}:</strong> {t.attention.text}
         </div>
       ) : null}
       {t.stalePrompt ? (

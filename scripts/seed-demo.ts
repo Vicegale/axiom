@@ -139,7 +139,7 @@ const TOPICS: MockTopic[] = [
         author: "axiom",
         thread: "227205b0",
         kind: "status change",
-        data: { from: "wip", to: "hitl", reason: "asked: settle 04, 05, 06 and choose who builds" },
+        data: { from: "wip", to: "hitl", reason: "thread waiting on owner" },
       },
       {
         at: "2026-11-25T09:30:00",

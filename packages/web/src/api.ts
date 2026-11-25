@@ -12,6 +12,12 @@ export interface Parent {
   locked: boolean;
 }
 
+export interface Attention {
+  reason: "agent asked" | "error";
+  text: string;
+  at: string;
+}
+
 export interface ListThread {
   id: number;
   provider: Provider;
@@ -31,6 +37,7 @@ export interface TopicListItem {
   views: string[];
   highlighted: boolean;
   stalePrompt: boolean;
+  attention: Attention | null;
   parents: Parent[];
   threads: ListThread[];
   createdAt: string;
@@ -75,6 +82,7 @@ export interface TopicDetailData {
   views: string[];
   highlighted: boolean;
   stalePrompt: boolean;
+  attention: Attention | null;
   createdAt: string;
   lastWorkedAt: string;
   openThreadStatuses: TopicStatus[];

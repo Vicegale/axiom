@@ -28,6 +28,7 @@ export function topic(over: Partial<TopicListItem> & { slug: string }): TopicLis
     views: ["piles"],
     highlighted: false,
     stalePrompt: false,
+    attention: null,
     parents: [],
     threads: [],
     createdAt: T0,
