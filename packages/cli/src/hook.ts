@@ -21,6 +21,13 @@ interface HookPayload {
   reason?: string;
   cwd?: string;
   prompt?: string;
+  last_assistant_message?: unknown;
+}
+
+/** The reply a Stop payload carries, when there is one. */
+function lastReply(p: HookPayload): string | null {
+  const m = p.last_assistant_message;
+  return typeof m === "string" && m.trim() !== "" ? m : null;
 }
 
 export function hookLogPath(env: NodeJS.ProcessEnv): string {
@@ -68,6 +75,8 @@ export function runHook(
   env: NodeJS.ProcessEnv,
   options: { db?: string; readStdin?: () => string } = {},
 ): number {
+  // Axiom's own `claude -p` runs (the summaries) must never touch the database.
+  if (env.AXIOM_INTERNAL === "1") return 0;
   try {
     if (!(HOOK_EVENTS as readonly string[]).includes(event))
       throw new Error(`unknown hook event "${event}"`);
@@ -89,6 +98,8 @@ export function runHook(
         const thread = axiom.findThread({ provider: "t3", providerThreadId: t3ThreadId });
         if (thread) {
           if (event === "stop") {
+            const reply = lastReply(payload);
+            if (reply) axiom.setThreadReply(thread.id, reply);
             axiom.setRunningSubagents(thread.id, subagents);
             // The T3 sync may have seen the finished run first and stopped the thread already.
             if (
@@ -135,12 +146,15 @@ export function runHook(
             axiom.threadWaitingOnOwner(thread.id, payload.message || "Permission requested");
           }
           break;
-        case "stop":
+        case "stop": {
+          const reply = lastReply(payload);
+          if (reply) axiom.setThreadReply(thread.id, reply);
           // Waiting on running subagents is not stopping: the thread stays wip until it is
           // re-invoked and stops again with none left.
           axiom.setRunningSubagents(thread.id, subagents);
           if (subagents === 0) axiom.threadStopped(thread.id);
           break;
+        }
         case "session-end":
           axiom.setRunningSubagents(thread.id, 0);
           axiom.threadEnded(thread.id, payload.reason);
