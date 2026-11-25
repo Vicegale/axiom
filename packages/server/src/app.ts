@@ -43,6 +43,8 @@ export interface AppContext {
   t3: T3Provider;
   dbPath: string;
   webDist: string;
+  /** The web build present when the server started; the page compares it with its own. */
+  webBuildId?: string | null;
   startedAt: string;
   /** Closes open SSE streams on shutdown. */
   streams: Set<() => void>;
@@ -640,6 +642,7 @@ export function createApp(ctx: AppContext): Hono {
       server: {
         startedAt: ctx.startedAt,
         version: AXIOM_VERSION,
+        webBuildId: ctx.webBuildId ?? null,
         dbPath: ctx.dbPath,
         lastBackupAt: last === null ? null : new Date(last).toISOString(),
       },

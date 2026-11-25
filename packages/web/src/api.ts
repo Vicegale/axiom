@@ -209,7 +209,14 @@ export interface T3Health {
 }
 
 export interface Health {
-  server: { startedAt: string; version: string; dbPath: string; lastBackupAt: string | null };
+  server: {
+    startedAt: string;
+    version: string;
+    dbPath: string;
+    lastBackupAt: string | null;
+    /** The web build the server saw at start; differs from the page's after an update. */
+    webBuildId?: string | null;
+  };
   claudeCode: { lastEventAt: string | null };
   t3: T3Health;
 }
