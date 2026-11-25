@@ -158,7 +158,6 @@
 .bd-tray-head h2 { font: 600 0.8125rem/1 var(--font-sans); }
 .bd-tray-head .fine { margin-left: auto; font-size: 0.7188rem; color: var(--text-2); }
 .bd-tray:focus { outline: none; }
-.bd-tray > .splitter { position: absolute; left: 0; right: 0; top: -0.25rem; margin: 0; }
 .bd-tray-body { flex: 1; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
 .bd-x { width: 1.75rem; height: 1.75rem; display: grid; place-items: center; border: 1px solid transparent; border-radius: var(--radius); background: none; color: var(--text-2); cursor: pointer; }
 .bd-x:hover { border-color: var(--line-strong); color: var(--text); }
@@ -174,7 +173,6 @@ dialog.bd-sheet {
 }
 dialog.bd-sheet[open] { display: flex; animation: bd-slide 0.26s cubic-bezier(0.2, 0.7, 0.2, 1); }
 @keyframes bd-slide { from { transform: translateX(102%); } }
-.bd-sheet > .splitter { position: absolute; left: -0.25rem; top: 0; bottom: 0; margin: 0; }
 .bd-sheet::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--c, var(--line-strong)); }
 .bd-sheet:focus { outline: none; }
 .bd-sheet-head { flex: none; padding: 0.875rem 1.25rem 0; }

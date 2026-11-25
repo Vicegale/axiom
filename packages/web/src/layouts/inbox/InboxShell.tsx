@@ -135,10 +135,10 @@ export function InboxShell() {
         active={active}
         now={now}
         collapsed={railClosed}
+        splitter={
+          <Splitter pane={rail} axis="col" edge="end" label="Resize sidebar" className="sp-rail" />
+        }
       />
-      {railClosed ? null : (
-        <Splitter pane={rail} axis="col" edge="end" label="Resize sidebar" className="sp-rail" />
-      )}
       {onSettings ? (
         <main className="page" id="main" tabIndex={-1} aria-label="Settings">
           <SettingsPage />
@@ -177,6 +177,13 @@ export function InboxShell() {
                 </div>
               )}
             </div>
+            <Splitter
+              pane={listPane}
+              axis="col"
+              edge="end"
+              label="Resize topic list"
+              className="sp-list"
+            />
             <div className="list-body" tabIndex={-1}>
               {onNotifs ? (
                 <NotificationsList
@@ -200,13 +207,6 @@ export function InboxShell() {
               )}
             </div>
           </section>
-          <Splitter
-            pane={listPane}
-            axis="col"
-            edge="end"
-            label="Resize topic list"
-            className="sp-list"
-          />
           <Reader
             slug={selected}
             now={now}

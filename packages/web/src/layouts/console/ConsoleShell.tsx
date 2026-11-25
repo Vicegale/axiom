@@ -188,7 +188,7 @@ export function ConsoleShell() {
             href={hrefs.all}
             className="cs-view"
             aria-current={
-              !onSettings && list === "all" && route.kind !== "view" ? "true" : undefined
+              !onSettings && list === "all" && route.kind !== "view" ? "page" : undefined
             }
           >
             <span className="cs-glyph" aria-hidden="true">
@@ -202,7 +202,7 @@ export function ConsoleShell() {
               key={v}
               href={hrefs.view(v)}
               className="cs-view"
-              aria-current={route.kind === "view" && route.view === v ? "true" : undefined}
+              aria-current={route.kind === "view" && route.view === v ? "page" : undefined}
             >
               <Glyph status={VIEW_GLYPH_STATUS[v]} />
               {VIEW_LABEL[v]}
@@ -212,7 +212,7 @@ export function ConsoleShell() {
           <Link
             href={hrefs.settings}
             className="cs-view cs-settings-link"
-            aria-current={onSettings ? "true" : undefined}
+            aria-current={onSettings ? "page" : undefined}
           >
             <span className="cs-glyph" aria-hidden="true">
               ⚙
@@ -220,10 +220,8 @@ export function ConsoleShell() {
             Settings
           </Link>
         </nav>
-      </aside>
-      {sideClosed ? null : (
         <Splitter pane={side} axis="col" edge="end" label="Resize sidebar" className="sp-side" />
-      )}
+      </aside>
 
       <main
         className="cs-main"
@@ -321,17 +319,15 @@ export function ConsoleShell() {
       </main>
 
       {drawer ? (
-        <Splitter
-          pane={drawerPane}
-          axis="col"
-          after
-          edge="start"
-          label="Resize notifications"
-          className="sp-drawer"
-        />
-      ) : null}
-      {drawer ? (
         <aside className="cs-drawer" aria-label="Notifications" ref={drawerRef} tabIndex={-1}>
+          <Splitter
+            pane={drawerPane}
+            axis="col"
+            after
+            edge="start"
+            label="Resize notifications"
+            className="sp-drawer"
+          />
           <header>
             <b>Notifications</b>
             <span className="cs-count">{notifications.length}</span>

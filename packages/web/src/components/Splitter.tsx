@@ -99,7 +99,12 @@ export function Splitter({ pane, label, axis, after = false, edge, className = "
     if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
       e.currentTarget.releasePointerCapture?.(e.pointerId);
     }
-    if (keep) pane.commit(d.now);
-    else pane.preview(d.start);
+    if (keep) {
+      pane.commit(d.now);
+      show(Math.min(pane.max, Math.max(pane.min, d.now)));
+    } else {
+      pane.preview(d.start);
+      show(d.start);
+    }
   }
 }

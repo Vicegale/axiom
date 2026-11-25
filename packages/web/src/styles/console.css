@@ -10,8 +10,6 @@
 }
 .cs-app[data-side="closed"] { --side-w: 0px; }
 .cs-app.drawer-open { grid-template-columns: var(--side-w) minmax(0, 1fr) var(--drawer-w); grid-template-areas: "side main drawer" "status status status"; }
-.cs-app > .sp-side { grid-area: side; }
-.cs-app > .sp-drawer { grid-area: drawer; }
 .cs-app button { cursor: pointer; }
 .cs-glyph { color: var(--c, var(--text-3)); width: 1.1em; display: inline-block; text-align: center; font-weight: 600; flex: none; }
 .cs-dim { color: var(--text-3); }
@@ -20,7 +18,7 @@
 .cs-tree .cs-udot { margin: 0 0 0 auto; }
 
 /* Sidebar. */
-.cs-side { grid-area: side; min-width: 0; display: flex; flex-direction: column; min-height: 0; background: var(--panel); border-right: 1px solid var(--line); }
+.cs-side { grid-area: side; position: relative; min-width: 0; display: flex; flex-direction: column; min-height: 0; background: var(--panel); border-right: 1px solid var(--line); }
 .cs-brand { height: 2.125rem; flex: none; display: flex; align-items: center; gap: 0.5rem; padding: 0 0.75rem; border-bottom: 1px solid var(--line); font-weight: 600; letter-spacing: 0.02em; }
 .cs-brand small { color: var(--text-3); font-weight: 400; font-size: 0.6875rem; }
 .cs-tree { flex: 1; min-height: 0; overflow: auto; padding: 0.375rem 0; scrollbar-gutter: stable; }
@@ -40,7 +38,7 @@ a.cs-node:hover { background: var(--panel-2); color: var(--text); }
 .cs-views h2 { margin: 0; padding: 0.25rem 0.75rem; font-size: 0.625rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
 .cs-view { display: flex; align-items: center; gap: 0.5rem; width: 100%; height: 1.4375rem; padding: 0 0.75rem; color: var(--text-2); }
 .cs-view:hover { background: var(--panel-2); color: var(--text); }
-.cs-view[aria-current="true"] { background: var(--raised); color: var(--text); box-shadow: inset 2px 0 0 var(--focus); }
+.cs-view[aria-current="page"] { background: var(--raised); color: var(--text); box-shadow: inset 2px 0 0 var(--focus); }
 .cs-view .n { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text-3); }
 .cs-view .n.hot { color: var(--st-hitl); }
 .cs-settings-link { margin-top: 0.375rem; }
@@ -163,7 +161,7 @@ tr.cs-row:focus-visible { outline-offset: -2px; }
 .cs-tg { height: 1.125rem; padding: 0 0.4375rem; border: 1px solid var(--line-strong); border-radius: 0.1875rem; background: none; color: var(--text-2); font: inherit; }
 .cs-tg[aria-pressed="true"] { color: var(--text); border-color: var(--focus); }
 .cs-tg .badge { color: var(--st-hitl); margin-left: 0.25rem; border: 0; background: none; height: auto; padding: 0; }
-.cs-drawer { grid-area: drawer; min-width: 0; outline: none; display: flex; flex-direction: column; min-height: 0; background: var(--panel); border-left: 1px solid var(--line); }
+.cs-drawer { grid-area: drawer; position: relative; min-width: 0; outline: none; display: flex; flex-direction: column; min-height: 0; background: var(--panel); border-left: 1px solid var(--line); }
 .cs-drawer header { height: 2.125rem; flex: none; display: flex; align-items: center; gap: 0.5rem; padding: 0 0.75rem; border-bottom: 1px solid var(--line); }
 .cs-drawer header .cs-sp { margin-left: auto; }
 .cs-count { color: var(--text-3); }
@@ -185,11 +183,11 @@ tr.cs-row:focus-visible { outline-offset: -2px; }
   .cs-side, .cs-drawer { position: absolute; z-index: 30; grid-area: main; }
   .cs-side { inset: 0 auto 0 0; width: min(var(--pane-console-side, 14.5rem), 85vw); box-shadow: 1.5rem 0 3rem -1.5rem rgba(0, 0, 0, 0.6); }
   .cs-drawer { inset: 0 0 0 auto; width: min(var(--pane-console-drawer, 19rem), 100%); box-shadow: -1.5rem 0 3rem -1.5rem rgba(0, 0, 0, 0.6); }
-  .cs-app > .sp-side, .cs-app > .sp-drawer { display: none; }
+  .sp-side, .sp-drawer { display: none; }
   .cs-keys, .cs-counts { display: none; }
 }
 @media (forced-colors: active) {
   .cs-side, .cs-drawer, .cs-panel, .cs-bar, .cs-status, .cs-table td { border-color: CanvasText; }
   .cs-hdot, .cs-udot, .cs-glyph { forced-color-adjust: none; }
-  .cs-view[aria-current="true"], tr.cs-row[aria-selected="true"] td:first-child { outline: 2px solid Highlight; outline-offset: -2px; }
+  .cs-view[aria-current="page"], tr.cs-row[aria-selected="true"] td:first-child { outline: 2px solid Highlight; outline-offset: -2px; }
 }

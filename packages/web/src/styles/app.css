@@ -44,10 +44,6 @@ ul, ol { list-style: none; }
   background: var(--bg);
 }
 .app[data-rail="closed"] { --rail-w: 0px; }
-.sp-rail, .sp-list { grid-row: 2; }
-.sp-rail { grid-column: 1; }
-.sp-list { grid-column: 2; }
-.app.has-banner .sp-rail, .app.has-banner .sp-list { grid-row: 3; }
 .bar {
   grid-column: 1 / -1; grid-row: 1;
   display: flex; align-items: center; justify-content: space-between;
@@ -82,10 +78,12 @@ ul, ol { list-style: none; }
 
 /* Rail: mailboxes, piles, notifications, health. */
 .rail {
-  grid-column: 1; grid-row: 2;
-  display: flex; flex-direction: column; gap: 1px;
-  min-height: 0; min-width: 0; overflow: auto; padding: 0.5rem 0.5rem 0.75rem; scrollbar-gutter: stable;
+  grid-column: 1; grid-row: 2; position: relative; min-height: 0; min-width: 0;
   background: var(--panel); border-right: 1px solid var(--line);
+}
+.rail-scroll {
+  display: flex; flex-direction: column; gap: 1px; height: 100%;
+  overflow: auto; padding: 0.5rem 0.5rem 0.75rem; scrollbar-gutter: stable;
 }
 .rail-h { margin: 0.875rem 0.5rem 0.25rem; font-size: 0.6875rem; font-weight: 500; color: var(--meta); }
 .nav {
@@ -95,7 +93,7 @@ ul, ol { list-style: none; }
   color: var(--text-2); text-align: left; cursor: pointer; font-size: 0.8125rem;
 }
 .nav:hover { background: var(--panel-2); color: var(--text); }
-.nav[aria-current="true"] { background: var(--raised); color: var(--text); }
+.nav[aria-current="page"] { background: var(--raised); color: var(--text); }
 .nav .lbl { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .nav .n { font: 500 0.6875rem var(--font-mono); color: var(--meta); font-variant-numeric: tabular-nums; }
 .nav.has-attn .n { color: color-mix(in srgb, var(--st-hitl) 80%, var(--text)); }
@@ -151,7 +149,7 @@ ul, ol { list-style: none; }
 
 /* Middle column: list head, sections, rows. */
 .list {
-  grid-column: 2; grid-row: 2; outline: none;
+  grid-column: 2; grid-row: 2; outline: none; position: relative;
   display: flex; flex-direction: column; min-width: 0; min-height: 0;
   background: var(--panel); border-right: 1px solid var(--line);
 }
@@ -242,7 +240,7 @@ ul, ol { list-style: none; }
 .n-body { margin-top: 2px; font-size: 0.75rem; color: var(--text-2); }
 .n-actions { margin-top: 0.5rem; }
 .settings { margin-top: 1.125rem; }
-.settings h3 {
+.settings h2 {
   margin: 1.25rem 0 0.5rem; padding-bottom: 0.375rem; border-bottom: 1px solid var(--line);
   font-size: 0.75rem; font-weight: 600; color: var(--text-2);
 }
