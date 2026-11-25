@@ -220,6 +220,17 @@ export interface DocData {
   mtime: number;
 }
 
+/** Artifact metadata as GET /api/topics/:slug/artifacts/:linkId returns it. */
+export interface ArtifactData {
+  linkId: number;
+  kind: "html" | "image";
+  title: string;
+  path: string;
+  relPath: string;
+  mtime: number;
+  size: number;
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
@@ -251,6 +262,11 @@ export const api = {
       "GET",
       `/api/topics/${enc(slug)}/docs/${linkId}${path ? `?path=${enc(path)}` : ""}`,
     ),
+  artifact: (slug: string, linkId: number) =>
+    request<ArtifactData>("GET", `/api/topics/${enc(slug)}/artifacts/${linkId}`),
+  /** The raw file of an HTML or image artifact; `v` busts the cache when the file changes. */
+  artifactRawUrl: (slug: string, linkId: number, v?: number) =>
+    `/api/topics/${enc(slug)}/artifacts/${linkId}/raw${v === undefined ? "" : `?v=${v}`}`,
   open: (slug: string) => request<{ ok: true }>("POST", `/api/topics/${enc(slug)}/open`),
   mute: (slug: string, muted: boolean) =>
     request<TopicDetailData>("POST", `/api/topics/${enc(slug)}/mute`, { muted }),

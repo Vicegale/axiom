@@ -4,8 +4,10 @@ import { ApiError, api } from "../../api";
 import { useResource } from "../../data/useResource";
 import { hrefs } from "../../layouts/shared/routes";
 import { setDocTitle } from "../../lib/docTitle";
+import { isHtmlPath, isImagePath } from "../../lib/paths";
 import { readStored, writeStored } from "../../lib/storage";
 import { useWide } from "../../lib/wide";
+import { ArtifactViewer } from "./ArtifactViewer";
 import { jumpTo, Markdown } from "./Markdown";
 
 /** How often an open document is checked for changes on disk. */
@@ -58,7 +60,7 @@ function useWideEnough(ref: React.RefObject<HTMLElement | null>, px: number): bo
 
 /** The document viewer: header, table of contents and the rendered file. It fills whatever pane
  *  the layout gives it (Inbox reader, Board sheet, Console panel). */
-export function DocViewer({ slug, linkId, path, level = 1, topicTitle }: Props) {
+function MarkdownViewer({ slug, linkId, path, level = 1, topicTitle }: Props) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => {
@@ -258,6 +260,28 @@ export function DocViewer({ slug, linkId, path, level = 1, topicTitle }: Props) 
       </div>
     </section>
   );
+}
+
+/** Opens the linked file in the right viewer: Markdown renders, HTML runs sandboxed, images show.
+ *  A `path` (a relative link inside a Markdown file) is always Markdown. */
+export function DocViewer(props: Props) {
+  const { slug, linkId, path } = props;
+  const { data: topic, error } = useResource(`doc-link:${slug}`, () => api.topic(slug), 0);
+  const target = topic?.links.find((l) => l.id === linkId)?.target;
+  const artifact =
+    path === undefined && target !== undefined && (isHtmlPath(target) || isImagePath(target));
+  if (artifact) return <ArtifactViewer {...props} />;
+  // Until the link is known the Markdown viewer would ask the docs route about an HTML file.
+  if (!topic && !error) {
+    return (
+      <section className="dv" aria-label="Document">
+        <div className="dv-scroll">
+          <p className="dv-state">Loading.</p>
+        </div>
+      </section>
+    );
+  }
+  return <MarkdownViewer {...props} />;
 }
 
 export default DocViewer;

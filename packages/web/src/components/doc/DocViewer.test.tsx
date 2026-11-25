@@ -313,6 +313,7 @@ describe("layouts", () => {
 
   it("opens in the Board sheet, and wide fills the window", async () => {
     open("/topic/t/doc/7", "board");
+    await screen.findByRole("button", { name: "Wide" });
     await article();
     const sheet = screen.getByRole("dialog", { name: "Document" });
     expect(sheet.querySelector(".dv")).toBeTruthy();
@@ -345,8 +346,10 @@ describe("Links row", () => {
     expect(spec.getAttribute("href")).toBe("/topic/t/doc/7");
     expect(spec.hasAttribute("target")).toBe(false);
     expect(screen.getByRole("link", { name: "Notes" }).getAttribute("href")).toBe("/topic/t/doc/8");
-    // A PNG artifact is not a document; a spec on the web stays a web link.
-    expect(screen.queryByRole("link", { name: "/tmp/shot.png" })).toBeNull();
+    // A PNG artifact opens in the viewer too; a spec on the web stays a web link.
+    expect(screen.getByRole("link", { name: "/tmp/shot.png" }).getAttribute("href")).toBe(
+      "/topic/t/doc/9",
+    );
     const web = screen.getByRole("link", { name: "https://example.com/spec" });
     expect(web.getAttribute("target")).toBe("_blank");
   });
