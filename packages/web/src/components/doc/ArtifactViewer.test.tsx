@@ -63,30 +63,30 @@ function open(path: string, layout: "inbox" | "board" | "console" = "inbox") {
 
 const frame = async () => (await screen.findByTitle("Inbox mockup")) as HTMLIFrameElement;
 
+async function openMenu() {
+  fireEvent.click(await screen.findByRole("button", { name: /^Artifacts · \d+/ }));
+}
+const item = (name: RegExp | string) => screen.getByRole("menuitem", { name });
+
 describe("Links row", () => {
-  it("links local .html/.htm and image artifact chips to the viewer", async () => {
+  it("lists local .html/.htm and image artifacts in the menu, linked to the viewer", async () => {
     open("/topic/t");
-    expect((await screen.findByRole("link", { name: "Inbox mockup" })).getAttribute("href")).toBe(
-      "/topic/t/doc/20",
-    );
-    expect(screen.getByRole("link", { name: "Relay" }).getAttribute("href")).toBe(
-      "/topic/t/doc/21",
-    );
-    expect(screen.getByRole("link", { name: "docs/old.HTM" }).getAttribute("href")).toBe(
-      "/topic/t/doc/22",
-    );
-    // A web page stays a web link; a script is not viewable.
-    expect(
-      screen.getByRole("link", { name: "https://example.com/x.html" }).getAttribute("target"),
-    ).toBe("_blank");
-    expect(screen.queryByRole("link", { name: "docs/app.js" })).toBeNull();
+    await openMenu();
+    expect(item(/Inbox mockup/).getAttribute("href")).toBe("/topic/t/doc/20");
+    expect(item(/Relay/).getAttribute("href")).toBe("/topic/t/doc/21");
+    expect(item(/old\.HTM/).getAttribute("href")).toBe("/topic/t/doc/22");
+    // A web page stays a web link; a script is not viewable, so it has nowhere to go.
+    expect(item(/example\.com\/x\.html/).getAttribute("target")).toBe("_blank");
+    expect(item(/app\.js/).hasAttribute("href")).toBe(false);
   });
 
   it("a plain click opens the viewer in place; a modified click does not", async () => {
     const loc = open("/topic/t");
-    fireEvent.click(await screen.findByRole("link", { name: "Inbox mockup" }), { ctrlKey: true });
+    await openMenu();
+    fireEvent.click(item(/Inbox mockup/), { ctrlKey: true });
     expect(loc.history?.at(-1)).toBe("/topic/t");
-    fireEvent.click(screen.getByRole("link", { name: "Inbox mockup" }));
+    await openMenu();
+    fireEvent.click(item(/Inbox mockup/));
     await waitFor(() => expect(loc.history?.at(-1)).toBe("/topic/t/doc/20"));
     await frame();
   });

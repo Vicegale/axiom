@@ -344,9 +344,12 @@ describe("Links row", () => {
     const spec = await screen.findByRole("link", { name: "docs/plan/v1.md" });
     expect(spec.getAttribute("href")).toBe("/topic/t/doc/7");
     expect(spec.hasAttribute("target")).toBe(false);
-    expect(screen.getByRole("link", { name: "Notes" }).getAttribute("href")).toBe("/topic/t/doc/8");
-    // A PNG artifact opens in the viewer too; a spec on the web stays a web link.
-    expect(screen.getByRole("link", { name: "/tmp/shot.png" }).getAttribute("href")).toBe(
+    // Artifacts are in the menu: a Markdown file and a PNG both open in the viewer.
+    fireEvent.click(screen.getByRole("button", { name: /^Artifacts · 2/ }));
+    expect(screen.getByRole("menuitem", { name: /Notes/ }).getAttribute("href")).toBe(
+      "/topic/t/doc/8",
+    );
+    expect(screen.getByRole("menuitem", { name: /shot\.png/ }).getAttribute("href")).toBe(
       "/topic/t/doc/9",
     );
     const web = screen.getByRole("link", { name: "https://example.com/spec" });

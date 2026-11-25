@@ -1,0 +1,26 @@
+/* Artifacts menu in the topic header: one button, a native popover list below it. */
+.abtn { cursor: pointer; background: transparent; }
+.abtn:hover { color: var(--text); border-color: var(--text-3); }
+.abtn:has(+ .amenu:popover-open) { color: var(--text); border-color: var(--text-3); background: var(--panel-2); }
+.amenu {
+  position: fixed; inset: auto; margin: 0; padding: 0.25rem; width: 22.5rem; max-width: calc(100vw - 1rem);
+  max-height: 24rem; overflow-y: auto; color: var(--text); background: var(--raised);
+  border: 1px solid var(--line-strong); border-radius: 0.25rem; box-shadow: 0 0.875rem 2.125rem rgba(0, 0, 0, 0.28);
+}
+.amenu:not(:popover-open) { display: none; }
+.amenu:focus-visible { outline: none; }
+.amenu-item {
+  display: grid; grid-template-columns: 0.875rem minmax(0, 1fr); gap: 0.5rem; align-items: start;
+  padding: 0.4375rem 0.5rem; border-radius: 0.1875rem; color: inherit; text-decoration: none; cursor: pointer;
+}
+.amenu-item:hover, .amenu-item:focus-visible { background: var(--panel-2); }
+.amenu-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.amenu-item[aria-disabled="true"] { cursor: default; }
+.amenu-glyph { width: 0.875rem; height: 0.875rem; margin-top: 0.125rem; color: var(--text-3); }
+.amenu-body { display: flex; flex-direction: column; gap: 0.125rem; min-width: 0; }
+.amenu-title { font-size: 0.8125rem; font-weight: 400; line-height: 1.3; overflow-wrap: anywhere; }
+.amenu-desc { font-size: 0.6875rem; line-height: 1.4; color: var(--text-2); }
+.amenu-path {
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  font: 400 0.625rem/1.4 var(--font-mono); color: var(--meta);
+}
