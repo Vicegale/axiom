@@ -198,7 +198,8 @@ describe("subagents", () => {
     const list = (...st: DeskSubagent["status"][]) =>
       st.map((status, i) => sub({ id: i + 1, status }));
     expect(runningSubagents(list("running", "done", "running"))).toBe(2);
-    expect(subagentSummary(list("running", "done", "failed"))).toBe("1 subagent");
+    expect(subagentSummary(list("running", "done", "failed"))).toBe("3 subagents · 1 running");
+    expect(subagentSummary(list("running", "running"))).toBe("2 subagents");
     expect(subagentSummary(list("done", "done", "done"))).toBe("3 subagents · done");
     expect(subagentSummary(list("done", "failed", "done"))).toBe("3 subagents · 1 failed");
     expect(subagentSummary(list("failed", "cancelled", "failed"))).toBe(

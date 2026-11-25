@@ -160,12 +160,17 @@ export function runningSubagents(list: readonly DeskSubagent[]): number {
 }
 
 /**
- * The fold button's text: "2 subagents" while any runs (the count of those running), otherwise
+ * The fold button's text: it counts every subagent of the turn (the tree shows them all). While
+ * some run: "2 subagents" (all running) or "3 subagents · 1 running"; once all finished:
  * "3 subagents · done", "3 subagents · 1 failed", "3 subagents · 1 failed, 1 cancelled".
  */
 export function subagentSummary(list: readonly DeskSubagent[]): string {
   const running = runningSubagents(list);
-  if (running > 0) return subagentCount(running);
+  if (running > 0) {
+    return running === list.length
+      ? subagentCount(running)
+      : `${subagentCount(list.length)} · ${running} running`;
+  }
   const failed = list.filter((s) => s.status === "failed").length;
   const cancelled = list.filter((s) => s.status === "cancelled").length;
   const bad = [failed ? `${failed} failed` : "", cancelled ? `${cancelled} cancelled` : ""]
