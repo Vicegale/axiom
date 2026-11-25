@@ -9,7 +9,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "tsc -b && npm -w @axiom/web run build",
+    "build": "tsc -b && chmod +x packages/cli/dist/index.js packages/server/dist/cli.js && npm -w @axiom/web run build",
     "test": "vitest run",
     "lint": "biome check",
     "format": "biome format --write",
