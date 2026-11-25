@@ -1,6 +1,6 @@
 # Build plan: Steward (spec 03)
 
-- Status: proposed (2026-11-25), waiting for the owner's approval
+- Status: approved (2026-11-25)
 - Created: 2026-11-25
 - Builds: 03 Faux-always-on agent (Steward), its data model additions in 05, and its parts of the UI (the Steward view, mockup B; the Desk additions). Runtime: [ADR 0006](../adr/0006-steward-headless-claude.md).
 - Out of scope: GitHub webhooks (03 Q37), per-kind urgency rules, meaning-based memory search and recall tests (03 Q36), other notification channels (03 Q6), the runtime as a setting.
