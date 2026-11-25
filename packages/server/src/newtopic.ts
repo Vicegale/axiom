@@ -123,6 +123,9 @@ export function registerNewTopicRoutes(app: Hono, o: { ax: Axiom; bus: ChangeBus
     if (!title) throw new AxiomError("validation", "title is required");
     const goal = input.goal?.trim() || undefined;
     const repository = input.repository?.trim() ? expandFolder(input.repository) : undefined;
+    if (repository && !isDirectory(repository)) {
+      throw new AxiomError("validation", `folder not found: ${repository}`);
+    }
     const epic = input.epic ? ax.listEpics().find((e) => e.slug === input.epic) : undefined;
     if (input.epic && !epic) throw new AxiomError("not-found", `epic not found: ${input.epic}`);
     const ticket = input.ticket ? ax.listTickets().find((t) => t.slug === input.ticket) : undefined;
@@ -144,4 +147,12 @@ export function registerNewTopicRoutes(app: Hono, o: { ax: Axiom; bus: ChangeBus
     bus.emit();
     return c.json(ax.getTopic(slug), 201);
   });
+}
+
+function isDirectory(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
 }

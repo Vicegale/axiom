@@ -479,3 +479,5 @@ a { color: inherit; text-decoration: none; }
 .hist-quiet { margin: 0 0 0.5rem; font-size: 0.75rem; }
 .hist-quiet .linkish { background: none; border: 0; padding: 0; color: var(--text-3); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; font: inherit; }
 .hist-quiet .linkish:hover { color: var(--text-2); }
+.update-banner { position: fixed; z-index: 50; left: 50%; bottom: 2.25rem; transform: translateX(-50%); max-width: min(46rem, calc(100vw - 2rem)); padding: 0.5rem 0.875rem; border: 1px solid var(--st-hitl); border-radius: var(--radius); background: var(--raised); color: var(--text); font-size: 0.8125rem; box-shadow: 0 6px 24px rgb(0 0 0 / 0.35); }
+.update-banner code { font-family: var(--font-mono); }

@@ -1,5 +1,6 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import type { Server } from "node:http";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Clock, defaultDatabasePath, openDatabase } from "@axiom/core";
 import { serve } from "@hono/node-server";
@@ -56,12 +57,14 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   const bus = new ChangeBus(ax.db, now);
   const streams = new Set<() => void>();
   const t3 = new T3Provider({ ax, dir: options.t3Dir ?? t3Dir(), now });
+  const webDist = options.webDist ?? fileURLToPath(new URL("../../web/dist", import.meta.url));
   const ctx: AppContext = {
     ax,
     bus,
     t3,
     dbPath,
-    webDist: options.webDist ?? fileURLToPath(new URL("../../web/dist", import.meta.url)),
+    webDist,
+    webBuildId: readBuildId(webDist),
     startedAt: now().toISOString(),
     streams,
     t3Cli: options.t3Cli,
@@ -156,4 +159,13 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
       ax.close();
     },
   };
+}
+
+/** The web build the server saw when it started (see vite.config.ts); null when there's no build. */
+function readBuildId(webDist: string): string | null {
+  try {
+    return readFileSync(join(webDist, "build-id.txt"), "utf8").trim() || null;
+  } catch {
+    return null;
+  }
 }

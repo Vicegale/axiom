@@ -74,7 +74,14 @@ describe("POST /api/topics", () => {
     expect((await post({ title: "Fix the importer" })).body.slug).toBe("fix-the-importer-3");
   });
 
+  it("rejects a project folder that does not exist", async () => {
+    const r = await post({ title: "X", repository: "/definitely/not/here" });
+    expect(r.status).toBe(400);
+    expect(r.body.error.message).toMatch(/folder not found/);
+  });
+
   it("uses an explicit slug, the goal, parents and a repository link", async () => {
+    const repoDir = mkdtempSync(join(tmpdir(), "axiom-nt-repo-"));
     cli.createEpic({ slug: "e1", title: "Epic" }, owner);
     cli.createTicket({ slug: "t1", title: "Ticket" }, owner);
     const r = await post({
@@ -83,16 +90,14 @@ describe("POST /api/topics", () => {
       goal: " Ship it ",
       epic: "e1",
       ticket: "t1",
-      repository: "~/projects/foo/",
+      repository: `${repoDir}/`,
     });
     expect(r.status).toBe(201);
     expect(r.body.slug).toBe("my-topic");
     expect(r.body.goal).toBe("Ship it");
     expect(r.body.epics.map((e: Any) => e.slug)).toEqual(["e1"]);
     expect(r.body.tickets.map((e: Any) => e.slug)).toEqual(["t1"]);
-    expect(r.body.links).toMatchObject([
-      { kind: "repository", target: join(process.env.HOME as string, "projects/foo") },
-    ]);
+    expect(r.body.links).toMatchObject([{ kind: "repository", target: repoDir }]);
     expect(cli.getTopic("my-topic").title).toBe("Mine");
   });
 
