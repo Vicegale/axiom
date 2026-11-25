@@ -323,7 +323,10 @@ describe("POST /api/topics/:slug/threads/new", () => {
       "effort=max",
       "--json",
     ]);
-    expect(t3.stdin()).toBe("Build the thing\nwith care");
+    const sent = t3.stdin();
+    expect(sent).toMatch(/^\[Axiom\] This thread is tracked in Axiom/);
+    expect(sent).toContain("- Topic: `demo`");
+    expect(sent.endsWith("Message from the owner:\n\nBuild the thing\nwith care")).toBe(true);
     expect(r.body).toMatchObject({
       provider: "t3",
       providerThreadId: "new-9",
@@ -433,7 +436,7 @@ describe("POST /api/topics/:slug/threads/new", () => {
       "--effort",
       "low",
     ]);
-    expect(claude.stdin()).toBe("Start here");
+    expect(claude.stdin()).toMatch(/^\[Axiom\] .*\n- Topic: `demo`[\s\S]*\n\nStart here$/);
     expect(claude.env()).not.toMatch(/^AXIOM_INTERNAL=/m);
     expect(readFileSync(join(claude.path, "..", "cwd"), "utf8").trim()).toBe(work);
     expect(cli.getTopic("demo").threads[0]).toMatchObject({

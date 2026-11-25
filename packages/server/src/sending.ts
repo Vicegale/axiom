@@ -4,6 +4,7 @@ import { statSync } from "node:fs";
 import { type Actor, type Axiom, AxiomError, type Thread } from "@axiom/core";
 import type { Context, Hono } from "hono";
 import { z } from "zod";
+import { briefing } from "./briefing.js";
 import type { ChangeBus } from "./events.js";
 import type { T3Project } from "./providers/t3/reader.js";
 import { defaultT3Cli } from "./providers/t3/replies.js";
@@ -335,6 +336,8 @@ export function registerSendRoutes(app: Hono, o: SendingOptions): void {
     const input = parse(bodies.newThread, await body(c));
     const repo = topic.links.find((l) => l.kind === "repository")?.target;
     const title = firstLine(input.text);
+    // The agent gets its Axiom context first; history keeps only the owner's words (record below).
+    const message = briefing(topic, ax.listTasks(slug), input.text);
     let thread: Thread;
     try {
       if (input.provider === "t3") {
@@ -371,7 +374,7 @@ export function registerSendRoutes(app: Hono, o: SendingOptions): void {
           if (input.effort) args.push("--option", `effort=${input.effort}`);
         }
         args.push("--json");
-        const r = await runCapture(t3Cli(), args, input.text, { timeoutMs: T3_TIMEOUT_MS });
+        const r = await runCapture(t3Cli(), args, message, { timeoutMs: T3_TIMEOUT_MS });
         if (r.code !== 0) throw failure("t3 thread start", r);
         const id = parseStartedThreadId(r.stdout);
         thread = ax.attachThread(slug, { provider: "t3", providerThreadId: id, title }, owner);
@@ -396,7 +399,7 @@ export function registerSendRoutes(app: Hono, o: SendingOptions): void {
           await spawnDetached(
             claudeCli(),
             ["-p", "--session-id", sessionId, ...claudeFlags(input.model, input.effort)],
-            input.text,
+            message,
             cwd,
             graceMs,
           );
