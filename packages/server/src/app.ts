@@ -7,6 +7,7 @@ import {
   type Epic,
   notificationKindSchema,
   providerSchema,
+  type Thread,
   type Ticket,
   TOPIC_STATUSES,
   type TopicDetail,
@@ -74,7 +75,11 @@ const bodies = {
     environmentId: z.string().min(1).optional(),
     title: z.string().optional(),
   }),
+  favorite: z.strictObject({ on: z.boolean() }),
+  deskHidden: z.strictObject({ hidden: z.boolean() }),
+  deskOrder: z.strictObject({ slugs: z.array(z.string()) }),
   settings: z.strictObject({
+    summaries: z.strictObject({ enabled: z.boolean() }).optional(),
     mutedKinds: z.array(notificationKindSchema).optional(),
     staleAfterDays: z.number().int().positive().optional(),
     layout: z.enum(["inbox", "board", "console"]).optional(),
@@ -196,7 +201,7 @@ export function createApp(ctx: AppContext): Hono {
   }
 
   /** How the owner opens a thread: T3's web UI, or the command that resumes a Claude Code session. */
-  function threadOpen(th: TopicDetail["threads"][number]) {
+  function threadOpen(th: Pick<Thread, "id" | "provider" | "providerThreadId" | "environmentId">) {
     if (th.provider === "t3") {
       const url = ctx.t3.threadUrl(th.providerThreadId, th.environmentId);
       return url ? { kind: "url" as const, url } : null;
@@ -213,7 +218,12 @@ export function createApp(ctx: AppContext): Hono {
   function detail(d: TopicDetail) {
     return {
       ...d,
-      threads: d.threads.map((th) => ({ ...th, open: threadOpen(th) })),
+      // The full reply is fetched on its own (GET /api/threads/:id/reply).
+      threads: d.threads.map(({ lastReply, ...th }) => ({
+        ...th,
+        hasReply: lastReply !== null,
+        open: threadOpen(th),
+      })),
       stalePrompt: hasOpenStalePrompt(d.id),
       attention: attentionOf(ax, d),
       parents: [
@@ -349,6 +359,80 @@ export function createApp(ctx: AppContext): Hono {
     return c.json(thread, 201);
   });
 
+  // ---- the Desk (02) ------------------------------------------------------
+
+  function deskThread(t: TopicDetail["threads"][number]) {
+    return {
+      id: t.id,
+      provider: t.provider,
+      providerThreadId: t.providerThreadId,
+      title: t.title,
+      status: t.status,
+      open: t.endedAt === null,
+      startedAt: t.startedAt,
+      endedAt: t.endedAt,
+      lastReplyAt: t.lastReplyAt,
+      summary:
+        t.summaryNow === null
+          ? null
+          : { now: t.summaryNow, next: t.summaryNext ?? "Nothing", at: t.summaryAt },
+      summaryError: t.summaryError,
+      hasReply: t.lastReply !== null,
+    };
+  }
+
+  app.get("/api/desk", (c) => {
+    const topics = ax
+      .listTopics()
+      // Closed topics leave the Desk unless the owner favourited them.
+      .filter((t) => t.favorite || (t.status !== "done" && t.status !== "stale"))
+      .map((s) => {
+        const d = ax.getTopic(s.slug);
+        return {
+          slug: s.slug,
+          title: s.title,
+          status: s.status,
+          statusNote: s.statusNote,
+          favorite: s.favorite,
+          deskHidden: s.deskHidden,
+          deskOrder: s.deskOrder,
+          taskCounts: s.taskCounts,
+          linkCount: d.links.length,
+          lastWorkedAt: s.lastWorkedAt,
+          highlighted: s.highlighted,
+          attention: attentionOf(ax, s),
+          threads: d.threads.map(deskThread),
+        };
+      });
+    return c.json({ topics });
+  });
+
+  app.get("/api/threads/:id/reply", (c) => {
+    const th = ax.getThread(intParam(c.req.param("id"), "thread id"));
+    if (th.lastReply === null) throw new AxiomError("not-found", "this thread has no reply yet");
+    return c.json({ text: th.lastReply, at: th.lastReplyAt });
+  });
+
+  app.post("/api/topics/:slug/favorite", async (c) => {
+    const body = parse(bodies.favorite, await json(c));
+    const slug = c.req.param("slug");
+    write(() => ax.setTopicFavorite(slug, body.on, owner));
+    return c.json({ slug, favorite: body.on });
+  });
+
+  app.post("/api/topics/:slug/desk-hidden", async (c) => {
+    const body = parse(bodies.deskHidden, await json(c));
+    const slug = c.req.param("slug");
+    write(() => ax.setTopicDeskHidden(slug, body.hidden, owner));
+    return c.json({ slug, deskHidden: body.hidden });
+  });
+
+  app.put("/api/desk/order", async (c) => {
+    const body = parse(bodies.deskOrder, await json(c));
+    write(() => ax.setDeskOrder(body.slugs, owner));
+    return c.json({ slugs: body.slugs });
+  });
+
   app.post("/api/monitors/:id/confirm", (c) => {
     const id = intParam(c.req.param("id"), "monitor id");
     return c.json(write(() => ax.confirmMonitorTarget(id, owner)));
@@ -479,6 +563,7 @@ export function createApp(ctx: AppContext): Hono {
     staleAfterDays: ax.getSetting("staleAfterDays"),
     layout: (ax.getSetting("layout") as string | undefined) ?? "inbox",
     theme: (ax.getSetting("theme") as string | undefined) ?? "system",
+    summaries: ax.getSetting("summaries"),
   });
 
   app.get("/api/settings", (c) => c.json(readSettings()));
