@@ -46,7 +46,8 @@ describe("ArtifactsMenu", () => {
   it("shows one button with the artifact count", () => {
     mount();
     expect(screen.getAllByRole("button", { name: /^Artifacts/ })).toHaveLength(1);
-    expect(trigger().textContent).toContain("Artifacts · 5");
+    expect(trigger().getAttribute("aria-label")).toBe("Artifacts · 5");
+    expect(trigger().textContent).toContain("Show 5");
     expect(trigger().getAttribute("popovertarget")).toBe(menu().id);
     expect(isOpen()).toBe(false);
   });
