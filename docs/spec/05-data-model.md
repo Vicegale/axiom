@@ -106,7 +106,7 @@ The 01 stop table counts only `confirmed` targets.
 | --- | --- |
 | topic_id | Exactly one. |
 | at | Stamped by Axiom. |
-| author | `owner`, `agent` or `axiom`. |
+| author | `owner`, `agent`, `axiom` or `steward` (added 2026-11-25, 03). |
 | thread_id | Set when an agent in a known thread wrote it. |
 | kind | Agent or owner: `note`, `decision`, `finding`, `verification`, `owner input`, `authorization`, `next steps`. Axiom: `status change`, `topic created`, `thread event`, `git event`, `deploy event`. |
 | body | Markdown. Optional for automatic kinds. |
@@ -123,13 +123,92 @@ The owner can hard-delete an entry (for example one that leaked a secret). Nothi
 | Column | Notes |
 | --- | --- |
 | topic_id, thread_id | |
-| kind | `agent stopped`, `agent asked`, `monitor problem`, `jira changed`, `pr review`, `stale prompt`, `error`. |
+| kind | `agent stopped`, `agent asked`, `monitor problem`, `jira changed`, `pr review`, `stale prompt`, `error`, `steward urgent` (added 2026-11-25, 03). |
 | body | |
 | created_at, dismissed_at | Dismissed when the owner clicks the topic. An undismissed notification is what highlights the topic. |
 
-**setting** (key, value JSON): muted notification kinds, the stale threshold N (in days), the pinned T3 version.
+**setting** (key, value JSON): muted notification kinds, the stale threshold N (in days), the pinned T3 version, and Steward's settings (added 2026-11-25: on/off, working hours, wake interval, the model and effort per stage, the complexity mapping, daily caps per model, PR signals).
+
+### Steward (added 2026-11-25, owner OK; spec 03)
+
+What Steward reads, decides and does. Findings and Steward's changes to topics are also written as history entries (`author` `steward`), so the topic's history stays complete; the tables below hold the state the Steward view needs (open, dismissed, adopted) and what history doesn't carry.
+
+**topic.steward_enabled**: default true. Off means Steward neither watches nor acts on the topic (the per-topic switch).
+
+**steward_wake**
+
+| Column | Notes |
+| --- | --- |
+| trigger | `timer`, `event`, `tidy-up` or `owner` (asked from the chat). |
+| trigger_detail | For example `review on mtg#219`. |
+| started_at, ended_at | |
+| status | `running`, `done`, `failed`, `cut short` (a cap or time limit). |
+| brief | Stage 2's short summary for the top of the Steward view. |
+| blind_spots | JSON list from the checklist and stage 2 (for example an unreachable source). |
+| error | When it failed. |
+
+**steward_run**: one row per headless call (ADR 0006).
+
+| Column | Notes |
+| --- | --- |
+| wake_id or chat_id | Exactly one. |
+| stage | `gather`, `decide`, `promoted`, `tidy-up` or `chat`. |
+| model, effort | As run. |
+| input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens | From the call's `modelUsage`; the per-model daily report and the caps read these. |
+| started_at, ended_at, status | |
+
+**steward_item**: what the Steward view lists.
+
+| Column | Notes |
+| --- | --- |
+| wake_id | The wake that produced it. |
+| kind | `finding`, `question` or `suggestion`. |
+| topic_id | Optional (a question about a PR with no topic has none). |
+| level | Findings: `urgent`, `attention` or `info` (stage 2 decides). |
+| title, body | |
+| signal, source | For example `CI failed`, `Slack #mtg-standup`, `checklist: PR without a topic`. |
+| fingerprint | What the item is about, so a dismissed item is not raised again unless its subject changed. |
+| state | `open`, then `answered`, `dismissed`, `adopted`, `discarded` or `undone`. |
+| answer | The owner's answer to a question. |
+| entry_id | The history entry it wrote, if any. |
+| parent_item_id | A suggestion's finding (a prepared fix sits inside its finding). |
+| created_at, resolved_at | |
+
+**steward_suggestion**: a suggestion item's branch.
+
+| Column | Notes |
+| --- | --- |
+| item_id | |
+| repository, branch, base | The `axiom/…` branch and what it is based on. |
+| worktree | Under `~/.local/share/axiom/worktrees/`. |
+| kind | `fix` or `rebase copy`. |
+| complexity | `simple`, `medium` or `hard` (promoted work). |
+| diffstat, tests | For example `+3 −1 · 1 file`, `142/142 pass`. |
+
+**steward_action**: something Steward did on its own that can be undone.
+
+| Column | Notes |
+| --- | --- |
+| item_id | The finding it belongs to. |
+| kind | `rebase in place` or `status change`. |
+| data | JSON: branch, old and new tip, backup ref; or status from and to. |
+| done_at, undone_at | |
+
+**steward_memory**
+
+| Column | Notes |
+| --- | --- |
+| scope | `core`, `attached` or `general`. |
+| attached_kind, attached_key | For `attached`: `topic`, `repo` or `person`, and its slug, path or name. |
+| text | |
+| source | `wake`, `chat`, `tidy-up` or `owner` (the owner edits it directly). |
+| created_at, updated_at, retired_at | Steward may retire and delete its own items (03 autonomy rule). |
+
+**steward_chat** (started_at, model, effort) and **steward_message** (chat_id, role `owner` or `steward`, text, at, memory_item_id when Steward noted something).
 
 ## Decisions
+
+- 2026-11-25: Steward's tables, the `steward` author and the `steward urgent` notification kind added for 03 (owner OK). 05 stays settled.
 
 - 2026-11-25: SQLite ([ADR 0003](../adr/0003-sqlite-storage.md)), at `~/.local/share/axiom/axiom.db`, with migrations in the repo and a daily backup copy.
 - 2026-11-25: A thread belongs to exactly one topic. It can mention other topics (a `topic` ref on its entries).
