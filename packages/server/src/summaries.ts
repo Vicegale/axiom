@@ -1,32 +1,16 @@
-import { spawn } from "node:child_process";
-import { accessSync, constants, mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
+import { join } from "node:path";
 import type { Axiom, Thread } from "@axiom/core";
+import { findClaude, spawnClaude, summaryEnv } from "./claude.js";
 import type { ChangeBus } from "./events.js";
+
+export { findClaude, summaryEnv };
 
 const MAX_REPLY_CHARS = 12_000;
 const TIMEOUT_MS = 60_000;
 const RETRY_MS = 10 * 60_000;
 const CANDIDATES = 50;
-const FALLBACK_CLAUDE = "/opt/claude-code/bin/claude";
-
-/** `claude` on PATH, else the system install, else the bare name. Looked up once at server start. */
-export function findClaude(env: NodeJS.ProcessEnv = process.env): string {
-  for (const dir of (env.PATH ?? "").split(delimiter)) {
-    if (!dir) continue;
-    const p = join(dir, "claude");
-    try {
-      accessSync(p, constants.X_OK);
-      return p;
-    } catch {}
-  }
-  try {
-    accessSync(FALLBACK_CLAUDE, constants.X_OK);
-    return FALLBACK_CLAUDE;
-  } catch {}
-  return "claude";
-}
 
 /** The stdin of the summary run: instructions, then the reply (its last ~12 000 characters). */
 export function summaryPrompt(reply: string): string {
@@ -65,65 +49,18 @@ export function parseSummary(output: string): { now: string; next: string } {
   return { now: o.now.trim(), next };
 }
 
-/** The environment of the summary run: no Claude Code / T3 session variables, hook disabled. */
-export function summaryEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const out: NodeJS.ProcessEnv = {};
-  for (const [k, v] of Object.entries(env)) {
-    if (k === "CLAUDECODE" || k.startsWith("T3CODE_") || k.startsWith("CLAUDE_CODE_")) continue;
-    out[k] = v;
-  }
-  out.AXIOM_INTERNAL = "1";
-  return out;
-}
-
 export function runClaude(
   cli: string,
   prompt: string,
   options: { timeoutMs: number; env?: NodeJS.ProcessEnv },
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const cwd = mkdtempSync(join(tmpdir(), "axiom-summary-"));
-    const done = (fn: () => void) => {
-      rmSync(cwd, { recursive: true, force: true });
-      fn();
-    };
-    const child = spawn(
-      cli,
-      ["-p", "--model", "haiku", "--no-session-persistence", "--output-format", "text"],
-      { cwd, env: summaryEnv(options.env ?? process.env), stdio: ["pipe", "pipe", "pipe"] },
-    );
-    let out = "";
-    let err = "";
-    let timedOut = false;
-    let settled = false;
-    const finish = (fn: () => void) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      done(fn);
-    };
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGKILL");
-    }, options.timeoutMs);
-    child.stdout.on("data", (d: Buffer) => {
-      out += d.toString();
-    });
-    child.stderr.on("data", (d: Buffer) => {
-      err += d.toString();
-    });
-    child.on("error", (e) => finish(() => reject(new Error(`cannot run ${cli}: ${e.message}`))));
-    child.on("close", (code) =>
-      finish(() => {
-        if (timedOut) reject(new Error(`timed out after ${options.timeoutMs / 1000} s`));
-        else if (code !== 0) {
-          reject(new Error(`claude exited with ${code}: ${err.trim().slice(0, 300)}`));
-        } else resolve(out);
-      }),
-    );
-    child.stdin.on("error", () => {}); // a process that exits early closes the pipe
-    child.stdin.end(prompt);
-  });
+  const cwd = mkdtempSync(join(tmpdir(), "axiom-summary-"));
+  return spawnClaude(cli, prompt, {
+    args: ["-p", "--model", "haiku", "--no-session-persistence", "--output-format", "text"],
+    cwd,
+    env: options.env,
+    timeoutMs: options.timeoutMs,
+  }).finally(() => rmSync(cwd, { recursive: true, force: true }));
 }
 
 export interface SummaryWorkerOptions {

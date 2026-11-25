@@ -12,9 +12,16 @@ export type {
   CreateTaskInput,
   CreateTopicInput,
   CreateWorkItemInput,
+  DeepPartial,
   EntryInput,
   ListNotificationsOptions,
+  ListStewardMemoryOptions,
   ListTopicsFilter,
+  StewardItemInput,
+  StewardMemoryInput,
+  StewardRunFinish,
+  StewardRunInput,
+  StewardWakeFinish,
   UpdateTaskInput,
 } from "./axiom.js";
 export { Axiom } from "./axiom.js";
@@ -26,4 +33,5 @@ export { AxiomError } from "./errors.js";
 export * as rules from "./rules.js";
 export * from "./rules.js";
 export * from "./schemas.js";
+export * from "./steward.js";
 export type * from "./types.js";

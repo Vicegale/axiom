@@ -13,6 +13,38 @@
 - **The Desk already runs headless calls** (`packages/server/src/summaries.ts`: `-p --model haiku --no-session-persistence`, `AXIOM_INTERNAL=1`). The Steward runner follows the same pattern.
 - **This machine's Claude Code has no connectors.** Slack and Google Drive are built to show up as blind spots when missing; testing them needs a machine that has them (03 Q26).
 
+### ST1 measurement (2026-11-25)
+
+A trivial Haiku call (`Reply with {"ok":true}`) from a fresh temporary folder with `AXIOM_INTERNAL=1`, `--no-session-persistence`, `--output-format json` (claude 2.1.325), tokens from `modelUsage`. One call per row, so cache read versus creation moves between runs; the total is what counts (it is how the caps count, see below). This machine has no connectors, so what a connector adds to gather is not measured.
+
+| Call | Input | Cache creation | Cache read | Output | Total |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| baseline (nothing trimmed) | 1,177 | 14,092 | 23,689 | 24 | 38,982 |
+| `--tools ""` | 2 | 4,595 | 3,474 | 9 | 8,080 |
+| `--tools "" --strict-mcp-config` | 2 | 3,538 | 649 | 9 | 4,198 |
+| `--setting-sources ""` alone | 2 | 10,360 | 24,222 | 9 | 34,593 |
+| `--tools "" --strict-mcp-config --setting-sources "" --disable-slash-commands` | 2 | 3,330 | 649 | 9 | 3,990 |
+| the same plus `--system-prompt "<one sentence>"` (**decide, tidy-up**) | 2 | 896 | 0 | 9 | 907 |
+| read-only tools (`Read,Grep,Glob`), connectors kept, `--setting-sources ""`, `--disable-slash-commands`, short system prompt (**gather**) | 2 | 7,041 | 0 | 9 | 7,052 |
+| the same with Claude Code's default system prompt | 2 | 4,380 | 5,739 | 9 | 10,130 |
+
+Through the runner (real, recorded in `steward_run`): decide on Haiku low 669 tokens; gather on Haiku low 6,807 (7,052 in the table above; the two differ by the cache split only).
+
+What the numbers say: the tool list is the largest part of the baseline (about 30k of 39k), and the short system prompt removes most of what is left. `--setting-sources ""` alone barely helps (it drops hooks, permission rules and user settings, not the default prompt or tools), but the runner keeps it so a user's hooks and permissions never touch a stage. `--bare` is not usable: it never reads the subscription login. `--strict-mcp-config` with no `--mcp-config` starts no MCP servers, which is why the stages without connectors use it.
+
+Flags per stage (all stages: `-p --model <m> --effort <e> --no-session-persistence --output-format json --setting-sources "" --disable-slash-commands`, prompt on stdin, `AXIOM_INTERNAL=1`, a fresh temporary folder unless a folder is given):
+
+| Stage | Tools | Connectors | System prompt | Limit |
+| --- | --- | --- | --- | --- |
+| gather | `--tools Read,Grep,Glob --allowedTools Read,Grep,Glob[,mcp__<server>...]` (`--add-dir` for repositories) | kept (no `--strict-mcp-config`) | short | none |
+| decide, tidy-up | `--tools ""` | none (`--strict-mcp-config`) | short | 10 minutes |
+| promoted | `--tools Read,Grep,Glob,Edit,Write,Bash --allowedTools <same> --disallowedTools "Bash(git push *),Bash(gh *)"`, run inside the worktree | none | Claude Code's default (it writes code) | 10 minutes |
+| chat | `--tools Read,Grep,Glob`, read-only for now | none | short | none |
+
+Found while testing (a fake MCP server, since this machine has no connectors): a headless call denies any tool that is not allowed, including connector tools, and `--allowedTools "mcp__*"` does not match them. `--allowedTools mcp__<server>` (or `mcp__<server>__*`) does. So gather's connectors work only for servers the runner is told to allow (`mcpServers`); ST2 must list the connected servers and allow only their read tools, since a connector can also post. Bash in promoted is not confined to the folder by any flag: the worktree is the working directory, `git push` and `gh` are denied, and ST6 must add its own checks.
+
+Caps count input + output + cache creation + cache read (`countTokens` in `packages/core/src/steward.ts`). With that rule one trimmed decide call costs under 1k tokens against Sonnet's 1.5M daily cap, and an untrimmed call about 39k, so trimming is what keeps 20 wakes a day far under the caps.
+
 ## Slices
 
 | Slice | What | Done when |

@@ -51,7 +51,7 @@ export const ENTRY_KINDS = [
   "deploy event",
 ] as const;
 export type EntryKind = (typeof ENTRY_KINDS)[number];
-export type EntryAuthor = "owner" | "agent" | "axiom";
+export type EntryAuthor = "owner" | "agent" | "axiom" | "steward";
 
 export type Provider = "claude-code" | "t3";
 export const PROVIDER_LABEL: Record<string, string> = { t3: "T3", "claude-code": "Claude Code" };

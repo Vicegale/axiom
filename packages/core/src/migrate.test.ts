@@ -23,6 +23,14 @@ const TABLES = [
   "monitor_target",
   "notification",
   "setting",
+  "steward_action",
+  "steward_chat",
+  "steward_item",
+  "steward_memory",
+  "steward_message",
+  "steward_run",
+  "steward_suggestion",
+  "steward_wake",
   "subagent",
   "subagent_call",
   "task",
@@ -44,7 +52,7 @@ describe("opening", () => {
     expect(pragma("journal_mode")).toBe("wal");
     expect(pragma("foreign_keys")).toBe(1);
     expect(pragma("busy_timeout")).toBe(5000);
-    expect(pragma("user_version")).toBe(9);
+    expect(pragma("user_version")).toBe(10);
     const names = (
       ax.db
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
@@ -65,7 +73,7 @@ describe("opening", () => {
     a.close();
     const b = openDatabase(path);
     expect(b.getTopic("keep").title).toBe("keep");
-    expect(Object.values(b.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(9);
+    expect(Object.values(b.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(10);
     b.close();
   });
 
@@ -97,7 +105,7 @@ describe("opening", () => {
     );
     raw.close();
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(9);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(10);
     const links = ax.getTopic("t").links;
     expect(links).toHaveLength(1);
     expect(links[0]).toMatchObject({ label: "A", description: null });
@@ -126,7 +134,7 @@ describe("opening", () => {
     );
     raw.close();
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(9);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(10);
     const t = ax.getTopic("t");
     expect(t).toMatchObject({ title: "T", favorite: false, deskHidden: false, deskOrder: null });
     expect(t.threads[0]).toMatchObject({
@@ -141,6 +149,88 @@ describe("opening", () => {
     });
     ax.setThreadReply(t.threads[0].id, "hello");
     expect(ax.getThread(t.threads[0].id).lastReply).toBe("hello");
+    ax.close();
+  });
+
+  it("upgrades a version 9 database: entries and notifications keep their rows and accept the new values", () => {
+    const path = join(dir, "v9.db");
+    const raw = new DatabaseSync(path);
+    raw.exec("PRAGMA foreign_keys = ON");
+    const files = [
+      "0001_init.sql",
+      "0002_tasks.sql",
+      "0003_link_description.sql",
+      "0004_desk.sql",
+      "0005_activity.sql",
+      "0006_approvals.sql",
+      "0007_runtime.sql",
+      "0008_subagents.sql",
+      "0009_subagent_tree.sql",
+    ];
+    migrate(
+      raw,
+      files.map((f, i) => ({
+        version: i + 1,
+        sql: readFileSync(fileURLToPath(new URL(`../migrations/${f}`, import.meta.url)), "utf8"),
+      })),
+    );
+    raw.exec(
+      "INSERT INTO topic (slug, title, created_at, last_worked_at) VALUES ('t', 'T', 'x', 'x')",
+    );
+    raw.exec(
+      `INSERT INTO thread (topic_id, provider, provider_thread_id, status_changed_at, started_at)
+       VALUES (1, 'claude-code', 's1', 'x', 'x')`,
+    );
+    raw.exec(
+      `INSERT INTO entry (id, topic_id, at, author, thread_id, kind, body, data, refs, corrects_entry_id)
+       VALUES (5, 1, '2026-01-01T00:00:00.000Z', 'agent', 1, 'finding', 'first', '{"subtype":"x"}', '[]', NULL),
+              (7, 1, '2026-01-02T00:00:00.000Z', 'owner', NULL, 'note', 'fixes it', NULL, '[]', 5)`,
+    );
+    raw.exec(
+      `INSERT INTO notification (id, topic_id, thread_id, kind, body, created_at, dismissed_at)
+       VALUES (3, 1, 1, 'agent stopped', 'stopped', 'x', NULL), (4, 1, NULL, 'error', 'bad', 'x', 'y')`,
+    );
+    raw.close();
+
+    const ax = openDatabase(path);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(10);
+    expect(ax.db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    const entries = ax.listEntries("t");
+    expect(entries.map((e) => [e.id, e.author, e.body, e.threadId, e.correctsEntryId])).toEqual([
+      [5, "agent", "first", 1, null],
+      [7, "owner", "fixes it", null, 5],
+    ]);
+    expect(entries[0].data).toEqual({ subtype: "x" });
+    expect(
+      ax.listNotifications({ includeDismissed: true }).map((n) => [n.id, n.kind, n.dismissedAt]),
+    ).toEqual([
+      [4, "error", "y"],
+      [3, "agent stopped", null],
+    ]);
+    const indexes = (table: string) =>
+      (
+        ax.db
+          .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ?")
+          .all(table) as { name: string }[]
+      ).map((r) => r.name);
+    expect(indexes("entry")).toContain("entry_topic");
+    expect(indexes("notification")).toContain("notification_topic");
+    // The widened constraints, and the rest of the schema still holds.
+    const note = ax.addEntry("t", { kind: "note", body: "from Steward" }, { kind: "steward" });
+    expect(note.author).toBe("steward");
+    expect(note.id).toBeGreaterThan(7);
+    ax.raiseNotification("t", "steward urgent", "CI failed", { kind: "axiom" });
+    expect(() =>
+      ax.db.exec(
+        "INSERT INTO entry (topic_id, at, author, kind) VALUES (1, 'x', 'nobody', 'note')",
+      ),
+    ).toThrow(/CHECK/);
+    expect(ax.getTopic("t").threads[0]).toMatchObject({ providerThreadId: "s1" });
+    expect(ax.getTopic("t").stewardEnabled).toBe(true);
+    // Deleting the topic still cascades to its entries and notifications.
+    ax.db.exec("DELETE FROM topic WHERE id = 1");
+    expect(ax.db.prepare("SELECT COUNT(*) AS n FROM entry").get()).toEqual({ n: 0 });
+    expect(ax.db.prepare("SELECT COUNT(*) AS n FROM notification").get()).toEqual({ n: 0 });
     ax.close();
   });
 
@@ -208,9 +298,9 @@ describe("opening", () => {
         );
       });
     const results = await Promise.all(Array.from({ length: 6 }, run));
-    expect(results).toEqual(Array(6).fill("9 wal"));
+    expect(results).toEqual(Array(6).fill("10 wal"));
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(9);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(10);
     ax.close();
   }, 60_000);
 });

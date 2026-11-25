@@ -45,6 +45,7 @@ export const NOTIFICATION_KINDS = [
   "pr review",
   "stale prompt",
   "error",
+  "steward urgent",
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -87,7 +88,7 @@ export const REF_TYPES = [
 ] as const;
 export type RefType = (typeof REF_TYPES)[number];
 
-export const ENTRY_AUTHORS = ["owner", "agent", "axiom"] as const;
+export const ENTRY_AUTHORS = ["owner", "agent", "axiom", "steward"] as const;
 export type EntryAuthor = (typeof ENTRY_AUTHORS)[number];
 
 export const DEFAULT_STALE_AFTER_DAYS = 14;
@@ -106,4 +107,75 @@ export const DEFAULT_T3_PIN = {
   migration: 98,
 } as const;
 
-export type Actor = { kind: "owner" } | { kind: "agent"; threadId?: number } | { kind: "axiom" };
+export type Actor =
+  | { kind: "owner" }
+  | { kind: "agent"; threadId?: number }
+  | { kind: "axiom" }
+  | { kind: "steward" };
+
+// ---------------------------------------------------------------------------
+// Steward (spec 03, 05)
+// ---------------------------------------------------------------------------
+
+export const STEWARD_STAGES = ["gather", "decide", "promoted", "tidy-up", "chat"] as const;
+export type StewardStage = (typeof STEWARD_STAGES)[number];
+
+export const STEWARD_WAKE_TRIGGERS = ["timer", "event", "tidy-up", "owner"] as const;
+export type StewardWakeTrigger = (typeof STEWARD_WAKE_TRIGGERS)[number];
+
+/** Status of a wake or of one run. `cut short`: a cap or a time limit. */
+export const STEWARD_STATUSES = ["running", "done", "failed", "cut short"] as const;
+export type StewardStatus = (typeof STEWARD_STATUSES)[number];
+
+export const STEWARD_ITEM_KINDS = ["finding", "question", "suggestion"] as const;
+export type StewardItemKind = (typeof STEWARD_ITEM_KINDS)[number];
+
+export const STEWARD_LEVELS = ["urgent", "attention", "info"] as const;
+export type StewardLevel = (typeof STEWARD_LEVELS)[number];
+
+export const STEWARD_ITEM_STATES = [
+  "open",
+  "answered",
+  "dismissed",
+  "adopted",
+  "discarded",
+  "undone",
+] as const;
+export type StewardItemState = (typeof STEWARD_ITEM_STATES)[number];
+
+export const STEWARD_SUGGESTION_KINDS = ["fix", "rebase copy"] as const;
+export type StewardSuggestionKind = (typeof STEWARD_SUGGESTION_KINDS)[number];
+
+export const STEWARD_COMPLEXITIES = ["simple", "medium", "hard"] as const;
+export type StewardComplexity = (typeof STEWARD_COMPLEXITIES)[number];
+
+export const STEWARD_ACTION_KINDS = ["rebase in place", "status change"] as const;
+export type StewardActionKind = (typeof STEWARD_ACTION_KINDS)[number];
+
+export const STEWARD_MEMORY_SCOPES = ["core", "attached", "general"] as const;
+export type StewardMemoryScope = (typeof STEWARD_MEMORY_SCOPES)[number];
+
+export const STEWARD_ATTACHED_KINDS = ["topic", "repo", "person"] as const;
+export type StewardAttachedKind = (typeof STEWARD_ATTACHED_KINDS)[number];
+
+export const STEWARD_MEMORY_SOURCES = ["wake", "chat", "tidy-up", "owner"] as const;
+export type StewardMemorySource = (typeof STEWARD_MEMORY_SOURCES)[number];
+
+export const STEWARD_MESSAGE_ROLES = ["owner", "steward"] as const;
+export type StewardMessageRole = (typeof STEWARD_MESSAGE_ROLES)[number];
+
+export const EFFORT_LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type Effort = (typeof EFFORT_LEVELS)[number];
+
+export const PR_SIGNALS = [
+  "ci failed",
+  "changes requested",
+  "new review comments",
+  "conflict coming",
+  "no reviewer",
+  "ready to merge",
+] as const;
+export type PrSignal = (typeof PR_SIGNALS)[number];
+
+/** The `setting` key holding Steward's settings (a StewardSettings object). */
+export const STEWARD_SETTING_KEY = "steward";

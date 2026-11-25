@@ -30,7 +30,12 @@ const KIND_CLASS: Record<EntryKind, string> = {
   "deploy event": "k-axiom",
 };
 
-const AUTHOR: Record<EntryAuthor, string> = { agent: "AGENT", owner: "YOU", axiom: "AXIOM" };
+const AUTHOR: Record<EntryAuthor, string> = {
+  agent: "AGENT",
+  owner: "YOU",
+  axiom: "AXIOM",
+  steward: "STEWARD",
+};
 
 /** "AGENT FOUND", "YOU SAID", "AXIOM STATUS": author plus kind, in caps. */
 export function entryLabel(author: EntryAuthor, kind: EntryKind): string {

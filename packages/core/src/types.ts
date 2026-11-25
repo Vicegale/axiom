@@ -1,4 +1,5 @@
 import type {
+  Effort,
   EntryAuthor,
   EntryKind,
   LinkKind,
@@ -6,6 +7,19 @@ import type {
   NotificationKind,
   Provider,
   RefType,
+  StewardActionKind,
+  StewardAttachedKind,
+  StewardComplexity,
+  StewardItemKind,
+  StewardItemState,
+  StewardLevel,
+  StewardMemoryScope,
+  StewardMemorySource,
+  StewardMessageRole,
+  StewardStage,
+  StewardStatus,
+  StewardSuggestionKind,
+  StewardWakeTrigger,
   TaskStatus,
   TopicStatus,
   View,
@@ -28,6 +42,8 @@ export interface Topic {
   goal: string | null;
   muted: boolean;
   stalePromptDismissed: boolean;
+  /** Off: Steward neither watches nor acts on this topic (03). */
+  stewardEnabled: boolean;
   createdAt: string;
   lastWorkedAt: string;
   /** Desk arrangement (02): favourite, hidden from the Desk, the owner's drag position. */
@@ -232,4 +248,128 @@ export interface Approval {
   decision: "allow" | "deny" | "expired" | null;
   message: string | null;
   hookPid: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// Steward (spec 03, 05)
+// ---------------------------------------------------------------------------
+
+export interface StewardWake {
+  id: number;
+  trigger: StewardWakeTrigger;
+  triggerDetail: string | null;
+  startedAt: string;
+  endedAt: string | null;
+  status: StewardStatus;
+  brief: string | null;
+  blindSpots: string[];
+  error: string | null;
+}
+
+/** The four token counts of a call (from `modelUsage`). */
+export interface TokenCounts {
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+}
+
+/** One headless call. Exactly one of `wakeId` and `chatId` is set. */
+export interface StewardRun extends TokenCounts {
+  id: number;
+  wakeId: number | null;
+  chatId: number | null;
+  stage: StewardStage;
+  model: string;
+  effort: Effort;
+  startedAt: string;
+  endedAt: string | null;
+  status: StewardStatus;
+  error: string | null;
+}
+
+export interface StewardItem {
+  id: number;
+  wakeId: number | null;
+  kind: StewardItemKind;
+  topicId: number | null;
+  level: StewardLevel | null;
+  title: string;
+  body: string | null;
+  signal: string | null;
+  source: string | null;
+  fingerprint: string | null;
+  state: StewardItemState;
+  answer: string | null;
+  entryId: number | null;
+  parentItemId: number | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+export interface StewardSuggestion {
+  id: number;
+  itemId: number;
+  repository: string;
+  branch: string;
+  base: string;
+  worktree: string | null;
+  kind: StewardSuggestionKind;
+  complexity: StewardComplexity | null;
+  diffstat: string | null;
+  tests: string | null;
+}
+
+export interface StewardAction {
+  id: number;
+  itemId: number;
+  kind: StewardActionKind;
+  data: unknown;
+  doneAt: string;
+  undoneAt: string | null;
+}
+
+export interface StewardMemory {
+  id: number;
+  scope: StewardMemoryScope;
+  attachedKind: StewardAttachedKind | null;
+  attachedKey: string | null;
+  text: string;
+  source: StewardMemorySource;
+  createdAt: string;
+  updatedAt: string;
+  retiredAt: string | null;
+}
+
+export interface StewardChat {
+  id: number;
+  startedAt: string;
+  model: string;
+  effort: Effort;
+}
+
+export interface StewardMessage {
+  id: number;
+  chatId: number;
+  role: StewardMessageRole;
+  text: string;
+  at: string;
+  memoryItemId: number | null;
+}
+
+/** Tokens used on one local day by one model, summed over runs. `total` follows `countTokens`. */
+export interface StewardModelUsage extends TokenCounts {
+  model: string;
+  runs: number;
+  total: number;
+}
+
+export interface StewardCapCheck {
+  allowed: boolean;
+  model: string;
+  /** The family the cap is keyed by (`haiku`, `sonnet`, `opus`), or the model itself. */
+  family: string;
+  /** Tokens used today by every model of the family; null when the family has no cap. */
+  used: number;
+  cap: number | null;
 }

@@ -9,11 +9,28 @@ import {
   DEFAULT_APPROVAL_TIMEOUT_SEC,
   DEFAULT_STALE_AFTER_DAYS,
   DEFAULT_T3_PIN,
+  type Effort,
   type EntryKind,
   type LinkKind,
   type MonitorState,
   type NotificationKind,
   type Provider,
+  STEWARD_ACTION_KINDS,
+  STEWARD_SETTING_KEY,
+  STEWARD_STAGES,
+  type StewardActionKind,
+  type StewardAttachedKind,
+  type StewardComplexity,
+  type StewardItemKind,
+  type StewardItemState,
+  type StewardLevel,
+  type StewardMemoryScope,
+  type StewardMemorySource,
+  type StewardMessageRole,
+  type StewardStage,
+  type StewardStatus,
+  type StewardSuggestionKind,
+  type StewardWakeTrigger,
   SUBAGENT_KEEP_MS,
   type TaskStatus,
   type TopicStatus,
@@ -33,6 +50,8 @@ import {
   viewsOfTopic,
 } from "./rules.js";
 import {
+  DEFAULT_STEWARD_SETTINGS,
+  effortSchema,
   entryDataSchemas,
   jiraSchema,
   linkKindSchema,
@@ -41,13 +60,25 @@ import {
   parseWith,
   providerSchema,
   refsSchema,
+  type StewardSettings,
   settingSchemas,
   slugSchema,
+  stewardAttachedKindSchema,
+  stewardComplexitySchema,
+  stewardItemKindSchema,
+  stewardItemStateSchema,
+  stewardLevelSchema,
+  stewardMemoryScopeSchema,
+  stewardMemorySourceSchema,
+  stewardMessageRoleSchema,
+  stewardSuggestionKindSchema,
+  stewardWakeTriggerSchema,
   taskKeySchema,
   taskStatusSchema,
   topicStatusSchema,
   workItemStatusSchema,
 } from "./schemas.js";
+import { countTokens, localDay, localDayRange, mergeDefaults, modelFamily } from "./steward.js";
 import type {
   Approval,
   Entry,
@@ -57,6 +88,16 @@ import type {
   Notification,
   Ref,
   RuntimePatch,
+  StewardAction,
+  StewardCapCheck,
+  StewardChat,
+  StewardItem,
+  StewardMemory,
+  StewardMessage,
+  StewardModelUsage,
+  StewardRun,
+  StewardSuggestion,
+  StewardWake,
   Subagent,
   SubagentSnapshot,
   SubagentStatus,
@@ -64,6 +105,7 @@ import type {
   TaskDetail,
   Thread,
   Ticket,
+  TokenCounts,
   Topic,
   TopicDetail,
   TopicRef,
@@ -79,6 +121,7 @@ const BOOLEAN_COLUMNS = new Set([
   "waiting_on_owner",
   "favorite",
   "desk_hidden",
+  "steward_enabled",
 ]);
 
 /** The longest reply kept on a thread, in characters. */
@@ -159,6 +202,71 @@ export interface ListTopicsFilter {
 
 export interface ListNotificationsOptions {
   includeDismissed?: boolean;
+}
+
+export type DeepPartial<T> = {
+  [K in keyof T]?: T[K] extends readonly unknown[]
+    ? T[K]
+    : T[K] extends object
+      ? DeepPartial<T[K]>
+      : T[K];
+};
+
+export interface StewardWakeFinish {
+  status: Exclude<StewardStatus, "running">;
+  brief?: string;
+  blindSpots?: string[];
+  error?: string;
+}
+
+export interface StewardRunInput {
+  /** Exactly one of `wakeId` and `chatId`. */
+  wakeId?: number;
+  chatId?: number;
+  stage: StewardStage;
+  model: string;
+  effort: Effort;
+  startedAt?: string;
+  usage?: TokenCounts;
+  error?: string;
+}
+
+export interface StewardRunFinish {
+  status: Exclude<StewardStatus, "running">;
+  error?: string;
+  /** The model that actually answered, when it differs from the one asked for. */
+  model?: string;
+  usage?: TokenCounts;
+}
+
+export interface StewardItemInput {
+  kind: StewardItemKind;
+  title: string;
+  wakeId?: number;
+  topic?: TopicRef;
+  level?: StewardLevel;
+  body?: string;
+  signal?: string;
+  source?: string;
+  fingerprint?: string;
+  entryId?: number;
+  parentItemId?: number;
+}
+
+export interface StewardMemoryInput {
+  scope: StewardMemoryScope;
+  attachedKind?: StewardAttachedKind;
+  attachedKey?: string;
+  text: string;
+  /** Ignored when the owner writes: that is always `owner`. */
+  source?: StewardMemorySource;
+}
+
+export interface ListStewardMemoryOptions {
+  scope?: StewardMemoryScope;
+  attachedKind?: StewardAttachedKind;
+  attachedKey?: string;
+  includeRetired?: boolean;
 }
 
 const LINK_LABEL_MAX = 120;
@@ -2073,9 +2181,652 @@ export class Axiom {
     );
   }
 
+  // ---- Steward (spec 03, 05) ----------------------------------------------
+
+  /** Steward's bookkeeping is written by Steward, Axiom's server or the owner; never by an agent. */
+  private stewardWriter(actor: Actor, what: string): void {
+    if (actor.kind === "agent") throw new AxiomError("permission", `an agent cannot ${what}`);
+  }
+
+  /** The per-topic switch: off means Steward neither watches nor acts on the topic. */
+  setTopicStewardEnabled(ref: TopicRef, enabled: boolean, actor: Actor): Topic {
+    ownerOnly(actor, "switch Steward on or off for a topic");
+    return this.tx(() => {
+      const t = this.topicRow(ref);
+      this.run("UPDATE topic SET steward_enabled = ? WHERE id = ?", enabled ? 1 : 0, t.id);
+      return this.topicRow(t.id);
+    });
+  }
+
+  getTopicStewardEnabled(ref: TopicRef): boolean {
+    return this.topicRow(ref).stewardEnabled;
+  }
+
+  /** Steward's settings: the defaults with the stored values laid over them. */
+  getStewardSettings(): StewardSettings {
+    const stored = this.get<{ value: string }>(
+      "SELECT value FROM setting WHERE key = ?",
+      STEWARD_SETTING_KEY,
+    );
+    return mergeDefaults(DEFAULT_STEWARD_SETTINGS, stored ? JSON.parse(stored.value) : undefined);
+  }
+
+  /** Lays `changes` over the current settings, validates the whole and stores it. Owner only. */
+  setStewardSettings(changes: DeepPartial<StewardSettings>, actor: Actor): StewardSettings {
+    ownerOnly(actor, "change Steward's settings");
+    const merged = mergeDefaults(this.getStewardSettings(), changes);
+    this.setSetting(STEWARD_SETTING_KEY, merged, actor);
+    return this.getStewardSettings();
+  }
+
+  // -- wakes
+
+  private wakeRow(id: number): StewardWake {
+    const row = this.get<Row>("SELECT * FROM steward_wake WHERE id = ?", id);
+    if (!row) throw new AxiomError("not-found", `Steward wake not found: ${id}`);
+    const w = camel<StewardWake & { blindSpots: string | null }>(row);
+    return {
+      ...w,
+      blindSpots: w.blindSpots === null ? [] : (JSON.parse(w.blindSpots) as string[]),
+    };
+  }
+
+  startStewardWake(
+    input: { trigger: StewardWakeTrigger; triggerDetail?: string },
+    actor: Actor,
+  ): StewardWake {
+    this.stewardWriter(actor, "start a wake");
+    parseWith(stewardWakeTriggerSchema, input.trigger, "wake trigger");
+    return this.tx(() =>
+      this.wakeRow(
+        this.run(
+          "INSERT INTO steward_wake (trigger, trigger_detail, started_at, status) VALUES (?, ?, ?, 'running')",
+          input.trigger,
+          input.triggerDetail ?? null,
+          this.iso(),
+        ),
+      ),
+    );
+  }
+
+  finishStewardWake(id: number, input: StewardWakeFinish, actor: Actor): StewardWake {
+    this.stewardWriter(actor, "finish a wake");
+    return this.tx(() => {
+      const w = this.wakeRow(id);
+      if (w.status !== "running") {
+        throw new AxiomError("conflict", `Steward wake ${id} is already ${w.status}`);
+      }
+      this.run(
+        `UPDATE steward_wake SET status = ?, ended_at = ?, brief = ?, blind_spots = ?, error = ?
+         WHERE id = ?`,
+        input.status,
+        this.iso(),
+        input.brief ?? null,
+        input.blindSpots ? JSON.stringify(input.blindSpots) : null,
+        input.error ?? null,
+        id,
+      );
+      return this.wakeRow(id);
+    });
+  }
+
+  getStewardWake(id: number): StewardWake {
+    return this.wakeRow(id);
+  }
+
+  /** The wake that is running now, if any (one wake at a time). */
+  runningStewardWake(): StewardWake | null {
+    const row = this.get<{ id: number }>(
+      "SELECT id FROM steward_wake WHERE status = 'running' ORDER BY id DESC LIMIT 1",
+    );
+    return row ? this.wakeRow(row.id) : null;
+  }
+
+  /** Newest first. */
+  listStewardWakes(limit = 50): StewardWake[] {
+    return this.all<{ id: number }>(
+      "SELECT id FROM steward_wake ORDER BY id DESC LIMIT ?",
+      limit,
+    ).map((r) => this.wakeRow(r.id));
+  }
+
+  // -- runs (one headless call each)
+
+  private runRow(id: number): StewardRun {
+    const row = this.get<Row>("SELECT * FROM steward_run WHERE id = ?", id);
+    if (!row) throw new AxiomError("not-found", `Steward run not found: ${id}`);
+    return camel<StewardRun>(row);
+  }
+
+  private insertRun(input: StewardRunInput, status: StewardStatus, endedAt: string | null): number {
+    if ((input.wakeId === undefined) === (input.chatId === undefined)) {
+      throw new AxiomError("validation", "a run belongs to exactly one of a wake and a chat");
+    }
+    if (!(STEWARD_STAGES as readonly string[]).includes(input.stage)) {
+      throw new AxiomError("validation", `unknown stage "${input.stage}"`);
+    }
+    parseWith(effortSchema, input.effort, "effort");
+    return this.run(
+      `INSERT INTO steward_run
+         (wake_id, chat_id, stage, model, effort, input_tokens, output_tokens, cache_read_tokens,
+          cache_creation_tokens, started_at, ended_at, status, error)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      input.wakeId ?? null,
+      input.chatId ?? null,
+      input.stage,
+      input.model,
+      input.effort,
+      input.usage?.inputTokens ?? 0,
+      input.usage?.outputTokens ?? 0,
+      input.usage?.cacheReadTokens ?? 0,
+      input.usage?.cacheCreationTokens ?? 0,
+      input.startedAt ?? this.iso(),
+      endedAt,
+      status,
+      input.error ?? null,
+    );
+  }
+
+  /** Records that a call is starting. Finish it with `finishStewardRun`. */
+  startStewardRun(input: StewardRunInput, actor: Actor): StewardRun {
+    this.stewardWriter(actor, "record a run");
+    return this.tx(() => this.runRow(this.insertRun(input, "running", null)));
+  }
+
+  /**
+   * Records a call that is already over (for example the second model of a call that used two:
+   * its tokens count against that model's cap).
+   */
+  recordStewardRun(
+    input: StewardRunInput & { status: Exclude<StewardStatus, "running"> },
+    actor: Actor,
+  ): StewardRun {
+    this.stewardWriter(actor, "record a run");
+    return this.tx(() => this.runRow(this.insertRun(input, input.status, this.iso())));
+  }
+
+  finishStewardRun(id: number, input: StewardRunFinish, actor: Actor): StewardRun {
+    this.stewardWriter(actor, "finish a run");
+    return this.tx(() => {
+      const r = this.runRow(id);
+      if (r.status !== "running") {
+        throw new AxiomError("conflict", `Steward run ${id} is already ${r.status}`);
+      }
+      const u = input.usage;
+      this.run(
+        `UPDATE steward_run SET status = ?, ended_at = ?, error = ?, model = ?,
+           input_tokens = ?, output_tokens = ?, cache_read_tokens = ?, cache_creation_tokens = ?
+         WHERE id = ?`,
+        input.status,
+        this.iso(),
+        input.error ?? null,
+        input.model ?? r.model,
+        u?.inputTokens ?? r.inputTokens,
+        u?.outputTokens ?? r.outputTokens,
+        u?.cacheReadTokens ?? r.cacheReadTokens,
+        u?.cacheCreationTokens ?? r.cacheCreationTokens,
+        id,
+      );
+      return this.runRow(id);
+    });
+  }
+
+  getStewardRun(id: number): StewardRun {
+    return this.runRow(id);
+  }
+
+  listStewardRuns(filter: { wakeId?: number; chatId?: number } = {}): StewardRun[] {
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (filter.wakeId !== undefined) {
+      where.push("wake_id = ?");
+      params.push(filter.wakeId);
+    }
+    if (filter.chatId !== undefined) {
+      where.push("chat_id = ?");
+      params.push(filter.chatId);
+    }
+    return this.all<Row>(
+      `SELECT * FROM steward_run ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY id`,
+      ...params,
+    ).map((r) => camel<StewardRun>(r));
+  }
+
+  /**
+   * Tokens used per model on a local day (`YYYY-MM-DD`, default today), summed over the runs
+   * that started on it. Models are as recorded (for example `claude-haiku-5-5`).
+   */
+  stewardUsageForDay(day: string = localDay(this.clock())): StewardModelUsage[] {
+    const { start, end } = localDayRange(day);
+    return this.all<Row>(
+      `SELECT model, COUNT(*) AS runs, SUM(input_tokens) AS input_tokens,
+              SUM(output_tokens) AS output_tokens, SUM(cache_read_tokens) AS cache_read_tokens,
+              SUM(cache_creation_tokens) AS cache_creation_tokens
+       FROM steward_run WHERE started_at >= ? AND started_at < ?
+       GROUP BY model ORDER BY model`,
+      start,
+      end,
+    ).map((r) => {
+      const u = camel<Omit<StewardModelUsage, "total">>(r);
+      return { ...u, total: countTokens(u) };
+    });
+  }
+
+  /**
+   * Whether a call on `model` may start: the family's tokens so far today are under its daily cap.
+   * A call is refused once the cap is reached; a call that starts under it may end over it.
+   */
+  stewardCapCheck(model: string, day: string = localDay(this.clock())): StewardCapCheck {
+    const family = modelFamily(model);
+    const caps = this.getStewardSettings().dailyCaps;
+    const cap = Object.hasOwn(caps, family) ? (caps[family] ?? null) : null;
+    const used = this.stewardUsageForDay(day)
+      .filter((u) => modelFamily(u.model) === family)
+      .reduce((sum, u) => sum + u.total, 0);
+    return { allowed: cap === null || used < cap, model, family, used, cap };
+  }
+
+  // -- items, suggestions, actions
+
+  private itemRow(id: number): StewardItem {
+    const row = this.get<Row>("SELECT * FROM steward_item WHERE id = ?", id);
+    if (!row) throw new AxiomError("not-found", `Steward item not found: ${id}`);
+    return camel<StewardItem>(row);
+  }
+
+  addStewardItem(input: StewardItemInput, actor: Actor): StewardItem {
+    this.stewardWriter(actor, "add a Steward item");
+    parseWith(stewardItemKindSchema, input.kind, "item kind");
+    if (input.level !== undefined) parseWith(stewardLevelSchema, input.level, "item level");
+    if (!input.title.trim()) throw new AxiomError("validation", "a Steward item needs a title");
+    return this.tx(() => {
+      const topicId = input.topic === undefined ? null : this.topicRow(input.topic).id;
+      if (input.parentItemId !== undefined) this.itemRow(input.parentItemId);
+      return this.itemRow(
+        this.run(
+          `INSERT INTO steward_item
+             (wake_id, kind, topic_id, level, title, body, signal, source, fingerprint, entry_id,
+              parent_item_id, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          input.wakeId ?? null,
+          input.kind,
+          topicId,
+          input.level ?? null,
+          input.title.trim(),
+          input.body ?? null,
+          input.signal ?? null,
+          input.source ?? null,
+          input.fingerprint ?? null,
+          input.entryId ?? null,
+          input.parentItemId ?? null,
+          this.iso(),
+        ),
+      );
+    });
+  }
+
+  getStewardItem(id: number): StewardItem {
+    return this.itemRow(id);
+  }
+
+  listStewardItems(filter: { state?: StewardItemState; topic?: TopicRef } = {}): StewardItem[] {
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (filter.state !== undefined) {
+      where.push("state = ?");
+      params.push(filter.state);
+    }
+    if (filter.topic !== undefined) {
+      where.push("topic_id = ?");
+      params.push(this.topicRow(filter.topic).id);
+    }
+    return this.all<Row>(
+      `SELECT * FROM steward_item ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY id`,
+      ...params,
+    ).map((r) => camel<StewardItem>(r));
+  }
+
+  /** The newest item about this subject, in any state (a dismissed one is not raised again). */
+  findStewardItemByFingerprint(fingerprint: string): StewardItem | null {
+    const row = this.get<Row>(
+      "SELECT * FROM steward_item WHERE fingerprint = ? ORDER BY id DESC LIMIT 1",
+      fingerprint,
+    );
+    return row ? camel<StewardItem>(row) : null;
+  }
+
+  /**
+   * Moves an open item to `answered` (with the answer), `dismissed`, `adopted`, `discarded` or
+   * `undone`; an adopted item can still be `undone`. Anything else is final.
+   */
+  updateStewardItem(
+    id: number,
+    change: { state: Exclude<StewardItemState, "open">; answer?: string },
+    actor: Actor,
+  ): StewardItem {
+    this.stewardWriter(actor, "change a Steward item");
+    parseWith(stewardItemStateSchema, change.state, "item state");
+    return this.tx(() => {
+      const item = this.itemRow(id);
+      const allowed =
+        (item.state === "open" && (change.state as string) !== "open") ||
+        (item.state === "adopted" && change.state === "undone");
+      if (!allowed) {
+        throw new AxiomError("conflict", `a ${item.state} item cannot become ${change.state}`);
+      }
+      if (change.state === "answered" && !change.answer?.trim()) {
+        throw new AxiomError("validation", "an answered item needs the answer");
+      }
+      if (change.answer !== undefined && change.state !== "answered") {
+        throw new AxiomError("validation", "only an answered item carries an answer");
+      }
+      this.run(
+        "UPDATE steward_item SET state = ?, answer = COALESCE(?, answer), resolved_at = ? WHERE id = ?",
+        change.state,
+        change.answer?.trim() ?? null,
+        this.iso(),
+        id,
+      );
+      return this.itemRow(id);
+    });
+  }
+
+  /** Links the history entry an item wrote. */
+  setStewardItemEntry(id: number, entryId: number, actor: Actor): StewardItem {
+    this.stewardWriter(actor, "change a Steward item");
+    return this.tx(() => {
+      this.itemRow(id);
+      this.run("UPDATE steward_item SET entry_id = ? WHERE id = ?", entryId, id);
+      return this.itemRow(id);
+    });
+  }
+
+  addStewardSuggestion(
+    itemId: number,
+    input: {
+      repository: string;
+      branch: string;
+      base: string;
+      kind: StewardSuggestionKind;
+      worktree?: string;
+      complexity?: StewardComplexity;
+      diffstat?: string;
+      tests?: string;
+    },
+    actor: Actor,
+  ): StewardSuggestion {
+    this.stewardWriter(actor, "add a suggestion");
+    parseWith(stewardSuggestionKindSchema, input.kind, "suggestion kind");
+    if (input.complexity !== undefined) {
+      parseWith(stewardComplexitySchema, input.complexity, "complexity");
+    }
+    return this.tx(() => {
+      this.itemRow(itemId);
+      const id = this.run(
+        `INSERT INTO steward_suggestion
+           (item_id, repository, branch, base, worktree, kind, complexity, diffstat, tests)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        itemId,
+        input.repository,
+        input.branch,
+        input.base,
+        input.worktree ?? null,
+        input.kind,
+        input.complexity ?? null,
+        input.diffstat ?? null,
+        input.tests ?? null,
+      );
+      return camel<StewardSuggestion>(
+        this.get<Row>("SELECT * FROM steward_suggestion WHERE id = ?", id),
+      );
+    });
+  }
+
+  listStewardSuggestions(itemId: number): StewardSuggestion[] {
+    return this.all<Row>(
+      "SELECT * FROM steward_suggestion WHERE item_id = ? ORDER BY id",
+      itemId,
+    ).map((r) => camel<StewardSuggestion>(r));
+  }
+
+  private actionRow(id: number): StewardAction {
+    const row = this.get<Row>("SELECT * FROM steward_action WHERE id = ?", id);
+    if (!row) throw new AxiomError("not-found", `Steward action not found: ${id}`);
+    const a = camel<StewardAction & { data: string | null }>(row);
+    return { ...a, data: a.data === null ? null : JSON.parse(a.data) };
+  }
+
+  /** Records something Steward did on its own that can be undone. */
+  recordStewardAction(
+    input: { itemId: number; kind: StewardActionKind; data?: unknown },
+    actor: Actor,
+  ): StewardAction {
+    this.stewardWriter(actor, "record an action");
+    if (!(STEWARD_ACTION_KINDS as readonly string[]).includes(input.kind)) {
+      throw new AxiomError("validation", `unknown action kind "${input.kind}"`);
+    }
+    return this.tx(() => {
+      this.itemRow(input.itemId);
+      return this.actionRow(
+        this.run(
+          "INSERT INTO steward_action (item_id, kind, data, done_at) VALUES (?, ?, ?, ?)",
+          input.itemId,
+          input.kind,
+          input.data === undefined ? null : JSON.stringify(input.data),
+          this.iso(),
+        ),
+      );
+    });
+  }
+
+  markStewardActionUndone(id: number, actor: Actor): StewardAction {
+    this.stewardWriter(actor, "undo an action");
+    return this.tx(() => {
+      const a = this.actionRow(id);
+      if (a.undoneAt !== null) throw new AxiomError("conflict", `action ${id} is already undone`);
+      this.run("UPDATE steward_action SET undone_at = ? WHERE id = ?", this.iso(), id);
+      return this.actionRow(id);
+    });
+  }
+
+  listStewardActions(filter: { itemId?: number } = {}): StewardAction[] {
+    const rows =
+      filter.itemId === undefined
+        ? this.all<{ id: number }>("SELECT id FROM steward_action ORDER BY id")
+        : this.all<{ id: number }>(
+            "SELECT id FROM steward_action WHERE item_id = ? ORDER BY id",
+            filter.itemId,
+          );
+    return rows.map((r) => this.actionRow(r.id));
+  }
+
+  // -- memory
+
+  private memoryRow(id: number): StewardMemory {
+    const row = this.get<Row>("SELECT * FROM steward_memory WHERE id = ?", id);
+    if (!row) throw new AxiomError("not-found", `Steward memory item not found: ${id}`);
+    return camel<StewardMemory>(row);
+  }
+
+  /** Steward may add, change, retire and delete its own memory (03 autonomy rule), as may the owner. */
+  private memoryWriter(actor: Actor, what: string): void {
+    if (actor.kind !== "owner" && actor.kind !== "steward") {
+      throw new AxiomError("permission", `only the owner or Steward can ${what}`);
+    }
+  }
+
+  addStewardMemory(input: StewardMemoryInput, actor: Actor): StewardMemory {
+    this.memoryWriter(actor, "add to Steward's memory");
+    parseWith(stewardMemoryScopeSchema, input.scope, "memory scope");
+    const source = actor.kind === "owner" ? "owner" : input.source;
+    parseWith(stewardMemorySourceSchema, source, "memory source");
+    if (actor.kind === "steward" && source === "owner") {
+      throw new AxiomError("validation", "Steward's own memory items are not from the owner");
+    }
+    if (!input.text.trim()) throw new AxiomError("validation", "a memory item needs text");
+    if (input.scope === "attached") {
+      parseWith(stewardAttachedKindSchema, input.attachedKind, "attached kind");
+      if (!input.attachedKey?.trim()) {
+        throw new AxiomError("validation", "attached memory needs the key it is attached to");
+      }
+    } else if (input.attachedKind !== undefined || input.attachedKey !== undefined) {
+      throw new AxiomError("validation", `${input.scope} memory is not attached to anything`);
+    }
+    const now = this.iso();
+    return this.tx(() =>
+      this.memoryRow(
+        this.run(
+          `INSERT INTO steward_memory
+             (scope, attached_kind, attached_key, text, source, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          input.scope,
+          input.attachedKind ?? null,
+          input.attachedKey?.trim() ?? null,
+          input.text.trim(),
+          source,
+          now,
+          now,
+        ),
+      ),
+    );
+  }
+
+  getStewardMemory(id: number): StewardMemory {
+    return this.memoryRow(id);
+  }
+
+  updateStewardMemory(id: number, text: string, actor: Actor): StewardMemory {
+    this.memoryWriter(actor, "change Steward's memory");
+    if (!text.trim()) throw new AxiomError("validation", "a memory item needs text");
+    return this.tx(() => {
+      this.memoryRow(id);
+      this.run(
+        "UPDATE steward_memory SET text = ?, updated_at = ? WHERE id = ?",
+        text.trim(),
+        this.iso(),
+        id,
+      );
+      return this.memoryRow(id);
+    });
+  }
+
+  /** Keeps the item but stops loading it. */
+  retireStewardMemory(id: number, actor: Actor): StewardMemory {
+    this.memoryWriter(actor, "retire a memory item");
+    return this.tx(() => {
+      const m = this.memoryRow(id);
+      if (m.retiredAt === null) {
+        const now = this.iso();
+        this.run(
+          "UPDATE steward_memory SET retired_at = ?, updated_at = ? WHERE id = ?",
+          now,
+          now,
+          id,
+        );
+      }
+      return this.memoryRow(id);
+    });
+  }
+
+  deleteStewardMemory(id: number, actor: Actor): void {
+    this.memoryWriter(actor, "delete a memory item");
+    this.tx(() => {
+      this.memoryRow(id);
+      this.run("DELETE FROM steward_memory WHERE id = ?", id);
+    });
+  }
+
+  /** Active items by default (not retired), oldest first. */
+  listStewardMemory(options: ListStewardMemoryOptions = {}): StewardMemory[] {
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (!options.includeRetired) where.push("retired_at IS NULL");
+    if (options.scope !== undefined) {
+      where.push("scope = ?");
+      params.push(options.scope);
+    }
+    if (options.attachedKind !== undefined) {
+      where.push("attached_kind = ?");
+      params.push(options.attachedKind);
+    }
+    if (options.attachedKey !== undefined) {
+      where.push("attached_key = ?");
+      params.push(options.attachedKey);
+    }
+    return this.all<Row>(
+      `SELECT * FROM steward_memory ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY id`,
+      ...params,
+    ).map((r) => camel<StewardMemory>(r));
+  }
+
+  // -- chat
+
+  startStewardChat(input: { model: string; effort: Effort }, actor: Actor): StewardChat {
+    this.stewardWriter(actor, "start a chat");
+    parseWith(effortSchema, input.effort, "effort");
+    if (!input.model.trim()) throw new AxiomError("validation", "a chat needs a model");
+    return this.tx(() =>
+      this.chatRow(
+        this.run(
+          "INSERT INTO steward_chat (started_at, model, effort) VALUES (?, ?, ?)",
+          this.iso(),
+          input.model.trim(),
+          input.effort,
+        ),
+      ),
+    );
+  }
+
+  private chatRow(id: number): StewardChat {
+    const row = this.get<Row>("SELECT * FROM steward_chat WHERE id = ?", id);
+    if (!row) throw new AxiomError("not-found", `Steward chat not found: ${id}`);
+    return camel<StewardChat>(row);
+  }
+
+  getStewardChat(id: number): StewardChat {
+    return this.chatRow(id);
+  }
+
+  /** Newest first. */
+  listStewardChats(limit = 50): StewardChat[] {
+    return this.all<Row>("SELECT * FROM steward_chat ORDER BY id DESC LIMIT ?", limit).map((r) =>
+      camel<StewardChat>(r),
+    );
+  }
+
+  addStewardMessage(
+    chatId: number,
+    input: { role: StewardMessageRole; text: string; memoryItemId?: number },
+    actor: Actor,
+  ): StewardMessage {
+    this.stewardWriter(actor, "add a chat message");
+    parseWith(stewardMessageRoleSchema, input.role, "message role");
+    if (!input.text.trim()) throw new AxiomError("validation", "a message needs text");
+    return this.tx(() => {
+      this.chatRow(chatId);
+      if (input.memoryItemId !== undefined) this.memoryRow(input.memoryItemId);
+      const id = this.run(
+        "INSERT INTO steward_message (chat_id, role, text, at, memory_item_id) VALUES (?, ?, ?, ?, ?)",
+        chatId,
+        input.role,
+        input.text,
+        this.iso(),
+        input.memoryItemId ?? null,
+      );
+      return camel<StewardMessage>(this.get<Row>("SELECT * FROM steward_message WHERE id = ?", id));
+    });
+  }
+
+  listStewardMessages(chatId: number): StewardMessage[] {
+    return this.all<Row>("SELECT * FROM steward_message WHERE chat_id = ? ORDER BY id", chatId).map(
+      (r) => camel<StewardMessage>(r),
+    );
+  }
+
   // ---- settings -----------------------------------------------------------
 
   getSetting(key: string): unknown {
+    if (key === STEWARD_SETTING_KEY) return this.getStewardSettings();
     const row = this.get<{ value: string }>("SELECT value FROM setting WHERE key = ?", key);
     if (row) return JSON.parse(row.value);
     if (key === "mutedKinds") return [];

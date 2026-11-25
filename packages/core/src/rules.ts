@@ -143,7 +143,9 @@ export function entryWriteError(actor: Actor, kind: EntryKind): string | null {
     return actor.kind === "owner" ? null : `"${kind}" entries are written only by the owner`;
   }
   if ((SHARED_ENTRY_KINDS as readonly string[]).includes(kind)) {
-    return actor.kind === "axiom" ? `"${kind}" entries are written by agents or the owner` : null;
+    return actor.kind === "axiom"
+      ? `"${kind}" entries are written by agents, Steward or the owner`
+      : null;
   }
   return `unknown entry kind "${kind}"`;
 }
