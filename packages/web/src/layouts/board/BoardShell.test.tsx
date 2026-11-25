@@ -94,7 +94,7 @@ describe("Board shell", () => {
   it("closes the sheet with Escape", async () => {
     open("/topic/run");
     await screen.findByRole("dialog");
-    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
@@ -182,7 +182,10 @@ describe("Board shell", () => {
     expect(btn.getAttribute("aria-expanded")).toBe("true");
     const tray = document.querySelector<HTMLElement>(".bd-tray") as HTMLElement;
     expect(document.querySelector(".bd-app")?.getAttribute("data-tray")).toBe("open");
-    fireEvent.click(within(tray).getByRole("button", { name: "Needs me" }));
+    expect(within(tray).getByRole("link", { name: "Needs me" }).getAttribute("href")).toBe(
+      "/topic/ask",
+    );
+    fireEvent.click(within(tray).getByRole("link", { name: "Needs me" }));
     await waitFor(() => expect(server.called("POST", "/api/topics/ask/open")).toHaveLength(1));
     await screen.findByRole("dialog");
     expect(document.querySelector(".bd-app")?.getAttribute("data-tray")).toBe("closed");
@@ -190,8 +193,9 @@ describe("Board shell", () => {
 
   it("opens the tray on /notifications", async () => {
     open("/notifications");
-    await screen.findByRole("button", { name: "Needs me" });
+    await screen.findAllByRole("link", { name: "Needs me" });
     expect(document.querySelector(".bd-app")?.getAttribute("data-tray")).toBe("open");
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("shows the settings page in place of the board", async () => {

@@ -22,7 +22,7 @@ function Nav({ href, label, count, dot, active, attn, extra }: NavProps) {
     <Link
       href={href}
       className={`nav${attn ? " has-attn" : ""}${extra ? ` ${extra}` : ""}`}
-      aria-current={active ? "true" : undefined}
+      aria-current={active ? "page" : undefined}
     >
       {dot ? <i className={`sdot ${dot}`} aria-hidden="true" /> : null}
       <span className="lbl">{label}</span>
@@ -37,63 +37,77 @@ interface Props {
   health: Health | undefined;
   active: Active;
   now: Date;
+  collapsed: boolean;
+  /** The resize handle; it lives inside the landmark it resizes. */
+  splitter?: React.ReactNode;
 }
 
-export function Rail({ topics, notificationCount, health, active, now }: Props) {
+export function Rail({
+  topics,
+  notificationCount,
+  health,
+  active,
+  now,
+  collapsed,
+  splitter,
+}: Props) {
   const count = (v: ViewId) => topics.filter((t) => inView(t, v)).length;
   return (
-    <nav className="rail" aria-label="Mailboxes">
-      <Nav
-        href={hrefs.all}
-        label={VIEW_LABEL.all}
-        count={topics.length}
-        active={active === "all"}
-      />
-      <h2 className="rail-h">Views</h2>
-      {MAIN_VIEWS.map((v) => (
+    <nav className="rail" id="rail" aria-label="Mailboxes" hidden={collapsed}>
+      <div className="rail-scroll">
         <Nav
-          key={v}
-          href={hrefs.view(v)}
-          label={VIEW_LABEL[v]}
-          count={count(v)}
-          dot={VIEW_DOT[v]}
-          active={active === v}
-          attn={v === "attention" && count(v) > 0}
+          href={hrefs.all}
+          label={VIEW_LABEL.all}
+          count={topics.length}
+          active={active === "all"}
         />
-      ))}
-      <h2 className="rail-h">Piles</h2>
-      {PILES.map((v) => (
+        <h2 className="rail-h">Views</h2>
+        {MAIN_VIEWS.map((v) => (
+          <Nav
+            key={v}
+            href={hrefs.view(v)}
+            label={VIEW_LABEL[v]}
+            count={count(v)}
+            dot={VIEW_DOT[v]}
+            active={active === v}
+            attn={v === "attention" && count(v) > 0}
+          />
+        ))}
+        <h2 className="rail-h">Piles</h2>
+        {PILES.map((v) => (
+          <Nav
+            key={v}
+            href={hrefs.view(v)}
+            label={VIEW_LABEL[v]}
+            count={count(v)}
+            dot={VIEW_DOT[v]}
+            active={active === v}
+          />
+        ))}
         <Nav
-          key={v}
-          href={hrefs.view(v)}
-          label={VIEW_LABEL[v]}
-          count={count(v)}
-          dot={VIEW_DOT[v]}
-          active={active === v}
+          href={hrefs.notifications}
+          label="Notifications"
+          count={notificationCount}
+          active={active === "notifications"}
+          extra="nav-notifs"
         />
-      ))}
-      <Nav
-        href={hrefs.notifications}
-        label="Notifications"
-        count={notificationCount}
-        active={active === "notifications"}
-        extra="nav-notifs"
-      />
-      <Nav href={hrefs.settings} label="Settings" active={active === "settings"} />
-      <div className="health-block">
-        <h2 className="rail-h" style={{ marginTop: 0 }}>
-          Health
-        </h2>
-        <ul className="health">
-          {healthRows(health, now).map((r) => (
-            <li key={r.name} data-state={r.state}>
-              <i className="hd" aria-hidden="true" />
-              <b>{r.name}</b>
-              <p>{r.text}</p>
-            </li>
-          ))}
-        </ul>
+        <Nav href={hrefs.settings} label="Settings" active={active === "settings"} />
+        <div className="health-block">
+          <h2 className="rail-h" style={{ marginTop: 0 }}>
+            Health
+          </h2>
+          <ul className="health">
+            {healthRows(health, now).map((r) => (
+              <li key={r.name} data-state={r.state}>
+                <i className="hd" aria-hidden="true" />
+                <b>{r.name}</b>
+                <p>{r.text}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
+      {splitter}
     </nav>
   );
 }

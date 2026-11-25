@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Redirect } from "wouter";
-import { NotificationsList } from "../../components";
+import { Redirect, useLocation } from "wouter";
+import { NotificationsList, SkipLink, Splitter } from "../../components";
 import { VIEW_LABEL } from "../../lib/domain";
+import { isNarrow, useCollapsed, usePaneSize } from "../../lib/panes";
 import { effectiveTheme } from "../../lib/theme";
 import { SettingsPage } from "../../pages/SettingsPage";
 import { hrefs } from "../shared/routes";
@@ -27,13 +28,36 @@ export function InboxShell() {
     goTopic,
   } = useShell();
   const [query, setQuery] = useState("");
+  const [location] = useLocation();
+  const [railClosed, toggleRail, setRailClosed] = useCollapsed("inbox-rail");
+  const rail = usePaneSize("inbox-rail", { default: 232, min: 168, max: 380 });
+  const listPane = usePaneSize("inbox-list", {
+    default: 400,
+    min: 280,
+    max: () => Math.max(280, window.innerWidth - (railClosed ? 0 : rail.size) - 420),
+  });
+
+  // On a narrow window the rail is an overlay: following a link closes it (not remembered).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: closes when the location changes.
+  useEffect(() => {
+    if (isNarrow()) setRailClosed(true, false);
+  }, [location, setRailClosed]);
 
   // Arrow keys walk the visible list (outside text fields).
   const ordered = useMemo(() => visibleTopics(topics, list, query), [topics, list, query]);
   useEffect(() => {
-    if (route.kind === "settings" || route.kind === "notifications") return;
     const onKey = (e: KeyboardEvent) => {
+      if (e.key === "[" && !isTyping(e) && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        toggleRail();
+        return;
+      }
+      if (e.key === "Escape" && isNarrow() && !railClosed) {
+        setRailClosed(true, false);
+        return;
+      }
       if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      if (route.kind === "settings" || route.kind === "notifications") return;
       if (isTyping(e)) return;
       if (!ordered.length) return;
       e.preventDefault();
@@ -44,7 +68,7 @@ export function InboxShell() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [ordered, selected, route.kind, goTopic]);
+  }, [ordered, selected, route.kind, goTopic, toggleRail, railClosed, setRailClosed]);
 
   if (route.kind === "unknown") return <Redirect to={hrefs.all} replace />;
 
@@ -59,11 +83,37 @@ export function InboxShell() {
   const items = onNotifs ? notifications.length : visibleTopics(topics, list, query).length;
 
   return (
-    <div className={`app${data.error ? " has-banner" : ""}`}>
+    <div
+      className={`app${data.error ? " has-banner" : ""}`}
+      data-rail={railClosed ? "closed" : "open"}
+      data-topic={selected ? "open" : undefined}
+    >
+      <SkipLink />
       <header className="bar">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true" />
-          Axiom
+        <div className="bar-start">
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label={railClosed ? "Show sidebar" : "Hide sidebar"}
+            aria-expanded={!railClosed}
+            aria-controls="rail"
+            aria-keyshortcuts="["
+            title="Show or hide the sidebar ["
+            onClick={toggleRail}
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+              <path
+                d="M2 3.5h12M2 8h12M2 12.5h12"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                fill="none"
+              />
+            </svg>
+          </button>
+          <div className="brand">
+            <span className="brand-mark" aria-hidden="true" />
+            Axiom
+          </div>
         </div>
         <ThemeSwitch
           theme={data.settings?.theme}
@@ -84,15 +134,31 @@ export function InboxShell() {
         health={data.health}
         active={active}
         now={now}
+        collapsed={railClosed}
+        splitter={
+          <Splitter pane={rail} axis="col" edge="end" label="Resize sidebar" className="sp-rail" />
+        }
       />
       {onSettings ? (
-        <SettingsPage />
+        <main className="page" id="main" tabIndex={-1} aria-label="Settings">
+          <SettingsPage />
+        </main>
       ) : (
         <>
-          <section className="list" aria-labelledby="list-title">
+          <section
+            className="list"
+            aria-labelledby="list-title"
+            id={selected ? undefined : "main"}
+            tabIndex={selected ? undefined : -1}
+          >
             <div className="list-head">
               <div className="list-title">
-                <h2 id="list-title">{onNotifs ? "Notifications" : VIEW_LABEL[list]}</h2>
+                {/* The open topic's title is the page's h1; without one the list is. */}
+                {selected ? (
+                  <h2 id="list-title">{onNotifs ? "Notifications" : VIEW_LABEL[list]}</h2>
+                ) : (
+                  <h1 id="list-title">{onNotifs ? "Notifications" : VIEW_LABEL[list]}</h1>
+                )}
                 <span className="count">{items}</span>
               </div>
               {onNotifs ? null : (
@@ -111,6 +177,13 @@ export function InboxShell() {
                 </div>
               )}
             </div>
+            <Splitter
+              pane={listPane}
+              axis="col"
+              edge="end"
+              label="Resize topic list"
+              className="sp-list"
+            />
             <div className="list-body" tabIndex={-1}>
               {onNotifs ? (
                 <NotificationsList
@@ -118,7 +191,7 @@ export function InboxShell() {
                   titleOf={titleOf}
                   hiddenCount={data.hiddenCount}
                   now={now}
-                  onOpen={goTopic}
+                  onOpen={openTopic}
                 />
               ) : data.topics ? (
                 <TopicList
@@ -134,7 +207,11 @@ export function InboxShell() {
               )}
             </div>
           </section>
-          <Reader slug={selected} now={now} />
+          <Reader
+            slug={selected}
+            now={now}
+            backHref={list === "all" ? hrefs.all : hrefs.view(list)}
+          />
         </>
       )}
       <StatusBar topics={topics} live={data.live} now={now} />

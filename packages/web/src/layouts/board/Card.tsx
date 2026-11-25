@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import type { TopicListItem } from "../../api";
 import { ParentChip, StatusPill, TaskBadge } from "../../components";
+import { isPlainClick, onInteractive } from "../../lib/click";
 import { PROVIDER_LABEL, VIEW_STATUSES, type ViewId } from "../../lib/domain";
 import { ago, idleDays } from "../../lib/time";
 import { spineStatus } from "../../lib/topics";
@@ -28,7 +29,9 @@ export function Card({ topic: t, lane, now, onOpen, onMarkStale, onDismissStale 
     <article
       className={`bd-card s-${status}${t.highlighted ? " is-unread" : ""}`}
       data-slug={t.slug}
-      onClick={open}
+      onClick={(e) => {
+        if (isPlainClick(e) && !onInteractive(e)) open();
+      }}
     >
       <div className="bd-card-top">
         <StatusPill status={t.status} />
@@ -41,13 +44,7 @@ export function Card({ topic: t, lane, now, onOpen, onMarkStale, onDismissStale 
         ) : null}
       </div>
       <h3 className="bd-card-title">
-        <Link
-          href={hrefs.topic(t.slug)}
-          onClick={(e) => {
-            e.stopPropagation();
-            open();
-          }}
-        >
+        <Link href={hrefs.topic(t.slug)} onClick={open}>
           {t.title}
         </Link>
       </h3>

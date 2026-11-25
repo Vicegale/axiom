@@ -144,7 +144,7 @@ describe("Inbox shell", () => {
     seed();
     open("/view/ongoing");
     await screen.findByText("Running");
-    expect(screen.getByRole("heading", { level: 2, name: "Ongoing" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "Ongoing" })).toBeTruthy();
     expect(screen.queryByText("Needs me")).toBeNull();
     expect(screen.getByText("Two threads")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("Filter topics in this list"), {
@@ -255,7 +255,7 @@ describe("Inbox shell", () => {
     seed();
     const loc = open("/notifications");
     expect(await screen.findByText("Which way?")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Needs me" }));
+    fireEvent.click(screen.getByRole("link", { name: "Needs me" }));
     await waitFor(() => expect(loc.history?.at(-1)).toBe("/topic/ask"));
     expect(server.called("POST", "/api/topics/ask/open")).toHaveLength(1);
   });

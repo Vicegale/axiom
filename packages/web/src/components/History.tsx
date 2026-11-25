@@ -3,6 +3,7 @@ import type { Entry, Thread } from "../api";
 import type { TaskStatus } from "../lib/domain";
 import { dayKey, dayLabel, hm } from "../lib/time";
 import { KindLabel, kindClass } from "./KindLabel";
+import { Modal } from "./Modal";
 import { StatusPill } from "./StatusPill";
 import { TaskPill } from "./Tasks";
 
@@ -88,24 +89,7 @@ function EntryItem({
         <time dateTime={e.at}>{hm(e.at)}</time>
         {threadName ? <span className="e-thread">{threadName}</span> : null}
         {onDelete ? (
-          confirming ? (
-            <span className="e-confirm">
-              Delete this entry for good?
-              <button
-                type="button"
-                className="btn danger sm"
-                onClick={() => {
-                  setConfirming(false);
-                  onDelete(e.id);
-                }}
-              >
-                Delete
-              </button>
-              <button type="button" className="btn ghost sm" onClick={() => setConfirming(false)}>
-                Cancel
-              </button>
-            </span>
-          ) : (
+          <>
             <button
               type="button"
               className="e-del"
@@ -115,7 +99,38 @@ function EntryItem({
             >
               Delete
             </button>
-          )
+            {confirming ? (
+              <Modal
+                role="alertdialog"
+                className="confirm"
+                labelledBy={`confirm-${e.id}`}
+                onClose={() => setConfirming(false)}
+              >
+                <div className="confirm-body">
+                  <p id={`confirm-${e.id}`}>Delete this entry for good?</p>
+                  <div className="confirm-actions">
+                    <button
+                      type="button"
+                      className="btn ghost sm"
+                      onClick={() => setConfirming(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="btn danger sm"
+                      onClick={() => {
+                        setConfirming(false);
+                        onDelete(e.id);
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </Modal>
+            ) : null}
+          </>
         ) : null}
       </div>
       {e.kind === "status change" && typeof d.task === "string" ? (

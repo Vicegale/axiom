@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link, Redirect } from "wouter";
+import { Link, Redirect, useLocation } from "wouter";
 import { api } from "../../api";
-import { NotificationsList } from "../../components";
+import { NotificationsList, SkipLink, Splitter } from "../../components";
 import { useResource } from "../../data/useResource";
 import { VIEW_IDS, VIEW_LABEL, type ViewId } from "../../lib/domain";
 import { healthRows } from "../../lib/health";
+import { isNarrow, useCollapsed, usePaneSize } from "../../lib/panes";
 import { inView, matchesQuery, type SortKey, sortTopics, viewsOf } from "../../lib/topics";
 import { buildTree } from "../../lib/tree";
 import { SettingsPage } from "../../pages/SettingsPage";
@@ -36,7 +37,8 @@ export function ConsoleShell() {
     navigate,
     now,
     list,
-    selected,
+    selected: routeTopic,
+    lastTopic,
     topics,
     notifications,
     titleOf,
@@ -46,14 +48,33 @@ export function ConsoleShell() {
   } = useShell();
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "last", dir: -1 });
-  const [drawer, setDrawer] = useState(route.kind === "notifications");
+  // The drawer is the /notifications route, like the panel's topic is /topic/<slug>: Back and
+  // Forward close and reopen it. The panel keeps showing the topic you had open behind it.
+  const drawer = route.kind === "notifications";
+  const selected = routeTopic ?? (drawer ? lastTopic : undefined);
   const [cursor, setCursor] = useState(-1);
   const filterRef = useRef<HTMLInputElement>(null);
   const tableRef = useRef<HTMLDivElement>(null);
-
+  const drawerRef = useRef<HTMLElement>(null);
+  const drawerButton = useRef<HTMLButtonElement>(null);
+  const [sideClosed, toggleSide, setSideClosed] = useCollapsed("console-side");
+  // On a narrow window the sidebar is an overlay: following a link closes it (not remembered).
+  const [location] = useLocation();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: closes when the location changes.
   useEffect(() => {
-    if (route.kind === "notifications") setDrawer(true);
-  }, [route.kind]);
+    if (isNarrow()) setSideClosed(true, false);
+  }, [location, setSideClosed]);
+  const side = usePaneSize("console-side", { default: 232, min: 168, max: 400 });
+  const drawerPane = usePaneSize("console-drawer", {
+    default: 304,
+    min: 240,
+    max: () => Math.max(240, window.innerWidth - (sideClosed ? 0 : side.size) - 420),
+  });
+  const panel = usePaneSize("console-panel", {
+    default: 380,
+    min: 120,
+    max: () => Math.max(120, window.innerHeight - 180),
+  });
 
   const tree = useResource(
     "console-tree",
@@ -80,10 +101,20 @@ export function ConsoleShell() {
   const rows = useMemo(() => groups.flatMap((g) => g.topics.map((t) => t.slug)), [groups]);
   const shown = new Set(rows).size;
 
-  const closeDrawer = () => {
-    setDrawer(false);
-    if (route.kind === "notifications") navigate(hrefs.all);
-  };
+  const closeDrawer = () =>
+    navigate(lastTopic ? hrefs.topic(lastTopic) : list === "all" ? hrefs.all : hrefs.view(list));
+  const openDrawer = () => navigate(hrefs.notifications);
+
+  // Focus follows the drawer: into it when it opens, back to its button when it closes.
+  const wasDrawer = useRef(false);
+  useEffect(() => {
+    if (drawer) drawerRef.current?.focus();
+    else if (wasDrawer.current) {
+      const active = document.activeElement;
+      if (!active || active === document.body) drawerButton.current?.focus();
+    }
+    wasDrawer.current = drawer;
+  }, [drawer]);
 
   // j / k walk the rows, / filters, n toggles notifications, t flips the theme.
   const move = (dir: 1 | -1) => {
@@ -102,9 +133,15 @@ export function ConsoleShell() {
       if (e.key === "Escape") {
         if (isTyping(e)) (e.target as HTMLElement).blur();
         else if (drawer) closeDrawer();
+        else if (isNarrow() && !sideClosed) setSideClosed(true, false);
         return;
       }
       if (isTyping(e) || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "[") {
+        e.preventDefault();
+        toggleSide();
+        return;
+      }
       if (route.kind === "settings") return;
       if (e.key === "j" || e.key === "k") {
         e.preventDefault();
@@ -114,7 +151,7 @@ export function ConsoleShell() {
         filterRef.current?.focus();
       } else if (e.key === "n") {
         if (drawer) closeDrawer();
-        else setDrawer(true);
+        else openDrawer();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -133,22 +170,25 @@ export function ConsoleShell() {
   const sortLabel = `${sort.key} ${sort.dir > 0 ? "↑" : "↓"}`;
 
   return (
-    <div className={`cs-app${drawer ? " drawer-open" : ""}`}>
-      <aside className="cs-side" aria-label="Hierarchy and views">
+    <div
+      className={`cs-app${drawer ? " drawer-open" : ""}`}
+      data-side={sideClosed ? "closed" : "open"}
+    >
+      <SkipLink />
+      <aside className="cs-side" id="cs-side" aria-label="Hierarchy and views" hidden={sideClosed}>
         <div className="cs-brand">
           Axiom <small>console</small>
         </div>
         <nav className="cs-tree" aria-label="Hierarchy">
           <Tree nodes={nodes} selected={selected} onOpen={openTopic} />
         </nav>
-        {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would restyle the list */}
-        <div className="cs-views" role="group" aria-label="Views and piles">
+        <nav className="cs-views" aria-label="Views and piles">
           <h2>Saved views</h2>
           <Link
             href={hrefs.all}
             className="cs-view"
             aria-current={
-              !onSettings && list === "all" && route.kind !== "view" ? "true" : undefined
+              !onSettings && list === "all" && route.kind !== "view" ? "page" : undefined
             }
           >
             <span className="cs-glyph" aria-hidden="true">
@@ -162,7 +202,7 @@ export function ConsoleShell() {
               key={v}
               href={hrefs.view(v)}
               className="cs-view"
-              aria-current={route.kind === "view" && route.view === v ? "true" : undefined}
+              aria-current={route.kind === "view" && route.view === v ? "page" : undefined}
             >
               <Glyph status={VIEW_GLYPH_STATUS[v]} />
               {VIEW_LABEL[v]}
@@ -172,23 +212,30 @@ export function ConsoleShell() {
           <Link
             href={hrefs.settings}
             className="cs-view cs-settings-link"
-            aria-current={onSettings ? "true" : undefined}
+            aria-current={onSettings ? "page" : undefined}
           >
             <span className="cs-glyph" aria-hidden="true">
               ⚙
             </span>
             Settings
           </Link>
-        </div>
+        </nav>
+        <Splitter pane={side} axis="col" edge="end" label="Resize sidebar" className="sp-side" />
       </aside>
 
-      <main className="cs-main">
+      <main
+        className="cs-main"
+        id="main"
+        tabIndex={-1}
+        aria-label={onSettings ? "Settings" : "Topics"}
+      >
         {onSettings ? (
           <div className="cs-page">
             <SettingsPage />
           </div>
         ) : (
           <>
+            <h1 className="sr-only">{list === "all" ? "Topics" : `Topics: ${VIEW_LABEL[list]}`}</h1>
             <div className="cs-bar">
               <span className="cs-ctx">
                 Topics <b>{shown}</b> of {topics.length} · sorted by {sortLabel}
@@ -232,6 +279,9 @@ export function ConsoleShell() {
                 <span>
                   <kbd>n</kbd> notifications
                 </span>
+                <span>
+                  <kbd>[</kbd> sidebar
+                </span>
               </div>
             </div>
             <div className="cs-tablewrap" ref={tableRef}>
@@ -256,16 +306,20 @@ export function ConsoleShell() {
                 <p className="cs-empty">Loading.</p>
               )}
             </div>
-            <div className="cs-split" aria-hidden="true">
-              <i />
-            </div>
+            <Splitter
+              pane={panel}
+              axis="row"
+              after
+              label="Resize topic panel"
+              className="cs-split"
+            />
             <Panel slug={selected} listItem={topics.find((t) => t.slug === selected)} now={now} />
           </>
         )}
       </main>
 
       {drawer ? (
-        <aside className="cs-drawer" aria-label="Notifications">
+        <aside className="cs-drawer" aria-label="Notifications" ref={drawerRef} tabIndex={-1}>
           <header>
             <b>Notifications</b>
             <span className="cs-count">{notifications.length}</span>
@@ -279,9 +333,17 @@ export function ConsoleShell() {
               titleOf={titleOf}
               hiddenCount={data.hiddenCount}
               now={now}
-              onOpen={goTopic}
+              onOpen={openTopic}
             />
           </div>
+          <Splitter
+            pane={drawerPane}
+            axis="col"
+            after
+            edge="start"
+            label="Resize notifications"
+            className="sp-drawer"
+          />
         </aside>
       ) : null}
 
@@ -305,8 +367,20 @@ export function ConsoleShell() {
           <button
             type="button"
             className="cs-tg"
+            aria-expanded={!sideClosed}
+            aria-controls="cs-side"
+            aria-keyshortcuts="["
+            title="Show or hide the sidebar ["
+            onClick={toggleSide}
+          >
+            Sidebar
+          </button>
+          <button
+            type="button"
+            className="cs-tg"
+            ref={drawerButton}
             aria-pressed={drawer}
-            onClick={() => (drawer ? closeDrawer() : setDrawer(true))}
+            onClick={() => (drawer ? closeDrawer() : openDrawer())}
           >
             Notifications
             {notifications.length ? <span className="badge">{notifications.length}</span> : null}

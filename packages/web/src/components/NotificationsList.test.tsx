@@ -15,7 +15,12 @@ it("lists notifications with kind, topic title and body, and opens the topic", (
   );
   expect(screen.getByText("agent asked")).toBeTruthy();
   expect(screen.getByText("Which?")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Topic A" }));
+  const link = screen.getByRole("link", { name: "Topic A" });
+  expect(link.getAttribute("href")).toBe("/topic/a");
+  fireEvent.click(link, { ctrlKey: true });
+  fireEvent.click(link, { button: 1 });
+  expect(onOpen).not.toHaveBeenCalled();
+  fireEvent.click(link);
   expect(onOpen).toHaveBeenCalledWith("a");
 });
 

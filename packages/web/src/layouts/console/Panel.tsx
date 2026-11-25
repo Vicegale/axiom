@@ -4,6 +4,7 @@ import { History, kindClass } from "../../components";
 import type { TopicBundle } from "../../data/useTopicDetail";
 import type { EntryKind } from "../../lib/domain";
 import { ENTRY_KINDS } from "../../lib/domain";
+import { tabListKeys } from "../../lib/tabs";
 import { type DetailPart, TopicLoader, TopicSlice, useTopicActions } from "../shared/TopicPane";
 import { Glyph } from "./Glyph";
 
@@ -41,16 +42,29 @@ export function Panel({ slug, listItem, now }: Props) {
   return (
     <section className="cs-panel" aria-label="Selected topic">
       <div className="cs-phead">
+        <h2 className="sr-only">{listItem?.title ?? slug ?? "Topic panel"}</h2>
         {listItem ? <Glyph status={listItem.status} /> : null}
         <span className="cs-pslug">{slug ?? "No topic selected"}</span>
         <span className="cs-ptitle">{listItem?.title ?? ""}</span>
-        <div className="cs-tabs" role="tablist" aria-label="Topic panels">
+        <div
+          className="cs-tabs"
+          role="tablist"
+          aria-label="Topic panels"
+          onKeyDown={tabListKeys(
+            PANEL_TABS.map((t) => t.id),
+            tab,
+            setTab,
+            "cs-tab",
+          )}
+        >
           {PANEL_TABS.map((t) => (
             <button
               key={t.id}
               type="button"
               role="tab"
+              id={`cs-tab-${t.id}`}
               className="cs-tab"
+              tabIndex={t.id === tab ? 0 : -1}
               aria-selected={t.id === tab}
               aria-controls="cs-pbody"
               onClick={() => setTab(t.id)}
@@ -60,7 +74,7 @@ export function Panel({ slug, listItem, now }: Props) {
           ))}
         </div>
       </div>
-      <div className="cs-pbody" id="cs-pbody" role="tabpanel">
+      <div className="cs-pbody" id="cs-pbody" role="tabpanel" aria-labelledby={`cs-tab-${tab}`}>
         {slug ? (
           <TopicLoader slug={slug} emptyClass="cs-empty">
             {(bundle) => (

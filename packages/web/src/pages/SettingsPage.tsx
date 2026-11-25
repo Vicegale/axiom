@@ -30,7 +30,7 @@ export function SettingsPage() {
 
   if (!settings) {
     return (
-      <div className="page">
+      <div className="settings-page">
         <div className="page-inner">
           <p className="empty">Loading.</p>
         </div>
@@ -45,11 +45,11 @@ export function SettingsPage() {
   const mutedTopics = (topics ?? []).filter((t) => t.muted);
 
   return (
-    <div className="page">
+    <div className="settings-page">
       <div className="page-inner">
         <h1>Settings</h1>
         <section className="settings" aria-label="Layout">
-          <h3>Layout</h3>
+          <h2>Layout</h2>
           <div className="opt-list" role="radiogroup" aria-label="Layout">
             {LAYOUTS.map((l) => (
               <label key={l.id} className="opt">
@@ -67,7 +67,7 @@ export function SettingsPage() {
         </section>
 
         <section className="settings" aria-label="Theme">
-          <h3>Theme</h3>
+          <h2>Theme</h2>
           <div className="opt-list" role="radiogroup" aria-label="Theme">
             {THEMES.map((th) => (
               <label key={th.id} className="opt">
@@ -85,7 +85,7 @@ export function SettingsPage() {
         </section>
 
         <section className="settings" aria-label="Notifications">
-          <h3>Notifications</h3>
+          <h2>Notifications</h2>
           <p className="hint">
             Each kind is on by default. Turning one off hides it in the notifications list and as a
             system notification; topics still stay highlighted until you open them.
@@ -103,7 +103,7 @@ export function SettingsPage() {
             ))}
           </div>
 
-          <h3>Muted topics</h3>
+          <h2>Muted topics</h2>
           {mutedTopics.length ? (
             <ul className="muted-list">
               {mutedTopics.map((t) => (
@@ -123,7 +123,7 @@ export function SettingsPage() {
             <p className="hint">No topics are muted.</p>
           )}
 
-          <h3>Browser notifications</h3>
+          <h2>Browser notifications</h2>
           <p className="hint">
             <span
               className="st-dot"
@@ -146,7 +146,7 @@ export function SettingsPage() {
         </section>
 
         <section className="settings" aria-label="Stale topics">
-          <h3>Stale topics</h3>
+          <h2>Stale topics</h2>
           <StaleDays
             key={settings.staleAfterDays}
             days={settings.staleAfterDays}

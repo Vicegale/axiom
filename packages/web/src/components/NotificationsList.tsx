@@ -1,3 +1,4 @@
+import { Link } from "wouter";
 import type { AxiomNotification } from "../api";
 import { NOTIF_STATUS } from "../lib/domain";
 import { stamp } from "../lib/time";
@@ -8,7 +9,8 @@ interface Props {
   titleOf?: (slug: string) => string | undefined;
   hiddenCount?: number;
   now?: Date;
-  /** Clicking the topic title opens the topic (which dismisses its notifications). */
+  /** A plain click on the topic link: marks the topic opened (which dismisses its notifications).
+   *  The link itself navigates, so ctrl-click and middle-click open a tab without calling this. */
   onOpen: (slug: string) => void;
 }
 
@@ -25,9 +27,13 @@ export function NotificationsList({ notifications, titleOf, hiddenCount = 0, now
                 <span className="n-kind">{n.kind}</span>
                 <time dateTime={n.createdAt}>{stamp(n.createdAt, at)}</time>
               </div>
-              <button type="button" className="n-topic" onClick={() => onOpen(n.topicSlug)}>
+              <Link
+                href={`/topic/${encodeURIComponent(n.topicSlug)}`}
+                className="n-topic"
+                onClick={() => onOpen(n.topicSlug)}
+              >
                 {titleOf?.(n.topicSlug) ?? n.topicSlug}
-              </button>
+              </Link>
               {n.body ? <p className="n-body">{n.body}</p> : null}
             </li>
           ))}
