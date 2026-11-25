@@ -645,7 +645,7 @@ describe("install", () => {
   it("--dry-run prints the unit and writes nothing", async () => {
     const home = join(dir, "home");
     let out = "";
-    const started = await main(["install", "--dry-run"], { stdout: (t) => (out += t), home });
+    const started = await main(["install", "--dry-run", "--platform", "linux"], { stdout: (t) => (out += t), home });
     expect(started).toBe(false);
     expect(out).toContain(`ExecStart=${process.execPath}`);
     expect(out).toContain("cli.js");
@@ -657,15 +657,45 @@ describe("install", () => {
   it("writes the unit under a temporary HOME and prints the enable commands", async () => {
     const home = join(dir, "home2");
     let out = "";
-    await main(["install", "--port", "5000"], { stdout: (t) => (out += t), home });
+    await main(["install", "--port", "5000", "--platform", "linux"], { stdout: (t) => (out += t), home });
     expect(out).toContain("systemctl --user daemon-reload");
     expect(out).toContain("systemctl --user enable --now axiom.service");
-    const r = installService({ home, dryRun: true });
+    const r = installService({ home, dryRun: true, platform: "linux" });
     expect(r.path).toBe(join(home, ".config", "systemd", "user", "axiom.service"));
     const { readFileSync } = await import("node:fs");
     const unit = readFileSync(r.path, "utf8");
     expect(unit).toContain("Environment=AXIOM_PORT=5000");
     expect(unit).toMatch(/ExecStart=\S+ \S+cli\.js/);
+  });
+
+  it("keeps the installing PATH, so the service finds claude and t3", () => {
+    const r = installService({ dryRun: true, platform: "linux", pathEnv: "/opt/bin:/usr/bin" });
+    expect(r.unit).toContain('Environment="PATH=/opt/bin:/usr/bin"');
+  });
+
+  it("writes a launchd agent on macOS and prints the launchctl commands", async () => {
+    const home = join(dir, "home-mac");
+    let out = "";
+    await main(["install", "--platform", "darwin", "--db", "/data/a&b.db"], {
+      stdout: (t) => (out += t),
+      home,
+    });
+    const path = join(home, "Library", "LaunchAgents", "local.axiom.server.plist");
+    expect(out).toContain(`launchctl bootstrap gui/$(id -u) ${path}`);
+    const { readFileSync, existsSync } = await import("node:fs");
+    const plist = readFileSync(path, "utf8");
+    expect(plist).toContain("<string>local.axiom.server</string>");
+    expect(plist).toContain(`<string>${process.execPath}</string>`);
+    expect(plist).toContain("<string>/data/a&amp;b.db</string>");
+    expect(plist).toContain("<key>AXIOM_PORT</key>\n    <string>4477</string>");
+    expect(plist).toContain("<key>RunAtLoad</key>");
+    expect(existsSync(join(home, "Library", "Logs", "axiom"))).toBe(true);
+  });
+
+  it("rejects an unknown platform", async () => {
+    await expect(
+      main(["install", "--dry-run", "--platform", "windows"], { stdout: () => {} }),
+    ).rejects.toThrow(/invalid platform/);
   });
 });
 

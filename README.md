@@ -10,15 +10,39 @@ Long term, Axiom replaces the work-log system in GPT Command Center (`docs/work/
 
 ## Status
 
-Spec phase, with the first build planned in [docs/plan/v1-tracker.md](docs/plan/v1-tracker.md). There is no code yet. Start at [docs/spec/README.md](docs/spec/README.md).
+The tracker (plan [docs/plan/v1-tracker.md](docs/plan/v1-tracker.md)) and the Desk ([docs/plan/desk.md](docs/plan/desk.md)) are built; the Steward (spec 03) and the work-log migration (07) are not started. The spec starts at [docs/spec/README.md](docs/spec/README.md).
+
+## Install (Linux and macOS)
+
+Needs Node 24 or newer (Axiom uses `node:sqlite`) and npm; Claude Code (`claude` on PATH) for Claude Code threads and Desk summaries; T3 Code (`~/.t3/bin/t3`) for T3 threads. Both providers are optional.
+
+```sh
+git clone <this repo> ~/projects/axiom   # see "Another machine" below
+cd ~/projects/axiom
+scripts/install.sh                       # --help for options
+axiom server                             # then open http://127.0.0.1:4477
+```
+
+The script checks the requirements, runs `npm ci` and the build, links `axiom` and `axiom-server` into `~/.local/bin` (`--bin-dir` to change it; it tells you if that folder isn't on PATH), links the `axiom` skill into `~/.claude/skills`, and asks before adding Axiom's hooks to `~/.claude/settings.json` (a backup is made; `--yes` / `--no-hooks` to skip the question). `--service` also writes the server's user service, never enabling it. It never starts anything and never touches `~/.t3`.
+
+**Updating:** `git pull && scripts/install.sh`, then restart the server (the web app shows a banner when the server is older than the build).
+
+**Another machine:** the repository is local only. Either clone it over SSH from the machine that has it (`git clone ssh://<host>/home/<you>/projects/axiom`, then `git pull` to update), or carry a bundle: `git bundle create axiom.bundle --all` here, `git clone axiom.bundle ~/projects/axiom` there. Never copy `node_modules`: the install builds it for that system.
+
+**Running the server as a service:** `axiom server install` writes `~/.config/systemd/user/axiom.service` (Linux) or `~/Library/LaunchAgents/local.axiom.server.plist` (macOS, logs in `~/Library/Logs/axiom/`) and prints the `systemctl --user` / `launchctl` commands to enable it. The service keeps the PATH you installed with, so it finds `claude` and `t3`; re-run it after moving them.
+
+**Paths:** the database is `$AXIOM_DB`, else `$XDG_DATA_HOME/axiom/axiom.db`, else `~/.local/share/axiom/axiom.db` (macOS too). T3's data folder is `~/.t3/userdata` (`AXIOM_T3_DIR` overrides it). The hooks call the `node` that ran the install by its full path: after switching Node versions (nvm, fnm), re-run `scripts/install.sh`.
+
+**Removing:** `axiom hooks uninstall`, then delete the `~/.local/bin/axiom*` and `~/.claude/skills/axiom` links and the service file if you wrote one. The database stays until you delete it.
 
 ## Layout
 
 | Path | What lives there |
 | --- | --- |
 | `docs/spec/` | The specification, one file per area, with an index and per-section status |
-| `docs/plan/` | Build plans; the first is [v1-tracker.md](docs/plan/v1-tracker.md) |
-| `docs/plan/` | Build plans; the first is [v1-tracker.md](docs/plan/v1-tracker.md) |
+| `docs/plan/` | Build plans: [v1-tracker.md](docs/plan/v1-tracker.md), [desk.md](docs/plan/desk.md) |
+| `packages/` | `core` (database), `cli` (`axiom`), `server` (API + providers), `web` (the app) |
+| `scripts/` | `install.sh`, the demo seed |
 | `docs/adr/` | Architecture Decision Records for decisions with real alternatives |
 | `CONTEXT.md` | Glossary: the words Axiom uses and what they mean |
 | `AGENTS.md` | Rules for agents working in this repo |
@@ -39,7 +63,7 @@ npm run dev        # start the web dev server
 
 ### Commands on PATH
 
-`~/.local/bin/axiom` and `~/.local/bin/axiom-server` are symlinks to the built entry points (`packages/cli/dist/index.js`, `packages/server/dist/cli.js`), so keep `main` built (`npm run build`).
+`~/.local/bin/axiom` and `~/.local/bin/axiom-server` are symlinks to the built entry points (`packages/cli/dist/index.js`, `packages/server/dist/cli.js`), made by `scripts/install.sh`, so keep `main` built (`npm run build`).
 
 - `axiom server` (or `axiom server start --port N`) runs the server in the foreground at http://127.0.0.1:4477.
-- `axiom server install [--dry-run]` writes `~/.config/systemd/user/axiom.service` and prints the `systemctl --user` commands to enable it. It never enables anything itself.
+- `axiom server install [--dry-run] [--platform linux|darwin]` writes the user service (systemd on Linux, launchd on macOS) and prints the commands to enable it. It never enables anything itself.

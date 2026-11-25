@@ -10,7 +10,7 @@ export interface MainIo {
 }
 
 const USAGE = `usage: axiom-server [--port N] [--db PATH]
-       axiom-server install [--dry-run] [--port N] [--db PATH]
+       axiom-server install [--dry-run] [--port N] [--db PATH] [--platform linux|darwin]
 `;
 
 function parsePort(raw: string | undefined, fallback: number): number {
@@ -30,6 +30,7 @@ export async function main(argv: string[], io: MainIo): Promise<boolean> {
       port: { type: "string" },
       db: { type: "string" },
       "dry-run": { type: "boolean" },
+      platform: { type: "string" },
       help: { type: "boolean", short: "h" },
     },
   });
@@ -40,7 +41,12 @@ export async function main(argv: string[], io: MainIo): Promise<boolean> {
   const port = parsePort(values.port ?? env.AXIOM_PORT, DEFAULT_PORT);
 
   if (positionals[0] === "install") {
+    const platform = values.platform;
+    if (platform !== undefined && platform !== "linux" && platform !== "darwin") {
+      throw new Error(`invalid platform: ${platform} (linux or darwin)`);
+    }
     const result = installService({
+      platform,
       home: io.home,
       dryRun: values["dry-run"],
       port,
