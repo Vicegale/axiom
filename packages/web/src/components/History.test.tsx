@@ -42,6 +42,7 @@ describe("History", () => {
   it("renders each kind with its label, body and extras", () => {
     const { container } = render(
       <History
+        quietActivity={false}
         now={NOW}
         threads={[thread({ id: 7, title: "Spec thread" })]}
         entries={[
@@ -148,6 +149,7 @@ describe("History task status changes", () => {
   it("shows the task key and its task statuses, not topic statuses", () => {
     const { container } = render(
       <History
+        quietActivity={false}
         entries={[
           entry({
             id: 1,
@@ -164,5 +166,35 @@ describe("History task status changes", () => {
     expect(li.textContent).toContain("Task S7");
     expect(li.querySelector(".pill.s-idle")?.textContent).toBe("to do");
     expect(li.querySelector(".pill.s-wip")?.textContent).toBe("wip");
+  });
+});
+
+describe("History quiet activity", () => {
+  it("hides status changes and thread events behind a toggle, remembered per browser", () => {
+    const entries = [
+      entry({ id: 1, kind: "decision", body: "Chose A" }),
+      entry({
+        id: 2,
+        kind: "status change",
+        author: "axiom",
+        body: null,
+        data: { from: "idle", to: "wip", reason: "thread working" },
+      }),
+      entry({ id: 3, kind: "thread event", author: "axiom", body: "Thread working" }),
+    ];
+    try {
+      localStorage.removeItem("axiom.history.activity");
+    } catch {}
+    const { unmount } = render(<History now={NOW} entries={entries} />);
+    expect(screen.getByText("Chose A")).toBeTruthy();
+    expect(screen.queryByText("Thread working")).toBeNull();
+    const toggle = screen.getByRole("button", { name: /Show 2 status changes and thread events/ });
+    fireEvent.click(toggle);
+    expect(screen.getByText("Thread working")).toBeTruthy();
+    unmount();
+    render(<History now={NOW} entries={entries} />);
+    expect(screen.getByText("Thread working")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Hide status changes and thread events" }));
+    expect(screen.queryByText("Thread working")).toBeNull();
   });
 });

@@ -17,6 +17,23 @@ interface Props {
   now?: Date;
   /** Owner-only delete (for leaked secrets). Omit to hide the control. */
   onDelete?: (id: number) => void;
+  /**
+   * Hide Axiom's bookkeeping (thread events and status changes) behind a toggle. On by default;
+   * a caller with its own kind filter (the Console) turns it off.
+   */
+  quietActivity?: boolean;
+}
+
+/** Entry kinds that record what threads and statuses did, rather than what anyone said or found. */
+export const ACTIVITY_KINDS: ReadonlySet<string> = new Set(["thread event", "status change"]);
+const SHOW_KEY = "axiom.history.activity";
+
+function readShow(): boolean {
+  try {
+    return localStorage.getItem(SHOW_KEY) === "1";
+  } catch {
+    return false;
+  }
 }
 
 interface Data {
@@ -37,11 +54,29 @@ function newestFirst(a: Entry, b: Entry): number {
 }
 
 /** History grouped by day. One component, two densities, for every layout. */
-export function History({ entries, threads = [], density = "roomy", now, onDelete }: Props) {
+export function History({
+  entries,
+  threads = [],
+  density = "roomy",
+  now,
+  onDelete,
+  quietActivity = true,
+}: Props) {
   const at = now ?? new Date();
+  const [show, setShow] = useState(readShow);
   if (entries.length === 0) return <p className="empty-line">No history yet.</p>;
+  const activity = quietActivity ? entries.filter((e) => ACTIVITY_KINDS.has(e.kind)).length : 0;
+  const visible =
+    quietActivity && !show ? entries.filter((e) => !ACTIVITY_KINDS.has(e.kind)) : entries;
+  const toggle = () => {
+    const next = !show;
+    setShow(next);
+    try {
+      localStorage.setItem(SHOW_KEY, next ? "1" : "0");
+    } catch {}
+  };
   const groups: { key: string; label: string; items: Entry[] }[] = [];
-  for (const e of [...entries].sort(newestFirst)) {
+  for (const e of [...visible].sort(newestFirst)) {
     const key = dayKey(e.at);
     let g = groups.find((x) => x.key === key);
     if (!g) {
@@ -52,6 +87,18 @@ export function History({ entries, threads = [], density = "roomy", now, onDelet
   }
   return (
     <>
+      {activity > 0 ? (
+        <p className="hist-quiet">
+          <button type="button" className="linkish" aria-pressed={show} onClick={toggle}>
+            {show
+              ? "Hide status changes and thread events"
+              : `Show ${activity} status change${activity === 1 ? "" : "s"} and thread event${activity === 1 ? "" : "s"}`}
+          </button>
+        </p>
+      ) : null}
+      {groups.length === 0 ? (
+        <p className="empty-line">Only status changes and thread events so far.</p>
+      ) : null}
       {groups.map((g) => (
         <section key={g.key} aria-label={g.label}>
           <h3 className="day">{g.label}</h3>
