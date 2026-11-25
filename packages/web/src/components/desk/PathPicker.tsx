@@ -51,7 +51,7 @@ const MAX_HEIGHT = 352;
 const EDGE = 8;
 export const MAX_PATH = 36;
 
-/** `/home/u/x` as `~/x`, and a long path as `~/Documents/notes/…/GPTCommandCenter`. */
+/** `/home/u/x` as `~/x`, and a long path as `~/Documents/work/…/my-project`. */
 export function shortPath(path: string, home: string | null, max = MAX_PATH): string {
   let p = path;
   if (home && (p === home || p.startsWith(`${home}/`))) p = `~${p.slice(home.length)}`;
