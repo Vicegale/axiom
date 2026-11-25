@@ -4,8 +4,15 @@ import { api, type DeskThread, type DeskTopic } from "../../api";
 import { useResource } from "../../data/useResource";
 import { hrefs } from "../../layouts/shared/routes";
 import { isPlainClick } from "../../lib/click";
-import { runLine, threadLabel, threadsByActivity } from "../../lib/desk";
+import {
+  activityAge,
+  runLine,
+  runningActivity,
+  threadLabel,
+  threadsByActivity,
+} from "../../lib/desk";
 import { ago } from "../../lib/time";
+import { useNow } from "../../lib/useNow";
 import { StatusPill } from "../StatusPill";
 import { ReplyMarkdown } from "./LazyReply";
 import { ReplyBox } from "./ReplyBox";
@@ -74,6 +81,36 @@ function ReplyBody({
     <section className="dk-md dv-prose" tabIndex={0} aria-label="Latest reply">
       <ReplyMarkdown text={data.text} slug={slug} theme={theme} threadId={thread.id} />
     </section>
+  );
+}
+
+/** How old the step is once it is more than a few seconds old; ticks on its own clock. */
+function ActivityAge({ at }: { at: string }) {
+  const age = activityAge(at, useNow(5000));
+  return age ? (
+    <time className="dk-actage" dateTime={at}>
+      · {age}
+    </time>
+  ) : null;
+}
+
+/** One fixed-height line: the run state, and for a running thread its newest step. */
+function RunLine({ thread, now }: { thread: DeskThread; now: Date }) {
+  const step = runningActivity(thread);
+  return (
+    <p className={`dk-run${step ? " live" : ""}`}>
+      <span className={`dk-rundot s-${thread.status}`} aria-hidden="true" />
+      {step ? (
+        <>
+          <span className="dk-runtext" title={`running · ${step}`}>
+            running · <span className="dk-act">{step}</span>
+          </span>
+          {thread.activity ? <ActivityAge at={thread.activity.at} /> : null}
+        </>
+      ) : (
+        <span className="dk-runtext">{runLine(thread, now)}</span>
+      )}
+    </p>
   );
 }
 
@@ -196,10 +233,7 @@ export function DeskCard({ topic, now, theme, move, onFavorite, onHide, onOpen, 
 
       {thread ? (
         <>
-          <p className="dk-run">
-            <span className={`dk-rundot s-${thread.status}`} aria-hidden="true" />
-            {runLine(thread, now)}
-          </p>
+          <RunLine thread={thread} now={now} />
           <div className="dk-now" aria-busy={thread.summaryPending ? true : undefined}>
             <p className="dk-label">
               Now

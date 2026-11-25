@@ -1,5 +1,6 @@
 import type { DatabaseSync, SQLInputValue, StatementSync } from "node:sqlite";
 import type { z } from "zod";
+import { oneLine } from "./activity.js";
 import {
   type Actor,
   DEFAULT_STALE_AFTER_DAYS,
@@ -14,7 +15,6 @@ import {
   type View,
   type WorkItemStatus,
 } from "./constants.js";
-import { oneLine } from "./activity.js";
 import { AxiomError } from "./errors.js";
 import {
   entryWriteError,

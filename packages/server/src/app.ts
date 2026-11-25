@@ -389,6 +389,9 @@ export function createApp(ctx: AppContext): Hono {
           ? null
           : { now: t.summaryNow, next: t.summaryNext ?? "Nothing", at: t.summaryAt },
       summaryError: t.summaryError,
+      // The newest step the agent took; the card shows it while the thread runs.
+      activity:
+        t.activityText === null ? null : { text: t.activityText, at: t.activityAt ?? t.startedAt },
       hasReply: t.lastReply !== null,
       // A reply newer than its summary, with summaries on and no error: one is being made.
       summaryPending:

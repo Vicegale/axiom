@@ -12,7 +12,9 @@ if (rest[0] === "hook") {
   // Hooks run before every tool call: load only what they need, not the whole command tree.
   const { runHook } = await import("./hook.js");
   const at = argv.indexOf("--db");
-  process.exitCode = runHook(rest[1] ?? "", process.env, { db: at >= 0 ? argv[at + 1] : undefined });
+  process.exitCode = runHook(rest[1] ?? "", process.env, {
+    db: at >= 0 ? argv[at + 1] : undefined,
+  });
 } else if (forServer) {
   const { runServerCli } = await import("@axiom/server");
   runServerCli(forServer, { stdout: (t) => process.stdout.write(t) }).catch((e: unknown) => {

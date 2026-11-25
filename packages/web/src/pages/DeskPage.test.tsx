@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { memoryLocation } from "wouter/memory-location";
@@ -385,5 +387,101 @@ describe("the Desk", () => {
     });
     await screen.findByRole("article", { name: "Bravo renamed" });
     expect(within(card("Alpha")).getByText("done")).toBeTruthy();
+  });
+});
+
+describe("the live activity line", () => {
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+  const setActivity = (a: { text: string; at: string } | null, status = "wip") => {
+    const threads = server.desk[0]?.threads ?? [];
+    Object.assign(threads[1] ?? {}, { activity: a, status });
+  };
+  const run = (name = "Alpha") =>
+    within(card(name))
+      .getByText(/^running/, { selector: ".dk-runtext" })
+      .closest(".dk-run");
+
+  it("shows 'running · <step>' with a pulsing dot while the thread runs, the full text in the title", async () => {
+    setActivity({ text: "$ npm test -- --run", at: ago(2000) });
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    const line = run() as HTMLElement;
+    expect(line.classList.contains("live")).toBe(true);
+    expect(line.textContent).toContain("running · $ npm test -- --run");
+    expect(line.querySelector(".dk-runtext")?.getAttribute("title")).toBe(
+      "running · $ npm test -- --run",
+    );
+    expect(line.querySelector("time")).toBeNull(); // a fresh step carries no age
+  });
+
+  it("keeps a long step on one line, with the whole text available in the title", async () => {
+    const long = `$ ${"very-long-command ".repeat(30)}`.trim();
+    setActivity({ text: long, at: ago(1000) });
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    const text = (run() as HTMLElement).querySelector(".dk-runtext") as HTMLElement;
+    expect(text.getAttribute("title")).toBe(`running · ${long}`);
+    expect(text.querySelectorAll("br")).toHaveLength(0);
+  });
+
+  it("adds how old the step is once it is more than about ten seconds old", async () => {
+    setActivity({ text: "Reading app.ts", at: ago(45_000) });
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    const time = (run() as HTMLElement).querySelector("time") as HTMLElement;
+    expect(time.textContent).toMatch(/^· 4\ds ago$/);
+  });
+
+  it("says plain 'running' when there is no step yet", async () => {
+    setActivity(null);
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    const line = within(card("Alpha")).getByText("running", { selector: ".dk-runtext" });
+    expect(line.closest(".dk-run")?.classList.contains("live")).toBe(false);
+  });
+
+  it("shows the finished line, not the step, when the thread is not running", async () => {
+    setActivity({ text: "$ npm test", at: ago(5000) }, "idle");
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    const line = card("Alpha").querySelector(".dk-run") as HTMLElement;
+    expect(line.textContent).toMatch(/^finished /);
+    expect(line.textContent).not.toContain("npm test");
+    expect(line.classList.contains("live")).toBe(false);
+  });
+
+  it("updates live when the server announces a change", async () => {
+    class ES {
+      static last: ES | undefined;
+      fns = new Map<string, (() => void)[]>();
+      constructor() {
+        ES.last = this;
+      }
+      addEventListener(t: string, f: () => void) {
+        this.fns.set(t, [...(this.fns.get(t) ?? []), f]);
+      }
+      close() {}
+    }
+    vi.stubGlobal("EventSource", ES);
+    setActivity({ text: "Reading a.ts", at: ago(1000) });
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    expect(run()?.textContent).toContain("Reading a.ts");
+    setActivity({ text: "Editing b.ts", at: ago(500) });
+    await act(async () => {
+      for (const f of ES.last?.fns.get("change") ?? []) f();
+    });
+    await waitFor(() => expect(run()?.textContent).toContain("Editing b.ts"));
+  });
+
+  it("is accessible and the pulse respects reduced motion", async () => {
+    setActivity({ text: "Thinking: weighing the options", at: ago(1000) });
+    start();
+    await screen.findByRole("article", { name: "Alpha" });
+    await expectAccessible(document.body);
+    const css = readFileSync(join(process.cwd(), "packages/web/src/styles/desk.css"), "utf8");
+    expect(css).toMatch(
+      /prefers-reduced-motion[^{]*\{[\s\S]*\.dk-run\.live \.dk-rundot \{ animation: none/,
+    );
   });
 });

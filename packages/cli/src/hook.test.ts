@@ -421,7 +421,12 @@ describe("axiom hook pre-tool (the activity line)", () => {
     ["Glob", "Glob", { pattern: "**/*.ts" }, "Searching **/*.ts"],
     ["WebFetch", "WebFetch", { url: "https://example.com/a/b?q=1" }, "Fetching example.com"],
     ["WebSearch", "WebSearch", { query: "secret" }, "Searching the web"],
-    ["Task", "Task", { description: "Check the schema", prompt: "p" }, "Subagent: Check the schema"],
+    [
+      "Task",
+      "Task",
+      { description: "Check the schema", prompt: "p" },
+      "Subagent: Check the schema",
+    ],
     ["Agent", "Agent", { description: "Review", prompt: "p" }, "Subagent: Review"],
     ["mcp", "mcp__t3-code__t3_thread_read", {}, "t3-code: t3_thread_read"],
     ["other", "TodoWrite", { todos: [] }, "TodoWrite"],

@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { deskThread, deskTopic } from "../test/fakeApi";
-import { moveTo, ownerIsNext, runLine, sortDesk, threadsByActivity } from "./desk";
+import {
+  activityAge,
+  moveTo,
+  ownerIsNext,
+  runLine,
+  runningActivity,
+  sortDesk,
+  threadsByActivity,
+} from "./desk";
 
 const slugs = (l: { slug: string }[]) => l.map((t) => t.slug);
 
@@ -72,4 +80,22 @@ it("moves a slug to an index, clamped", () => {
   expect(moveTo(["a", "b", "c"], "a", 2)).toEqual(["b", "c", "a"]);
   expect(moveTo(["a", "b", "c"], "c", -3)).toEqual(["c", "a", "b"]);
   expect(moveTo(["a", "b", "c"], "b", 99)).toEqual(["a", "c", "b"]);
+});
+
+it("words how old an activity line is, and stays quiet while it is fresh", () => {
+  const now = new Date("2026-11-25T10:00:00Z");
+  const at = (s: number) => new Date(now.getTime() - s * 1000).toISOString();
+  expect(activityAge(at(3), now)).toBeNull();
+  expect(activityAge(at(9), now)).toBeNull();
+  expect(activityAge(at(12), now)).toBe("12s ago");
+  expect(activityAge(at(59), now)).toBe("59s ago");
+  expect(activityAge(at(180), now)).toBe("3 min ago");
+  expect(activityAge("not a date", now)).toBeNull();
+});
+
+it("uses the step only for a running thread", () => {
+  const activity = { text: "$ ls", at: "2026-11-25T10:00:00Z" };
+  expect(runningActivity(deskThread({ id: 1, status: "wip", activity }))).toBe("$ ls");
+  expect(runningActivity(deskThread({ id: 1, status: "idle", activity }))).toBeNull();
+  expect(runningActivity(deskThread({ id: 1, status: "wip" }))).toBeNull();
 });

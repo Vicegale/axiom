@@ -145,6 +145,31 @@ export class T3Fixture {
     return id;
   }
 
+  /** A step of a thread (`type` and `payload` as T3 stores them); the ordinal sorts them. */
+  item(
+    threadId: string,
+    ordinal: number,
+    type: string,
+    payload: Record<string, unknown> = {},
+    updatedAt = "2026-11-25T09:00:00.000Z",
+  ): this {
+    this.db
+      .prepare(
+        `INSERT INTO orchestration_v2_projection_turn_items
+           (turn_item_id, thread_id, ordinal, type, status, updated_at, payload_json)
+         VALUES (?, ?, ?, ?, 'completed', ?, ?)`,
+      )
+      .run(
+        `item-${seq++}`,
+        threadId,
+        ordinal,
+        type,
+        updatedAt,
+        JSON.stringify({ type, ordinal, ...payload }),
+      );
+    return this;
+  }
+
   resolve(requestId: string): this {
     this.db
       .prepare(

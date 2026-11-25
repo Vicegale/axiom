@@ -5,6 +5,7 @@ const pkg = require("../package.json") as { version: string };
 
 export const AXIOM_VERSION: string = pkg.version;
 
+export { describeToolUse, oneLine } from "./activity.js";
 export type {
   AttachThreadInput,
   Clock,
@@ -16,7 +17,6 @@ export type {
   ListTopicsFilter,
   UpdateTaskInput,
 } from "./axiom.js";
-export { describeToolUse, oneLine } from "./activity.js";
 export { Axiom } from "./axiom.js";
 export * from "./constants.js";
 export type { OpenOptions } from "./database.js";

@@ -68,6 +68,22 @@ export function runLine(t: DeskThread, now: Date): string {
   return `${t.open ? "finished" : "ended"} ${ago(at, now)}`;
 }
 
+/** An activity line older than this shows how old it is. */
+export const ACTIVITY_FRESH_MS = 10_000;
+
+/** "12s ago", "3 min ago": how old the activity line is, or null while it is fresh (or unknown). */
+export function activityAge(at: string, now: Date): string | null {
+  const ms = now.getTime() - new Date(at).getTime();
+  if (!Number.isFinite(ms) || ms < ACTIVITY_FRESH_MS) return null;
+  if (ms < 60_000) return `${Math.floor(ms / 1000)}s ago`;
+  return ago(at, now);
+}
+
+/** What a running thread's line says after "running": its newest step, when it has one. */
+export function runningActivity(t: DeskThread): string | null {
+  return t.status === "wip" && t.activity ? t.activity.text : null;
+}
+
 /** A thread's label in the selector. */
 export function threadLabel(t: DeskThread): string {
   return t.title?.trim() || `Thread ${t.id}`;
