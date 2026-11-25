@@ -34,6 +34,12 @@ The owner's reference for it is a screen called **Desk** ([docs/design/reference
 - 2026-11-25: The Desk is a grid of topic cards as in the reference: several agents' work on one screen; cards per row and sort order chosen in the top bar; favourites; drag to reorder.
 - 2026-11-25: Each card shows one of its topic's threads (selectable), a Haiku summary of that thread's latest reply plus what the owner must do next, and the full reply collapsible as Markdown.
 - 2026-11-25: The owner can reply from the card: to the selected thread, or as a new thread attached to the topic, with a model and effort picker. The reply box is hidden until the owner chooses to reply.
+- 2026-11-25: Replying works for both providers: T3 threads (through T3's API) and direct Claude Code sessions (by resuming the session).
+- 2026-11-25: The Haiku summary is made each time a thread stops, using the owner's subscription (not an API key).
+- 2026-11-25: Sort orders: "Ready first" puts topics where the owner is next on top (waiting for them, stopped with a question, in review); "Fixed" is the owner's drag order. Favourites are always first in both.
+- 2026-11-25: Hiding a topic hides it from the Desk only; it stays in the tracker.
+- 2026-11-25: The owner can approve or deny a thread's permission prompt from its card.
+- 2026-11-25: "Steward" is the proactive agent (03), shown on the Desk as an on/off toggle. It is built later; the toggle comes with it.
 
 ## Open questions
 
@@ -49,12 +55,18 @@ The owner's reference for it is a screen called **Desk** ([docs/design/reference
 6. Until the multi-task UI exists, where do agents run and create topics from?
    - Answered by the first build: Claude Code and T3 sessions using the `axiom` CLI and skill.
 7. **How does Axiom send a message?** For T3 threads, through T3's API (`orchestration.dispatchCommand` / `launchThread`), which needs an authenticated connection (Axiom only reads T3's database today, ADR 0005). For direct Claude Code sessions, `claude -p --resume <session>` in the session's folder, which clashes with a session still open in a terminal. Which providers can be replied to in the first Desk build?
+   - Answered 2026-11-25: both. Open: T3's API needs an authenticated connection (research before building); a Claude Code session still open in a terminal cannot safely be resumed elsewhere (proposal: the card offers the resume command instead while the session is open).
 8. **The Haiku summary:** when is it made (every time a thread stops), how (a `claude -p --model haiku` call on the owner's subscription, or the API with a key), what goes in (the last reply only, or recent history), and is it stored as a history entry? Which provider supplies the reply text (T3's database has messages; Claude Code transcripts are files)?
+   - Partly answered 2026-11-25: made each time a thread stops, on the subscription (`claude -p --model haiku`). Proposal: the latest summary is kept on the thread (not as a history entry, so history isn't flooded); confirm.
 9. **Sort orders:** what do "Ready first" and "Fixed" mean exactly? A guess: Ready first = topics where the owner is next (hitl, stopped with a question, review) on top; Fixed = the owner's manual drag order. Are favourites always first?
+   - Answered 2026-11-25: yes, as guessed; favourites always first.
 10. **Hide:** is "hidden" a Desk-only filter (the topic stays in the tracker), and how does a hidden topic come back?
+   - Answered 2026-11-25: Desk only. (Coming back: the top bar's "N hidden" opens the list to unhide.)
 11. **Cards and statuses:** the reference shows a workflow pill (`doing`, `review`, `blocked`) next to a run pill (`idle`). Are these the topic status (01) and the selected thread's status, with Axiom's names?
 12. **Approvals:** when a thread waits on a permission prompt, can the owner approve or deny from the card?
+   - Answered 2026-11-25: yes.
 13. **New topic:** does `+ New topic` create a topic and start its first thread with a first message (provider, project folder, model, effort)?
 14. **The ctx meter:** context-window usage of the selected thread; where does it come from (T3 has it; Claude Code transcripts have token counts)?
 15. **"Steward":** is that the proactive agent of 03, shown as an on/off toggle on the Desk?
+   - Answered 2026-11-25: yes; implemented later with 03.
 16. Reply box: hidden behind a "Reply" button on the card. Does it close again after sending, and do drafts survive a refresh?
