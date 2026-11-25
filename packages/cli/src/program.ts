@@ -1,3 +1,6 @@
+import { homedir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   AXIOM_VERSION,
   AxiomError,
@@ -15,6 +18,8 @@ import {
 import { Argument, Command, CommanderError, Option } from "commander";
 import { Context, currentThreadId, UsageError } from "./context.js";
 import { entryText, table, topicTable, topicText, when } from "./format.js";
+import { HOOK_EVENTS, runHook } from "./hook.js";
+import { installInto, readSettings, uninstallFrom, writeSettings } from "./hooks-settings.js";
 
 /** What a handler returns: text for people, data for `--json`. */
 interface Output {
@@ -477,6 +482,47 @@ export function buildProgram(env: NodeJS.ProcessEnv, write: (s: string) => void)
     }),
   );
 
+  // ---- Claude Code hooks -----------------------------------------------------------------
+  // `axiom hook <event>` is handled in main() before commander runs (it must never fail); the
+  // command is registered here only so it shows in --help.
+  sub(program, "hook", "record a Claude Code hook event from stdin (used by installed hooks)")
+    .addArgument(new Argument("<event>").choices(HOOK_EVENTS))
+    .action(() => {});
+
+  const hooks = sub(program, "hooks", "install or remove Axiom's Claude Code hooks");
+  const hooksCommand = (name: string, description: string, change: typeof installInto) =>
+    sub(hooks, name, description)
+      .option("--settings <path>", "settings file (default: ~/.claude/settings.json)")
+      .option("--dry-run", "print the resulting settings and write nothing")
+      .addOption(new Option("--cli-entry <path>", "built CLI entry to call").hideHelp())
+      .action(
+        run((_ctx, _args, o) => {
+          const path = resolve(o.settings ?? join(homedir(), ".claude", "settings.json"));
+          const entry = resolve(
+            o.cliEntry ?? join(dirname(fileURLToPath(import.meta.url)), "index.js"),
+          );
+          const current = readSettings(path);
+          const next = change(current, process.execPath, entry);
+          if (o.dryRun) {
+            const text = JSON.stringify(next, null, 2);
+            return { data: next, text };
+          }
+          const { backup, changed } = writeSettings(path, current, next);
+          const text = changed
+            ? `${name === "install" ? "Installed" : "Removed"} Axiom hooks in ${path}${backup ? ` (backup: ${backup})` : ""}.`
+            : `No changes needed in ${path}.`;
+          return { data: { path, changed, backup: backup ?? null }, text };
+        }),
+      );
+  hooksCommand(
+    "install",
+    "add Axiom's hooks to Claude Code settings (idempotent, with backup)",
+    installInto,
+  );
+  hooksCommand("uninstall", "remove Axiom's hooks from Claude Code settings", (s) =>
+    uninstallFrom(s),
+  );
+
   return program;
 }
 
@@ -507,6 +553,10 @@ export function main(
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--db") i++;
     else if (argv[i] !== "--json") rest.push(argv[i] as string);
+  }
+  if (rest[0] === "hook") {
+    const at = argv.indexOf("--db");
+    return runHook(rest[1] ?? "", env, { db: at >= 0 ? argv[at + 1] : undefined });
   }
   if (rest.length === 0) {
     io.out(program.helpInformation().replace(/\n$/, ""));

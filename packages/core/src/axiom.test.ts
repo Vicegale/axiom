@@ -86,6 +86,24 @@ describe("thread events and status", () => {
     expect(ax.getTopic("demo").openThreadStatuses).toEqual([]);
   });
 
+  it("reopening clears ended_at, writes a thread event, and is a no-op on an open thread", () => {
+    const { thread } = topicWithThread(ax);
+    ax.threadWorking(thread.id);
+    ax.threadStopped(thread.id);
+    ax.threadEnded(thread.id, "session end");
+    const before = ax.listEntries("demo").length;
+    const reopened = ax.threadReopened(thread.id);
+    expect(reopened.endedAt).toBeNull();
+    expect(reopened.endReason).toBeNull();
+    expect(reopened.status).toBe("idle");
+    expect(ax.getTopic("demo").openThreadStatuses).toEqual(["idle"]);
+    const entries = ax.listEntries("demo");
+    expect(entries).toHaveLength(before + 1);
+    expect(entries.at(-1)).toMatchObject({ kind: "thread event", body: "Thread resumed" });
+    ax.threadReopened(thread.id);
+    expect(ax.listEntries("demo")).toHaveLength(before + 1);
+  });
+
   it("a thread that ends while still running goes idle and the topic follows", () => {
     const { thread } = topicWithThread(ax);
     ax.threadWorking(thread.id);
