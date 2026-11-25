@@ -9,10 +9,10 @@ import type {
   TopicDetailData,
 } from "../api";
 import type { TaskStatus } from "../lib/domain";
-import { LINK_LABEL, LINK_ORDER, PROVIDER_LABEL } from "../lib/domain";
+import { LINK_ORDER, PROVIDER_LABEL } from "../lib/domain";
 import { ago, fullStamp, idleDays, stamp } from "../lib/time";
 import { type Density, History } from "./History";
-import { Lock } from "./Icons";
+import { ParentChip } from "./ParentChip";
 import { StatusPill } from "./StatusPill";
 import { T3Picker } from "./T3Picker";
 import { GraphSection, TasksSection } from "./Tasks";
@@ -128,6 +128,26 @@ export function TopicDetail({
         <dd>
           <Parents parents={t.parents} ticketEpics={ticketEpics} />
         </dd>
+        {t.links.length ? (
+          <>
+            <dt>Links</dt>
+            <dd>
+              <Links links={t.links} />
+            </dd>
+          </>
+        ) : null}
+        {t.monitorTargets.length ? (
+          <>
+            <dt>Watching</dt>
+            <dd>
+              <Monitors
+                targets={t.monitorTargets}
+                links={t.links}
+                onConfirm={actions.onConfirmMonitor}
+              />
+            </dd>
+          </>
+        ) : null}
         <dt>Created</dt>
         <dd>{fullStamp(t.createdAt)}</dd>
         <dt>Last worked</dt>
@@ -173,29 +193,6 @@ export function TopicDetail({
         </>
       ) : null}
 
-      <div className="two">
-        <section className="sec" aria-labelledby="h-links">
-          <div className="sec-h">
-            <div className="sec-title">
-              <h2 id="h-links">Links</h2>
-            </div>
-          </div>
-          <Links links={t.links} />
-        </section>
-        <section className="sec" aria-labelledby="h-mons">
-          <div className="sec-h">
-            <div className="sec-title">
-              <h2 id="h-mons">Monitoring targets</h2>
-            </div>
-          </div>
-          <Monitors
-            targets={t.monitorTargets}
-            links={t.links}
-            onConfirm={actions.onConfirmMonitor}
-          />
-        </section>
-      </div>
-
       <section className="sec" aria-labelledby="h-hist">
         <div className="sec-h">
           <div className="sec-title">
@@ -233,16 +230,7 @@ function Parents({
         const under = p.kind === "ticket" ? ticketEpics[p.slug] : undefined;
         return (
           <li key={`${p.kind}:${p.slug}`}>
-            <span className="p-kind">{p.kind === "ticket" ? "Ticket" : "Epic"}</span>
-            <span className="p-title">{p.title}</span>
-            {p.jiraKey ? (
-              <span className="p-st">
-                {p.jiraKey} {p.jiraStatus ?? ""}
-                {p.locked ? <Lock /> : null}
-              </span>
-            ) : (
-              <span className="p-st">{p.status}</span>
-            )}
+            <ParentChip parent={p} detailed />
             {under ? <span className="p-under">in {under}</span> : null}
           </li>
         );
@@ -271,28 +259,47 @@ function ThreadRow({ thread: th, now }: { thread: Thread; now: Date }) {
   );
 }
 
+/** An http(s) URL, or a GitHub "owner/repo#N" pull request, as an address; otherwise null. */
+function hrefOf(l: LinkItem): string | null {
+  if (/^https?:\/\//.test(l.target)) return l.target;
+  const pr = l.kind === "pr" ? /^([\w.-]+\/[\w.-]+)#(\d+)$/.exec(l.target) : null;
+  return pr ? `https://github.com/${pr[1]}/pull/${pr[2]}` : null;
+}
+
+function LinkChip({ link: l }: { link: LinkItem }) {
+  const href = hrefOf(l);
+  const title = l.label ? `${l.label}: ${l.target}` : l.target;
+  const text = l.label ?? l.target;
+  return href ? (
+    <a className="lchip" href={href} target="_blank" rel="noreferrer" title={title}>
+      {text}
+    </a>
+  ) : (
+    <span className="lchip" title={title}>
+      {text}
+    </span>
+  );
+}
+
+/** One compact line per link kind present. */
 function Links({ links }: { links: readonly LinkItem[] }) {
-  if (!links.length) return <p className="empty-line">No links.</p>;
   const kinds = [...LINK_ORDER];
   for (const l of links) if (!kinds.includes(l.kind)) kinds.push(l.kind);
   return (
-    <>
+    <div className="lines">
       {kinds.map((k) => {
         const ls = links.filter((l) => l.kind === k);
         if (!ls.length) return null;
         return (
-          <div className="lgroup" key={k}>
-            <h3>{LINK_LABEL[k] ?? k}</h3>
+          <div className="lline" key={k}>
+            <span className="lkind">{k}</span>
             {ls.map((l) => (
-              <div className="lnk" key={l.id}>
-                {l.label ? <span className="l-label">{l.label}</span> : null}
-                <span className="l-target">{l.target}</span>
-              </div>
+              <LinkChip key={l.id} link={l} />
             ))}
           </div>
         );
       })}
-    </>
+    </div>
   );
 }
 
@@ -305,35 +312,28 @@ function Monitors({
   links: readonly LinkItem[];
   onConfirm: (id: number) => void;
 }) {
-  if (!targets.length) {
-    return (
-      <p className="empty-line">
-        None yet. Axiom suggests targets from links, such as an open PR or a Jira item.
-      </p>
-    );
-  }
   return (
-    <>
-      <ul>
-        {targets.map((m) => {
-          const link = links.find((l) => l.id === m.linkId);
-          return (
-            <li className="mon" key={m.id}>
-              <span className="mon-kind">{m.kind}</span>
-              <span className="mon-target">{link?.target ?? "no link"}</span>
-              <span className="mon-end">
-                <span className={`mon-state ${m.state}`}>{m.state}</span>
-                {m.state === "suggested" ? (
-                  <button type="button" className="btn sm" onClick={() => onConfirm(m.id)}>
-                    Confirm
-                  </button>
-                ) : null}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-      <p className="hint">Suggested targets come from links. An agent or you confirm them.</p>
-    </>
+    <div className="lline">
+      {targets.map((m) => {
+        const target = links.find((l) => l.id === m.linkId)?.target ?? "no link";
+        const suggested = m.state === "suggested";
+        return (
+          <span className="mchip-wrap" key={m.id}>
+            <span
+              className={`lchip mchip ${m.state}`}
+              title={`${m.kind} ${target} (${suggested ? "suggested, not yet confirmed" : m.state})`}
+            >
+              {m.kind} {target}
+              {suggested ? null : " ✓"}
+            </span>
+            {suggested ? (
+              <button type="button" className="btn sm" onClick={() => onConfirm(m.id)}>
+                Confirm
+              </button>
+            ) : null}
+          </span>
+        );
+      })}
+    </div>
   );
 }

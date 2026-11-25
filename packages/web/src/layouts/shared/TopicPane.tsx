@@ -42,12 +42,12 @@ export function TopicLoader({
 }
 
 /** Which parts of TopicDetail a tab shows; the rest are hidden (see styles/topic-tabs.css). */
-export type DetailPart = "top" | "threads" | "tasks" | "graph" | "links" | "monitors" | "history";
+export type DetailPart = "top" | "threads" | "tasks" | "graph" | "history";
 
 /**
  * The shared TopicDetail with only some of its parts visible. A tab in the Board sheet or the
  * Console panel is the same component showing a different slice, so there is no second copy of
- * threads, links, monitors or history rendering to drift. The stale prompt always shows.
+ * threads or history rendering to drift. The stale prompt always shows.
  */
 export function TopicSlice({
   bundle,
