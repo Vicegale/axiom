@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Redirect } from "wouter";
 import type { TopicListItem } from "../../api";
 import { NotificationsList, SkipLink, Splitter } from "../../components";
+import { PageSwitch } from "../../components/PageSwitch";
 import type { ViewId } from "../../lib/domain";
 import { healthRows } from "../../lib/health";
 import { usePaneSize } from "../../lib/panes";
@@ -129,11 +130,8 @@ export function BoardShell() {
         ) : (
           <h1 className="bd-crumb">Status board</h1>
         )}
-        <nav className="bd-nav" aria-label="Pages">
-          <Link href={hrefs.all} aria-current={!onSettings ? "page" : undefined}>
-            Board
-          </Link>
-          <Link href={hrefs.desk}>Desk</Link>
+        <PageSwitch />
+        <nav className="bd-nav" aria-label="Board pages">
           <Link href={hrefs.settings} aria-current={onSettings ? "page" : undefined}>
             Settings
           </Link>
