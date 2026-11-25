@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Axiom · Steward B: briefing (mockup)</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="steward-base.css">
+<style>
+/* B: briefing. Read top to bottom: what happened, what needs you, what's ready, then memory, use and wakes. Chat is a drawer from the top bar. */
+.page { max-width: 1280px; margin: 0 auto; padding: 16px 20px 40px; display: grid; gap: 14px; }
+.brief { padding: 14px 16px; display: grid; gap: 6px; }
+.brief-h { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.brief h1 { font-size: 17px; font-weight: 600; }
+.brief .lead { color: var(--text-2); font-size: 14px; max-width: 80ch; }
+.brief details { margin-left: auto; }
+.brief summary { cursor: pointer; color: var(--meta); font-size: 12px; list-style: none; }
+.brief summary::after { content: " ▸"; }
+.brief details[open] summary::after { content: " ▾"; }
+.brief details[open] { flex-basis: 100%; margin-left: 0; }
+.brief details .stages { margin-top: 8px; }
+.cols { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.stack { display: grid; gap: 14px; }
+.sub { padding: 10px 14px 6px; font-size: 12px; color: var(--meta); border-top: 1px solid var(--line); }
+.sub + .item { border-top: 0; }
+.bottom { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.pad { padding: 0 14px 12px; display: grid; gap: 10px; }
+.wk { display: grid; grid-template-columns: 40px 1fr max-content; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 12.5px; }
+.wk:first-child { border-top: 0; }
+@media (max-width: 1100px) { .cols, .bottom { grid-template-columns: 1fr; } }
+.drawer { position: fixed; top: 44px; right: 0; bottom: 0; width: min(420px, 100vw); background: var(--panel); border-left: 1px solid var(--line-strong); display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; box-shadow: -12px 0 40px rgb(0 0 0 / .3); z-index: 4; }
+.drawer-h { display: flex; align-items: center; gap: 6px; padding: 8px 8px 8px 14px; border-bottom: 1px solid var(--line); }
+.drawer-h h2 { font-size: 13px; font-weight: 600; flex: 1; }
+.log { overflow: auto; padding: 14px; display: grid; gap: 10px; align-content: start; }
+.foot { padding: 10px; }
+</style>
+</head>
+<body>
+<header class="top" id="top"></header>
+<div class="page">
+  <section class="panel brief" id="brief"></section>
+  <div class="cols">
+    <section class="panel" id="needs"></section>
+    <div class="stack"><section class="panel" id="ready"></section><section class="panel" id="know"></section></div>
+  </div>
+  <div class="bottom">
+    <section class="panel" id="mem"></section>
+    <section class="panel" id="use"></section>
+    <section class="panel" id="wakes"></section>
+  </div>
+</div>
+<aside class="drawer" id="drawer" aria-label="Chat with Steward" hidden>
+  <div class="drawer-h"><h2>Chat</h2><button class="btn btn-ghost btn-sm">New</button><button class="icon-btn" data-chat aria-label="Close chat">✕</button></div>
+  <div class="log" id="log"></div>
+  <div class="foot" id="composer"></div>
+</aside>
+<script src="steward-data.js"></script>
+<script>
+const S = STEWARD;
+document.getElementById("top").innerHTML = R.topBar({ chat: true });
+const needF = S.findings.filter((f) => f.level !== "info");
+const info = S.findings.filter((f) => f.level === "info");
+const loose = S.suggestions.filter((s) => !ATTACHED_FIXES.has(s.id));
+const head = (t, n, end = "") => `<div class="sec-h"><h2>${t}</h2>${n !== "" ? `<span class="n">${n}</span>` : ""}${end ? `<span class="end">${end}</span>` : ""}</div>`;
+
+document.getElementById("brief").innerHTML = `
+  <div class="brief-h"><h1>Since you last looked</h1><span class="meta">13:41</span>
+    <details><summary>wake ${S.lastWake.at} · ${S.lastWake.tokens} tokens</summary>
+      <div class="stages">${S.lastWake.stages.map((s) => `<span>${s.n} ${s.name}</span><span class="m">${s.model} ${s.effort}</span><span class="meta">${s.did}</span><span class="meta num">${s.tokens}</span>`).join("")}</div></details></div>
+  <p class="lead">CI broke on Wave I and a fix is ready. A conflict was coming on Row 60, so I rebased it locally. atlas#38 is waiting on a reviewer who is away.</p>
+  ${S.lastWake.blindSpots.map((b) => `<p class="meta"><span class="blind">Blind spot</span> · ${b}</p>`).join("")}`;
+
+document.getElementById("needs").innerHTML = head("Needs you", needF.length + S.questions.length) +
+  needF.map((f) => R.finding(f)).join("") +
+  `<p class="sub">Questions</p>` + S.questions.map((q) => R.question(q)).join("");
+document.getElementById("ready").innerHTML = head("Ready for you", loose.length) + loose.map((s) => R.suggestion(s)).join("");
+document.getElementById("know").innerHTML = head("Good to know", info.length) + info.map((f) => R.finding(f)).join("");
+
+document.getElementById("mem").innerHTML = head("Memory core", "", `<a class="btn btn-ghost btn-sm" href="#memory" style="display:inline-flex;align-items:center;text-decoration:none">Open memory</a>`) +
+  `<div class="pad">${R.coreMeter(S.memory.core)}${R.memList(S.memory.core.facts)}${R.memIndex(S.memory.core)}</div>`;
+document.getElementById("use").innerHTML = head("Token use today", "") + `<div class="pad">${R.usage(S.usage)}</div>`;
+document.getElementById("wakes").innerHTML = head("Wakes", "", `<span class="meta">every 30 min, ${S.workingHours}</span>`) +
+  `<div class="pad">${S.wakes.slice(0, 4).map((w) => `<div class="wk"><span class="num">${w.at}</span><span>${w.trigger} <span class="meta">· ${w.summary}</span></span><span class="meta num">${w.tokens}</span></div>`).join("")}</div>`;
+
+document.getElementById("log").innerHTML = S.chat.map(R.chatMsg).join("");
+document.getElementById("composer").innerHTML = R.composer();
+const drawer = document.getElementById("drawer");
+const setChat = (open) => { drawer.hidden = !open; document.querySelector(".top [data-chat]").setAttribute("aria-expanded", String(open)); };
+document.addEventListener("click", (e) => { if (e.target.closest("[data-chat]")) setChat(drawer.hidden); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !drawer.hidden) setChat(false); });
+setChat(new URLSearchParams(location.search).has("chat"));
+</script>
+</body>
+</html>

@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Axiom · Steward A: inbox (mockup)</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="steward-base.css">
+<style>
+/* A: inbox. A rail of sections, the selected one in the middle; the chat docks on the right only while open. */
+body { height: 100vh; display: grid; grid-template-rows: 44px 1fr; overflow: hidden; }
+.shell { display: grid; grid-template-columns: 188px minmax(0, 1fr); min-height: 0; }
+.shell.chat-open { grid-template-columns: 188px minmax(0, 1fr) 360px; }
+.rail { border-right: 1px solid var(--line); padding: 10px 8px; display: flex; flex-direction: column; gap: 1px; overflow: auto; }
+.rail a { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 6px; text-decoration: none; color: var(--text-2); }
+.rail a:hover { background: var(--panel); color: var(--text); }
+.rail a[aria-current] { background: var(--raised); color: var(--text); }
+.rail .n { margin-left: auto; font: 11px var(--font-mono); color: var(--steward); }
+.rail hr { border: 0; border-top: 1px solid var(--line); margin: 8px 4px; }
+main { overflow: auto; min-height: 0; scrollbar-gutter: stable; }
+.col { max-width: 960px; padding: 16px 24px 32px; display: grid; gap: 14px; }
+.col > h1 { font-size: 16px; font-weight: 600; }
+.pad { padding: 0 14px 12px; display: grid; gap: 10px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }
+.wk { display: grid; grid-template-columns: 44px 1fr max-content; gap: 10px; padding: 7px 14px; border-top: 1px solid var(--line); font-size: 12.5px; }
+.chat { border-left: 1px solid var(--line); display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; min-height: 0; background: var(--panel); }
+.chat-h { padding: 8px 8px 8px 14px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 6px; }
+.chat-h h2 { font-size: 13px; font-weight: 600; flex: 1; }
+.chat-log { overflow: auto; padding: 14px; display: grid; gap: 10px; align-content: start; }
+.chat-foot { padding: 10px; }
+</style>
+</head>
+<body>
+<header class="top" id="top"></header>
+<div class="shell" id="shell">
+  <nav class="rail" aria-label="Steward sections" id="rail"></nav>
+  <main id="main"></main>
+  <aside class="chat" id="chat" aria-label="Chat with Steward" hidden>
+    <div class="chat-h"><h2>Chat</h2><button class="btn btn-ghost btn-sm">New</button><button class="icon-btn" data-chat aria-label="Close chat">✕</button></div>
+    <div class="chat-log" id="log"></div>
+    <div class="chat-foot" id="composer"></div>
+  </aside>
+</div>
+<script src="steward-data.js"></script>
+<script>
+const S = STEWARD;
+document.getElementById("top").innerHTML = R.topBar({ chat: true, settings: false });
+const needF = S.findings.filter((f) => f.level !== "info");
+const loose = S.suggestions.filter((s) => !ATTACHED_FIXES.has(s.id));
+const sections = [
+  ["needs", "Needs you", R.needsCount()], ["questions", "Questions", S.questions.length], ["findings", "Findings", needF.length], ["suggestions", "Suggestions", S.suggestions.length],
+  "hr", ["memory", "Memory"], ["wakes", "Wakes"], ["usage", "Token use"], ["settings", "Settings"],
+];
+const panel = (title, n, body, end = "") => `<section class="panel"><div class="sec-h"><h2>${title}</h2>${n !== "" ? `<span class="n">${n}</span>` : ""}${end ? `<span class="end">${end}</span>` : ""}</div>${body}</section>`;
+const views = {
+  needs: () => `<h1>Needs you</h1>
+    ${panel("Findings", needF.length, needF.map((f) => R.finding(f)).join(""))}
+    ${panel("Questions", S.questions.length, S.questions.map((q) => R.question(q)).join(""))}
+    ${panel("Suggestions", loose.length, loose.map((s) => R.suggestion(s)).join(""))}`,
+  questions: () => `<h1>Questions</h1>${panel("Open", S.questions.length, S.questions.map((q) => R.question(q)).join(""))}`,
+  findings: () => {
+    const by = {};
+    S.findings.forEach((f) => (by[f.topicTitle] ||= []).push(f));
+    return `<h1>Findings</h1>` + Object.entries(by).map(([t, fs]) => panel(t, fs.length, fs.map((f) => R.finding(f)).join(""))).join("");
+  },
+  suggestions: () => `<h1>Suggestions</h1>${panel("Open", S.suggestions.length, S.suggestions.map((s) => R.suggestion(s)).join(""))}`,
+  memory: () => `<h1>Memory</h1>
+    ${panel("Core", "", `<div class="pad">${R.coreMeter(S.memory.core)}${R.memList(S.memory.core.facts)}${R.memIndex(S.memory.core)}</div>`, `<span class="meta">tidied ${S.memory.core.rewritten}</span>`)}
+    ${panel("Attached", "", `<div class="pad">${R.attached(S.memory.attached)}</div>`, `<span class="meta">loaded when the topic, repo or person comes up</span>`)}
+    ${panel("General", "", `<div class="pad">${R.memList(S.memory.general)}</div>`, `<button class="btn btn-sm">Add</button>`)}`,
+  wakes: () => `<h1>Wakes</h1>
+    ${panel(`Last wake · ${S.lastWake.at}`, "", `<div class="pad"><div class="stages">${S.lastWake.stages.map((s) => `<span>${s.n} ${s.name}</span><span class="m">${s.model} ${s.effort}</span><span class="meta">${s.did}</span><span class="meta num">${s.tokens}</span>`).join("")}</div>
+      ${S.lastWake.blindSpots.map((b) => `<p class="meta"><span class="blind">Blind spot</span> · ${b}</p>`).join("")}</div>`, `<span class="meta">${S.lastWake.trigger} · ${S.lastWake.took}</span>`)}
+    ${panel("Earlier", "", S.wakes.slice(1).map((w) => `<div class="wk"><span class="num">${w.at}</span><span>${w.trigger} <span class="meta">· ${w.summary}</span></span><span class="meta num">${w.tokens}</span></div>`).join(""))}`,
+  usage: () => `<h1>Token use</h1>${panel("Today", "", `<div class="pad">${R.usage(S.usage)}<p class="meta">At a cap Steward stops promoting; gathering keeps running.</p></div>`)}`,
+  settings: () => `<h1>Settings</h1><div class="grid2">
+    ${panel("Models per stage", "", `<table class="t"><tbody>${S.settings.stages.map(([n, m, e]) => `<tr><td>${n}</td><td><select><option>${m}</option></select></td><td><select><option>${e}</option></select></td></tr>`).join("")}</tbody></table>`)}
+    ${panel("Promotion by complexity", "", `<table class="t"><tbody>${S.settings.complexity.map(([n, m, e]) => `<tr><td>${n}</td><td><select><option>${m}</option></select></td><td>${e ? `<select><option>${e}</option></select>` : ""}</td></tr>`).join("")}</tbody></table>`)}
+    ${panel("Daily caps", "", `<table class="t"><tbody>${S.usage.map((u) => `<tr><td>${u.model}</td><td><input class="num" value="${u.cap}M" size="6" style="height:26px;border:1px solid var(--line-strong);border-radius:6px;background:var(--panel-2);padding:0 6px"></td></tr>`).join("")}</tbody></table>`)}
+    ${panel("Wakes", "", `<table class="t"><tbody><tr><td>Working hours</td><td>${S.workingHours}</td></tr><tr><td>Every</td><td>30 min</td></tr></tbody></table>`)}
+    ${panel("Watch PRs", "", `<div class="pad">${S.settings.signals.map((s) => `<label style="display:flex;gap:8px"><input type="checkbox" checked>${s}</label>`).join("")}</div>`, `<span class="meta">gh · webhooks and a timed check</span>`)}
+    ${panel("Sources", "", `<table class="t"><tbody>${S.settings.sources.map(([n, s]) => `<tr><td>${n}</td><td>${s === "ok" ? '<span class="pill s-done">ok</span>' : `<span class="pill s-hitl">${s}</span>`}</td></tr>`).join("")}</tbody></table>`)}
+  </div>`,
+};
+function render() {
+  let cur = location.hash.slice(1); if (!views[cur]) cur = "needs";
+  document.getElementById("rail").innerHTML = sections.map((s) => s === "hr" ? "<hr>" :
+    `<a href="#${s[0]}" ${s[0] === cur ? 'aria-current="page"' : ""}>${s[1]}${s[2] ? `<span class="n">${s[2]}</span>` : ""}</a>`).join("");
+  document.getElementById("main").innerHTML = `<div class="col">${views[cur]()}</div>`;
+}
+addEventListener("hashchange", render);
+render();
+document.getElementById("log").innerHTML = S.chat.map(R.chatMsg).join("");
+document.getElementById("composer").innerHTML = R.composer();
+const setChat = (open) => {
+  document.getElementById("chat").hidden = !open;
+  document.getElementById("shell").classList.toggle("chat-open", open);
+  document.querySelector(".top [data-chat]").setAttribute("aria-expanded", String(open));
+};
+document.addEventListener("click", (e) => { if (e.target.closest("[data-chat]")) setChat(document.getElementById("chat").hidden); });
+setChat(new URLSearchParams(location.search).has("chat"));
+</script>
+</body>
+</html>

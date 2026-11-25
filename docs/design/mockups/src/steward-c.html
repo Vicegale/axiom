@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Axiom · Steward C: stream (mockup)</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="steward-base.css">
+<style>
+/* C: stream. One block per wake and per chat, newest at the bottom, answered in place; the composer sits under the stream. Memory and use on the right. */
+body { height: 100vh; display: grid; grid-template-rows: 44px 1fr; overflow: hidden; }
+.shell { display: grid; grid-template-columns: minmax(0, 1fr) 320px; min-height: 0; }
+.feed-wrap { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr auto; min-height: 0; }
+.filters { display: flex; justify-content: center; padding: 8px 20px; border-bottom: 1px solid var(--line); }
+.seg { display: flex; padding: 2px; gap: 2px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); }
+.seg button { border: 0; background: transparent; color: var(--text-2); padding: 3px 10px; border-radius: 5px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--raised); color: var(--text); }
+.feed { overflow: auto; padding: 16px 20px; display: grid; gap: 16px; align-content: start; scrollbar-gutter: stable; }
+.blk { display: grid; gap: 6px; max-width: 820px; width: 100%; margin: 0 auto; }
+.blk-h { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--meta); }
+.blk-h b { color: var(--text-2); font-weight: 500; }
+.blk-h details { margin-left: auto; }
+.blk-h summary { cursor: pointer; list-style: none; }
+.blk-h details[open] { flex-basis: 100%; margin-left: 0; }
+.blk-h details .stages { margin-top: 6px; }
+.blk-h { flex-wrap: wrap; }
+.panel > .item:first-child { border-top: 0; }
+.chatblk { display: grid; gap: 8px; }
+.composer-wrap { padding: 10px 20px 14px; }
+.composer-wrap .composer { max-width: 820px; margin: 0 auto; }
+.side { border-left: 1px solid var(--line); overflow: auto; background: var(--panel); }
+.side section { padding: 10px 14px 14px; border-bottom: 1px solid var(--line); display: grid; gap: 10px; }
+.side-h { display: flex; align-items: baseline; gap: 8px; }
+.side-h h2 { font-size: 13px; font-weight: 600; }
+.side-h .end { margin-left: auto; }
+.tabs { display: flex; gap: 2px; }
+.tabs button { border: 0; background: transparent; padding: 3px 8px; border-radius: 5px; color: var(--text-2); cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--raised); color: var(--text); }
+.src { display: flex; justify-content: space-between; align-items: center; }
+@media (max-width: 1100px) { .shell { grid-template-columns: 1fr; } .side { display: none; } }
+</style>
+</head>
+<body>
+<header class="top" id="top"></header>
+<div class="shell">
+  <div class="feed-wrap">
+    <div class="filters"><div class="seg" role="group" aria-label="Show"></div></div>
+    <div class="feed" id="feed"></div>
+    <div class="composer-wrap" id="composer"></div>
+  </div>
+  <aside class="side" aria-label="Memory and use" id="side"></aside>
+</div>
+<script src="steward-data.js"></script>
+<script>
+const S = STEWARD;
+document.getElementById("top").innerHTML = R.topBar();
+document.querySelector(".seg").innerHTML = ["Everything", "Open", "Questions", "Findings", "Suggestions", "Chats"].map((l, i) => `<button aria-pressed="${i === 0}">${l}</button>`).join("");
+
+const at = (t) => (x) => x.at === t;
+const block = (head, items) => `<div class="blk"><div class="blk-h">${head}</div><div class="panel">${items}</div></div>`;
+const stages = `<details><summary>${S.lastWake.stages.length} stages · ${S.lastWake.tokens} ▸</summary><div class="stages">${S.lastWake.stages.map((s) => `<span>${s.n} ${s.name}</span><span class="m">${s.model} ${s.effort}</span><span class="meta">${s.did}</span><span class="meta num">${s.tokens}</span>`).join("")}</div></details>`;
+const feed = document.getElementById("feed");
+feed.innerHTML = [
+  block(`<b>13:00</b> wake · timer`, S.questions.filter(at("13:00")).map((q) => R.question(q, { noTime: true })).join("")),
+  block(`<b>13:41</b> wake · review on mtg#219`, S.suggestions.filter((s) => !ATTACHED_FIXES.has(s.id)).map((s) => R.suggestion(s, { noTime: true })).join("")),
+  block(`<b>14:00</b> wake · timer · <span class="blind">blind spot: ${S.lastWake.blindSpots[0]}</span>${stages}`,
+    S.findings.map((f) => R.finding(f, { noTime: true })).join("") + S.questions.filter(at("14:00")).map((q) => R.question(q, { noTime: true })).join("")),
+  `<div class="blk"><div class="blk-h"><b>14:12</b> chat · Sonnet 5.5 medium</div><div class="chatblk">${S.chat.map(R.chatMsg).join("")}</div></div>`,
+].join("");
+feed.scrollTop = feed.scrollHeight;
+document.getElementById("composer").innerHTML = R.composer();
+
+const m = S.memory;
+const tabs = {
+  core: () => `${R.coreMeter(m.core)}${R.memList(m.core.facts)}${R.memIndex(m.core)}`,
+  attached: () => R.attached(m.attached),
+  general: () => R.memList(m.general),
+};
+document.getElementById("side").innerHTML = `
+  <section><div class="side-h"><h2>Memory</h2><span class="meta">tidied ${m.core.rewritten}</span><button class="btn btn-ghost btn-sm end">Add</button></div>
+    <div class="tabs" role="tablist">${Object.keys(tabs).map((k, i) => `<button role="tab" data-tab="${k}" aria-selected="${i === 0}">${k[0].toUpperCase() + k.slice(1)}</button>`).join("")}</div>
+    <div role="tabpanel" id="tabpanel">${tabs.core()}</div></section>
+  <section><div class="side-h"><h2>Token use today</h2></div>${R.usage(S.usage)}</section>
+  <section><div class="side-h"><h2>Sources</h2></div>${S.settings.sources.map(([n, s]) => `<div class="src"><span>${n}</span>${s === "ok" ? '<span class="pill s-done">ok</span>' : `<span class="pill s-hitl">${s}</span>`}</div>`).join("")}</section>`;
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-tab]"); if (!t) return;
+  document.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", String(b === t)));
+  document.getElementById("tabpanel").innerHTML = tabs[t.dataset.tab]();
+});
+</script>
+</body>
+</html>

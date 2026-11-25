@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Axiom · Steward on the Desk (mockup)</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="steward-base.css">
+<style>
+/* What Steward adds to the existing Desk: the page and toggle in the top bar, a two-line strip on cards it has something for, and a per-topic switch in the card menu. */
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; padding: 12px; }
+.card { position: relative; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--panel); padding: 12px; display: grid; gap: 8px; align-content: start; }
+.card.hot { border-color: var(--st-hitl); }
+.card-h { display: flex; align-items: flex-start; gap: 8px; }
+.card-h h3 { font-size: 14px; font-weight: 600; flex: 1; }
+.card-icons { display: flex; gap: 2px; color: var(--text-3); }
+.card-icons .icon-btn { min-width: 24px; height: 24px; padding: 0; }
+.row { display: flex; gap: 12px; font-size: 12px; color: var(--text-2); flex-wrap: wrap; align-items: center; }
+.st-off { display: inline-flex; align-items: center; gap: 4px; color: var(--meta); }
+.now { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: var(--panel-2); font-size: 12.5px; display: grid; gap: 4px; }
+.now b { font: 10px var(--font-mono); letter-spacing: .1em; color: var(--meta); font-weight: 400; }
+.reply { height: 34px; border: 1px solid var(--line-strong); border-radius: 8px; padding: 0 12px; display: flex; align-items: center; color: var(--meta); font-size: 12.5px; }
+.strip { display: grid; gap: 6px; padding: 8px 10px; border-radius: 6px; background: color-mix(in srgb, var(--steward) 6%, var(--panel-2)); border: 1px solid color-mix(in srgb, var(--steward) 28%, var(--line)); }
+.strip.lv-urgent, .strip.lv-attention { box-shadow: none; }
+.strip-t { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+.strip-t svg { color: var(--steward); flex: none; }
+.strip-acts { display: flex; gap: 6px; align-items: center; padding-left: 22px; }
+.strip-acts a { font-size: 12px; color: var(--text-2); text-decoration: none; margin-left: auto; }
+.strip-acts a:hover { color: var(--text); text-decoration: underline; }
+.menu { position: absolute; top: 40px; right: 12px; width: 230px; background: var(--raised); border: 1px solid var(--line-strong); border-radius: 8px; padding: 4px; box-shadow: 0 10px 30px rgb(0 0 0 / .35); z-index: 3; }
+.menu button, .menu label { display: flex; width: 100%; align-items: center; gap: 8px; padding: 6px 8px; border: 0; background: transparent; border-radius: 5px; text-align: left; cursor: pointer; font-size: 12.5px; }
+.menu button:hover, .menu label:hover { background: var(--panel-2); }
+.menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px; }
+.menu .sw { margin-left: auto; width: 22px; height: 12px; border-radius: 6px; background: color-mix(in srgb, var(--steward) 40%, transparent); position: relative; }
+.menu .sw::after { content: ""; position: absolute; left: 12px; top: 2px; width: 8px; height: 8px; border-radius: 50%; background: var(--steward); }
+.notes { padding: 4px 16px 24px; color: var(--meta); font-size: 12px; display: grid; gap: 4px; max-width: 900px; }
+.extra { display: flex; align-items: center; gap: 10px; }
+</style>
+</head>
+<body>
+<header class="top" id="top"></header>
+<div class="grid">
+  <article class="card hot">
+    <div class="card-h"><h3>MTG Wave I: Multiverse Reforged deck gaps</h3><span class="card-icons" id="icons1"></span></div>
+    <div class="row"><span class="pill s-hitl">hitl</span><span>6/9 done</span><span>Last worked 20 min ago</span></div>
+    <div class="strip">
+      <p class="strip-t"><span id="d1"></span><span class="lvl">Urgent</span>CI failed on mtg#214 · a fix is ready</p>
+      <div class="strip-acts"><button class="btn btn-primary btn-sm" title="Applies axiom/fix/mtg-214-snapshot to your branch locally. Pushing stays yours.">Adopt fix</button><button class="btn btn-sm">Diff</button><a href="steward-a.html">2 more in Steward</a></div>
+    </div>
+    <div class="now"><b>NOW</b>Row 61 is drafted; waiting for your review of the card list.</div>
+    <div class="reply">Reply to Row 61: Ninjutsu…</div>
+  </article>
+  <article class="card">
+    <div class="card-h"><h3>Atlas Coolify deployment</h3><span class="card-icons" id="icons2"></span></div>
+    <div class="row"><span class="pill s-review">review</span><span>No tasks yet</span><span>Last worked 4 d ago</span></div>
+    <div class="strip">
+      <p class="strip-t"><span id="d2"></span>No reviewer on atlas#38 for 4 days</p>
+      <div class="strip-acts"><button class="btn btn-ghost btn-sm">Dismiss</button><a href="steward-a.html">Open in Steward</a></div>
+    </div>
+    <div class="reply">Reply to Coolify deploy…</div>
+    <div class="menu" role="menu" aria-label="Card menu">
+      <button role="menuitem">Favourite</button><button role="menuitem">Hide from the Desk</button><button role="menuitem">Open topic</button><hr>
+      <label role="menuitemcheckbox" aria-checked="true">Steward watches this topic<span class="sw"></span></label>
+    </div>
+  </article>
+  <article class="card">
+    <div class="card-h"><h3>Axiom: spec phase</h3><span class="card-icons" id="icons3"></span></div>
+    <div class="row"><span class="pill s-wip">wip</span><span>28/28 done</span><span>Last worked 1 min ago</span><span class="st-off" title="Steward is off for this topic" id="off3"></span></div>
+    <div class="now"><b>NOW</b>Steward mockups revised; waiting for the owner's pick.</div>
+    <div class="reply">Reply to Axiom spec + build…</div>
+  </article>
+</div>
+<div class="notes">
+  <p>Mockup notes. Card 1: Steward's most important item for the topic and its one fitting action; the rest is a link. Card 2: the card menu (open here) holds the per-topic switch. Card 3: Steward is off for this topic, shown only as a small icon; topics with nothing from Steward show no strip.</p>
+</div>
+<script src="steward-data.js"></script>
+<script>
+const bar = document.getElementById("top");
+bar.innerHTML = R.topBar({ page: "desk", settings: false });
+bar.querySelector(".page-switch").insertAdjacentHTML("afterend", `<span class="meta">3 active</span>`);
+bar.querySelector(".st-toggle").insertAdjacentHTML("afterend", `<span class="extra meta"><span><span class="dot s-done"></span> T3</span><span><span class="dot s-done"></span> Claude Code</span></span><button class="btn btn-sm">+ New topic</button>`);
+const icons = `<button class="icon-btn" aria-label="Favourite">☆</button><button class="icon-btn" aria-label="Card menu" aria-haspopup="menu">⋯</button><a class="icon-btn" href="#" aria-label="Open topic">↗</a>`;
+["icons1", "icons2", "icons3"].forEach((id) => (document.getElementById(id).innerHTML = icons));
+document.getElementById("d1").innerHTML = ICON.steward; document.getElementById("d2").innerHTML = ICON.steward;
+document.getElementById("off3").innerHTML = ICON.stewardOff + "Steward off";
+</script>
+</body>
+</html>

@@ -1,0 +1,142 @@
+/* Shared pieces of the Steward view mockups. Colours and type come from tokens.css. */
+[hidden] { display: none !important; }
+*, *::before, *::after { box-sizing: border-box; }
+:root { --meta: color-mix(in srgb, var(--text-2) 55%, var(--text-3)); --steward: #e0a84f; }
+[data-theme="light"] { --steward: #a8701a; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font: 13px/1.45 var(--font-sans); -webkit-font-smoothing: antialiased; }
+button, input, textarea, select { font: inherit; color: inherit; }
+h1, h2, h3, p, dl, dd, ul, ol { margin: 0; padding: 0; }
+ul, ol { list-style: none; }
+code { font: 12px var(--font-mono); color: var(--text-2); }
+a { color: inherit; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition: none !important; animation: none !important; } }
+.meta { color: var(--meta); font-size: 12px; font-weight: 400; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* status colours */
+.s-idle { --c: var(--st-idle); } .s-wip { --c: var(--st-wip); } .s-hitl { --c: var(--st-hitl); }
+.s-monitoring { --c: var(--st-monitoring); } .s-blocked { --c: var(--st-blocked); } .s-review { --c: var(--st-review); }
+.s-done { --c: var(--st-done); } .s-stale { --c: var(--st-stale); } .s-error { --c: var(--st-error); }
+.dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--c); flex: none; }
+.pill { display: inline-flex; align-items: center; padding: 0 6px; height: 18px; border-radius: 4px; font: 11px var(--font-mono);
+  color: var(--c); background: color-mix(in srgb, var(--c) 14%, transparent); border: 1px solid color-mix(in srgb, var(--c) 30%, transparent); }
+
+/* top bar: same shape as the live Desk */
+.top { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 12px; border-bottom: 1px solid var(--line); background: var(--bg); position: sticky; top: 0; z-index: 5; }
+.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; text-decoration: none; }
+.brand svg { color: var(--focus); }
+.page-switch { display: flex; padding: 2px; gap: 2px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); }
+.page-switch a { padding: 3px 10px; border-radius: 5px; text-decoration: none; color: var(--text-2); display: inline-flex; gap: 6px; align-items: center; }
+.page-switch a[aria-current] { background: var(--raised); color: var(--text); }
+.count { font: 10px/16px var(--font-mono); min-width: 16px; text-align: center; padding: 0 4px; border-radius: 8px; background: var(--steward); color: #111; }
+.top .grow { flex: 1; }
+.st-toggle { display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 10px 0 7px; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--panel); cursor: pointer; }
+.st-toggle .sw { width: 22px; height: 12px; border-radius: 6px; background: var(--line-strong); position: relative; flex: none; }
+.st-toggle .sw::after { content: ""; position: absolute; left: 2px; top: 2px; width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
+.st-toggle.on { border-color: color-mix(in srgb, var(--steward) 50%, transparent); }
+.st-toggle.on .sw { background: color-mix(in srgb, var(--steward) 40%, transparent); }
+.st-toggle.on .sw::after { left: 12px; background: var(--steward); }
+
+/* buttons */
+.btn { height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--panel-2); cursor: pointer; white-space: nowrap; }
+.btn:hover { background: var(--raised); }
+.btn-primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+.btn-primary:hover { background: var(--text-2); border-color: var(--text-2); }
+.btn-ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+.btn-ghost:hover { background: var(--raised); }
+.btn-sm { height: 24px; padding: 0 8px; font-size: 12px; }
+.icon-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 28px; height: 28px; padding: 0 6px; border-radius: 6px; border: 1px solid transparent; background: transparent; color: var(--text-2); cursor: pointer; text-decoration: none; }
+.icon-btn:hover { background: var(--raised); color: var(--text); }
+.bar-btn { border-color: var(--line); }
+.bar-btn[aria-expanded="true"] { background: var(--raised); color: var(--text); }
+/* revealed on hover or keyboard focus within the item; always shown on touch screens */
+.reveal { opacity: 0; transition: opacity .12s; }
+.item:hover .reveal, .item:focus-within .reveal, .mem:hover .reveal, .mem:focus-within .reveal { opacity: 1; }
+@media (hover: none) { .reveal { opacity: 1; } }
+
+/* panels and section heads */
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+.sec-h { display: flex; align-items: baseline; gap: 8px; padding: 10px 14px; }
+.sec-h h2 { font-size: 13px; font-weight: 600; }
+.sec-h .n { color: var(--meta); font: 12px var(--font-mono); }
+.sec-h .end { margin-left: auto; }
+
+/* list items: one shape for questions, findings and suggestions */
+.item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 11px 14px; border-top: 1px solid var(--line); }
+.item-main { display: grid; gap: 4px; min-width: 0; }
+.item-acts { display: flex; gap: 4px; align-items: flex-start; }
+.item-title { font-weight: 500; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.item-text { font-size: 13.5px; }
+.item-text.dim { color: var(--text-2); font-size: 13px; }
+.meta-line { display: flex; align-items: center; flex-wrap: wrap; gap: 0 6px; font-size: 12px; color: var(--meta); }
+.meta-line .sep { opacity: .6; }
+.tlink { color: var(--text-2); text-decoration: none; }
+.tlink:hover { color: var(--text); text-decoration: underline; }
+.kind { color: var(--steward); }
+.kind-blind-spot { color: var(--k-authorization); }
+.lv-urgent { box-shadow: inset 3px 0 0 var(--st-error); }
+.lv-attention { box-shadow: inset 3px 0 0 var(--st-hitl); }
+.lvl { font: 10px/16px var(--font-mono); text-transform: uppercase; letter-spacing: .06em; padding: 0 5px; border-radius: 3px; color: var(--st-error); background: color-mix(in srgb, var(--st-error) 14%, transparent); }
+.answer { display: flex; gap: 6px; margin-top: 4px; }
+.answer input { flex: 1; min-width: 0; height: 28px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--focus); background: var(--bg); outline: none; }
+
+/* prepared fix inside a finding; something Steward did */
+.fix { margin-top: 4px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; display: grid; gap: 6px; background: var(--panel-2); }
+.fix-h { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.fix-acts { display: flex; gap: 4px; margin-top: 2px; }
+.br { color: var(--steward); }
+.did { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12.5px; color: var(--text-2); margin-top: 2px; }
+.did details { flex-basis: 100%; font-size: 12px; }
+.did summary { cursor: pointer; color: var(--meta); width: max-content; }
+.diff { margin: 2px 0 0; padding: 8px 10px; border-radius: 6px; background: var(--bg); border: 1px solid var(--line); font: 12px/1.5 var(--font-mono); overflow-x: auto; }
+.d-add { color: var(--st-done); } .d-del { color: var(--st-error); } .d-ctx { color: var(--text-3); }
+
+/* memory */
+.meter { height: 4px; border-radius: 2px; background: var(--raised); overflow: hidden; }
+.meter span { display: block; height: 100%; background: var(--steward); }
+.core-meter { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
+.mem-list { display: grid; }
+.mem { display: flex; gap: 8px; align-items: baseline; padding: 5px 0; border-top: 1px solid var(--line); }
+.mem:first-child { border-top: 0; }
+.mem > span { flex: 1; }
+.btn-edit { height: 20px; font-size: 12px; }
+.mem-group + .mem-group { margin-top: 8px; }
+.mem-group-h { font-size: 12px; color: var(--text-2); font-weight: 500; display: flex; gap: 6px; align-items: baseline; margin-bottom: 2px; }
+.mem-to { font: 10px var(--font-mono); text-transform: uppercase; color: var(--meta); }
+.index { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: baseline; }
+.index a { font-size: 12px; padding: 1px 7px; border-radius: 10px; background: var(--raised); color: var(--text-2); text-decoration: none; }
+.index a:hover { color: var(--text); }
+
+/* usage: one row per model */
+.usage { display: grid; grid-template-columns: max-content 1fr max-content; gap: 8px 10px; align-items: center; }
+
+/* chat */
+.msg { display: grid; gap: 4px; max-width: 88%; }
+.msg-owner { justify-self: end; }
+.msg-b { padding: 7px 11px; border-radius: 10px; background: var(--panel-2); border: 1px solid var(--line); }
+.msg-owner .msg-b { background: var(--raised); border-color: transparent; }
+.noted { font-size: 12px; color: var(--text-2); display: flex; gap: 6px; align-items: baseline; }
+.noted-l { font: 10px var(--font-mono); text-transform: uppercase; color: var(--steward); }
+.acting { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.composer { display: flex; align-items: flex-end; gap: 6px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--panel-2); padding: 5px 5px 5px 11px; }
+.composer:focus-within { border-color: var(--focus); }
+.composer textarea { flex: 1; min-width: 0; border: 0; background: transparent; resize: none; outline: none; padding: 4px 0; line-height: 20px; max-height: 160px; }
+.composer .model { height: 26px; padding: 0 8px; border-radius: 13px; border: 1px solid var(--line); background: transparent; color: var(--text-2); font-size: 12px; cursor: pointer; white-space: nowrap; }
+.composer .send { background: var(--text); color: var(--bg); min-width: 26px; height: 26px; border-radius: 13px; }
+
+/* stages of a wake */
+.stages { display: grid; grid-template-columns: max-content max-content 1fr max-content; gap: 4px 12px; font-size: 12px; align-items: baseline; }
+.stages .m { font: 11px var(--font-mono); color: var(--text-2); }
+.blind { color: var(--k-authorization); }
+
+/* settings tables */
+table.t { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.t th, table.t td { text-align: left; padding: 6px 14px; border-top: 1px solid var(--line); }
+table.t th { font-weight: 500; color: var(--meta); font-size: 12px; }
+select { background: var(--panel-2); border: 1px solid var(--line-strong); border-radius: 6px; height: 26px; padding: 0 6px; }
+
+/* Steward's icon (Facet, 2026-11-25) */
+.st-ic { display: inline-flex; color: var(--steward); }
+.st-toggle .st-ic { margin-left: 1px; margin-right: -2px; }
