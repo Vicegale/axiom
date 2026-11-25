@@ -645,7 +645,10 @@ describe("install", () => {
   it("--dry-run prints the unit and writes nothing", async () => {
     const home = join(dir, "home");
     let out = "";
-    const started = await main(["install", "--dry-run", "--platform", "linux"], { stdout: (t) => (out += t), home });
+    const started = await main(["install", "--dry-run", "--platform", "linux"], {
+      stdout: (t) => (out += t),
+      home,
+    });
     expect(started).toBe(false);
     expect(out).toContain(`ExecStart=${process.execPath}`);
     expect(out).toContain("cli.js");
@@ -657,7 +660,10 @@ describe("install", () => {
   it("writes the unit under a temporary HOME and prints the enable commands", async () => {
     const home = join(dir, "home2");
     let out = "";
-    await main(["install", "--port", "5000", "--platform", "linux"], { stdout: (t) => (out += t), home });
+    await main(["install", "--port", "5000", "--platform", "linux"], {
+      stdout: (t) => (out += t),
+      home,
+    });
     expect(out).toContain("systemctl --user daemon-reload");
     expect(out).toContain("systemctl --user enable --now axiom.service");
     const r = installService({ home, dryRun: true, platform: "linux" });
