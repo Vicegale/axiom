@@ -193,6 +193,19 @@ describe("sync transitions", () => {
     expect(topicStatus("a")).toBe("hitl");
   });
 
+  it("fills in an untitled thread's title from T3, and keeps a title given by hand", () => {
+    t3.thread("a").run("a", 1, "running");
+    t3.thread("b").run("b", 1, "running");
+    attach("a");
+    attach("b");
+    const b = thread("b");
+    if (b) ax.db.prepare("UPDATE thread SET title = 'Mine' WHERE id = ?").run(b.id);
+    provider.sync();
+    expect(thread("a")?.title).toBeTruthy();
+    expect(thread("a")?.title).not.toBe("Mine");
+    expect(thread("b")?.title).toBe("Mine");
+  });
+
   it("a failed run becomes an error with the last error", () => {
     t3.thread("a").run("a", 1, "running");
     attach("a");

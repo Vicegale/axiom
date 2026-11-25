@@ -20,6 +20,7 @@ interface HookPayload {
   message?: string;
   reason?: string;
   cwd?: string;
+  prompt?: string;
 }
 
 export function hookLogPath(env: NodeJS.ProcessEnv): string {
@@ -120,6 +121,10 @@ export function runHook(
           axiom.threadReopened(thread.id);
           break;
         case "prompt":
+          // A direct Claude Code session has no name of its own: the first prompt names it.
+          if (!thread.title && payload.prompt) {
+            axiom.fillThreadTitle(thread.id, payload.prompt.split("\n")[0] ?? "");
+          }
           axiom.threadWorking(thread.id);
           break;
         case "notification":
