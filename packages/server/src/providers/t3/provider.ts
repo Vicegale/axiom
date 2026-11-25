@@ -28,7 +28,11 @@ export type T3Action =
  * them together. Only transitions produce an action, and "already applied" is read from the Axiom
  * thread (so a restart replays nothing). Pure.
  */
-export function decide(th: Thread, state: T3ThreadState | null): T3Action | null {
+export function decide(
+  th: Thread,
+  state: T3ThreadState | null,
+  runningSubagents = 0,
+): T3Action | null {
   if (th.endedAt !== null) return null;
   if (state === null || state.removed) return { kind: "ended" };
 
@@ -48,6 +52,8 @@ export function decide(th: Thread, state: T3ThreadState | null): T3Action | null
       if (th.status !== "wip" && state.updatedAt < th.startedAt) return null;
       return { kind: "error", message: state.lastError ?? "T3 thread error" };
     default: // idle, ready, stopped, interrupted
+      // A turn that ended while its subagents still run has not stopped (01).
+      if (runningSubagents > 0) return null;
       return th.status === "wip" ? { kind: "stopped" } : null;
   }
 }
@@ -140,7 +146,11 @@ export class T3Provider {
       // Read everything first: a failing query leaves the Axiom threads untouched.
       const planned = threads.map((th) => ({
         th,
-        action: decide(th, db.thread(th.providerThreadId, environmentId)),
+        action: decide(
+          th,
+          db.thread(th.providerThreadId, environmentId),
+          this.ax.runningSubagents(th.id),
+        ),
       }));
       let applied = 0;
       for (const { th, action } of planned) {

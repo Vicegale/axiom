@@ -700,6 +700,29 @@ export class Axiom {
     return typeof v === "string" ? Date.parse(v) || 0 : 0;
   }
 
+  /**
+   * How many subagents the thread was still waiting on when it last stopped (from Claude Code's
+   * Stop payload). While this is above zero the thread has not really stopped (01, "When an agent
+   * stops"). Kept as a setting so no migration is needed.
+   */
+  setRunningSubagents(threadId: number, count: number): void {
+    const key = `subagents:${threadId}`;
+    if (count > 0) {
+      this.run(
+        "INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        key,
+        JSON.stringify(count),
+      );
+    } else {
+      this.run("DELETE FROM setting WHERE key = ?", key);
+    }
+  }
+
+  runningSubagents(threadId: number): number {
+    const v = this.getSetting(`subagents:${threadId}`);
+    return typeof v === "number" ? v : 0;
+  }
+
   getThread(id: number): Thread {
     return this.threadRow(id);
   }
