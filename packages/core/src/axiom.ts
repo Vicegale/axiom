@@ -1174,6 +1174,14 @@ export class Axiom {
       const th = this.threadRow(threadId);
       const task = key === null ? null : this.taskRow(th.topicId, key);
       this.run("UPDATE thread SET task_id = ? WHERE id = ?", task?.id ?? null, threadId);
+      // Pointing a thread that is already working at a task starts that task now, rather than
+      // at the thread's next "working" event (same rule as threadWorking).
+      if (task && th.endedAt === null && th.status === "wip") {
+        const current = this.taskById(task.id);
+        if (current.status === "to do" || current.status === "blocked") {
+          this.applyTaskStatus(current, "wip", { kind: "axiom" }, threadId);
+        }
+      }
       return this.threadRow(threadId);
     });
   }
