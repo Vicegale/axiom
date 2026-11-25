@@ -251,7 +251,8 @@ describe("the Desk", () => {
     const a = within(alpha);
     expect(a.getByText("5/8 done")).toBeTruthy();
     expect(a.getByText("3 links")).toBeTruthy();
-    expect(alpha.querySelectorAll(".pill").length).toBe(2);
+    // Topic and selected thread share a status here, so it shows once.
+    expect(alpha.querySelectorAll(".pill").length).toBe(1);
     // The most recently active thread is selected by default.
     expect((a.getByLabelText("Thread") as HTMLSelectElement).value).toBe("2");
     expect(a.getByText("running")).toBeTruthy();

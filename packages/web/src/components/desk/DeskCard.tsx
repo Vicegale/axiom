@@ -72,7 +72,7 @@ function ReplyBody({
   return (
     // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must be focusable
     <section className="dk-md dv-prose" tabIndex={0} aria-label="Latest reply">
-      <ReplyMarkdown text={data.text} slug={slug} theme={theme} />
+      <ReplyMarkdown text={data.text} slug={slug} theme={theme} threadId={thread.id} />
     </section>
   );
 }
@@ -155,7 +155,13 @@ export function DeskCard({ topic, now, theme, move, onFavorite, onHide, onOpen, 
 
       <span className="dk-pills">
         <StatusPill status={topic.status} />
-        {thread ? <StatusPill status={thread.status} /> : null}
+        {/* The selected thread's status only when it says something the topic's doesn't. */}
+        {thread && thread.status !== topic.status ? (
+          <span className="dk-thpill" title="Selected thread">
+            <span className="dk-thpill-l">thread</span>
+            <StatusPill status={thread.status} />
+          </span>
+        ) : null}
       </span>
       <p className="dk-meta">
         <span>{tc.total === 0 ? "No tasks yet" : `${tc.done}/${tc.total} done`}</span>

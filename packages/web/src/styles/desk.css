@@ -99,3 +99,5 @@
 .dk-md.dv-prose { font-size: 0.8125rem; line-height: 1.55; }
 .dk-md.dv-prose :is(h2, h3, h4, h5, h6) { margin: 0.875rem 0 0.375rem; font-size: 0.875rem; padding: 0; border: 0; }
 .dk-md.dv-prose p, .dk-md.dv-prose ul, .dk-md.dv-prose ol, .dk-md.dv-prose pre { margin-bottom: 0.625rem; }
+.dk-thpill { display: inline-flex; align-items: center; gap: 0.25rem; }
+.dk-thpill-l { font-size: 0.6875rem; color: var(--text-3); }

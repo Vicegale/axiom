@@ -5,8 +5,9 @@ const Markdown = lazy(() => import("../doc/Markdown").then((m) => ({ default: m.
 
 /** A reply as the document the Markdown renderer takes. Replies are not files, so relative links
  *  and images have nothing to resolve against. */
-function asDoc(text: string): DocData {
+function asDoc(text: string, threadId?: number): DocData {
   return {
+    replyThreadId: threadId,
     linkId: 0,
     path: "/reply.md",
     relPath: "reply.md",
@@ -24,12 +25,14 @@ export function ReplyMarkdown({
   text,
   slug,
   theme,
+  threadId,
 }: {
   text: string;
   slug: string;
   theme: "dark" | "light";
+  threadId?: number;
 }) {
-  const doc = useMemo(() => asDoc(text), [text]);
+  const doc = useMemo(() => asDoc(text, threadId), [text, threadId]);
   return (
     <Suspense fallback={<p className="dk-note">Loading.</p>}>
       <Markdown doc={doc} slug={slug} theme={theme} />
