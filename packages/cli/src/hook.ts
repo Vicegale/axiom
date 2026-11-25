@@ -57,9 +57,20 @@ export function runHook(
   try {
     if (!(HOOK_EVENTS as readonly string[]).includes(event))
       throw new Error(`unknown hook event "${event}"`);
-    // TODO(S6): T3 is the source of truth for T3 threads. Here, ask the T3 provider to re-read
-    // thread `env.T3CODE_THREAD_ID` now. Until then these sessions are ignored.
-    if (env.T3CODE_THREAD_ID) return 0;
+    // T3 is the source of truth for T3 threads: do not record this session as a Claude Code
+    // thread. If the T3 thread is attached, ask the server to re-read it now.
+    const t3ThreadId = env.T3CODE_THREAD_ID;
+    if (t3ThreadId) {
+      const axiom = openDatabase(options.db ?? defaultDatabasePath(env));
+      try {
+        if (axiom.findThread({ provider: "t3", providerThreadId: t3ThreadId })) {
+          axiom.requestProviderRefresh("t3");
+        }
+      } finally {
+        axiom.close();
+      }
+      return 0;
+    }
 
     const raw = (options.readStdin ?? (() => readFileSync(0, "utf8")))();
     const parsed: unknown = JSON.parse(raw);
