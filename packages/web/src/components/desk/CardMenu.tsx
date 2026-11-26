@@ -8,8 +8,6 @@ interface Props {
   stewardEnabled: boolean;
   onFavorite: () => void;
   onHide: () => void;
-  /** A plain click on "Open topic" (the card's own open handler). */
-  onOpen: (e: React.MouseEvent) => void;
   onStewardEnabled: (on: boolean) => void;
 }
 
@@ -28,7 +26,6 @@ export function CardMenu({
   stewardEnabled,
   onFavorite,
   onHide,
-  onOpen,
   onStewardEnabled,
 }: Props) {
   const id = useId();
@@ -158,10 +155,7 @@ export function CardMenu({
             href={href}
             role="menuitem"
             tabIndex={-1}
-            onClick={(e) => {
-              onOpen(e);
-              setOpen(false);
-            }}
+            onClick={() => setOpen(false)}
           >
             Open topic
           </Link>

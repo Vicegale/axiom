@@ -32,6 +32,7 @@ import { ReplyMarkdown } from "./LazyReply";
 import { ReplyBox } from "./ReplyBox";
 import { RequestsPanel } from "./RequestsPanel";
 import { StewardStrip } from "./StewardStrip";
+import { ThreadPicker } from "./ThreadPicker";
 
 export interface MoveHandle {
   moving: boolean;
@@ -318,8 +319,16 @@ export function DeskCard({
   const [expanded, setExpanded] = useState(false);
   const [replying, setReplying] = useState(false);
   const href = hrefs.topic(topic.slug);
-  const open = (e: React.MouseEvent) => {
-    if (isPlainClick(e)) onOpen();
+  // The topic is highlighted until the owner clicks it (01). On the Desk that is any plain click in
+  // the card (opening it, replying, approving, answering, reading the reply), not only Open: each
+  // dismisses the topic's notifications. A modified click is the browser's (a new tab) and doesn't.
+  const clicked = (e: React.MouseEvent) => {
+    if (topic.highlighted && isPlainClick(e)) onOpen();
+  };
+  // A reply sent from the keyboard (`r`, then Ctrl+Enter) counts as clicking it too.
+  const sent = () => {
+    if (topic.highlighted) onOpen();
+    onSent();
   };
   const tc = topic.taskCounts;
   const next = thread?.summary?.next.trim();
@@ -331,6 +340,7 @@ export function DeskCard({
       }`}
       data-slug={topic.slug}
       aria-labelledby={`${uid}-t`}
+      onClickCapture={clicked}
       onKeyDown={(e) => {
         // `r` on a focused card (not while typing in a field) opens the composer.
         if (e.key !== "r" || e.ctrlKey || e.metaKey || e.altKey || e.defaultPrevented) return;
@@ -342,9 +352,7 @@ export function DeskCard({
     >
       <header className="dk-head">
         <h2 id={`${uid}-t`} className="dk-title">
-          <Link href={href} onClick={open}>
-            {topic.title}
-          </Link>
+          <Link href={href}>{topic.title}</Link>
         </h2>
         <span className="dk-tools">
           <button
@@ -380,7 +388,6 @@ export function DeskCard({
             stewardEnabled={topic.stewardEnabled}
             onFavorite={() => onFavorite(!topic.favorite)}
             onHide={onHide}
-            onOpen={open}
             onStewardEnabled={onStewardEnabled}
           />
           <Link
@@ -388,7 +395,6 @@ export function DeskCard({
             className="icon-btn"
             aria-label={`Open ${topic.title}`}
             title="Open the topic"
-            onClick={open}
           >
             <Icon d={OPEN} />
           </Link>
@@ -435,23 +441,13 @@ export function DeskCard({
       ) : null}
 
       <div className="dk-thread">
-        <label htmlFor={`${uid}-th`}>Thread</label>
-        {threads.length > 1 ? (
-          <select
-            id={`${uid}-th`}
-            value={thread?.id}
-            onChange={(e) => setPicked(Number(e.target.value))}
-          >
-            {threads.map((t) => (
-              <option key={t.id} value={t.id}>
-                {threadLabel(t)}
-              </option>
-            ))}
-          </select>
+        <span className="dk-thread-l" aria-hidden={threads.length > 1 ? true : undefined}>
+          Thread
+        </span>
+        {thread && threads.length > 1 ? (
+          <ThreadPicker threads={threads} selected={thread} now={now} onPick={setPicked} />
         ) : (
-          <span id={`${uid}-th`} className="dk-thread-one">
-            {thread ? threadLabel(thread) : "No threads yet"}
-          </span>
+          <span className="dk-thread-one">{thread ? threadLabel(thread) : "No threads yet"}</span>
         )}
       </div>
 
@@ -522,7 +518,7 @@ export function DeskCard({
         repository={topic.repository}
         open={replying}
         onOpenChange={setReplying}
-        onSent={onSent}
+        onSent={sent}
       />
     </article>
   );

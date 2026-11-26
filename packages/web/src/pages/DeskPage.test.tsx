@@ -257,7 +257,7 @@ describe("the Desk", () => {
     // Topic and selected thread share a status here, so it shows once.
     expect(alpha.querySelectorAll(".pill").length).toBe(1);
     // The most recently active thread is selected by default.
-    expect((a.getByLabelText("Thread") as HTMLSelectElement).value).toBe("2");
+    expect(a.getByRole("button", { name: /^Thread: / }).dataset.thread).toBe("2");
     expect(a.getByText("running")).toBeTruthy();
     expect(a.getByText("Newer now")).toBeTruthy();
     expect(a.getByText("Choose a colour")).toBeTruthy();
@@ -272,7 +272,18 @@ describe("the Desk", () => {
   it("the thread selector switches Now, the run line and the reply", async () => {
     start();
     const alpha = within(await screen.findByRole("article", { name: "Alpha" }));
-    fireEvent.change(alpha.getByLabelText("Thread"), { target: { value: "1" } });
+    const picker = alpha.getByRole("button", { name: /^Thread: / });
+    fireEvent.click(picker);
+    const menu = alpha.getByRole("menu", { name: "Threads" });
+    const items = within(menu).getAllByRole("menuitemradio");
+    expect(items.map((i) => i.getAttribute("aria-checked"))).toEqual(["true", "false"]);
+    // The menu opens on the selected thread; arrows move.
+    expect(document.activeElement).toBe(items[0]);
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(items[1]);
+    fireEvent.click(items[1] as HTMLElement);
+    expect(menu.matches(":popover-open")).toBe(false);
+    expect(picker.dataset.thread).toBe("1");
     expect(alpha.getByText("Older now")).toBeTruthy();
     expect(alpha.queryByText("Choose a colour")).toBeNull(); // next is "Nothing"
     expect(alpha.getByText(/^finished/)).toBeTruthy();
@@ -369,6 +380,20 @@ describe("the Desk", () => {
     expect(server.called("POST", "/api/topics/charlie/open")).toHaveLength(0);
     fireEvent.click(open);
     await waitFor(() => expect(server.called("POST", "/api/topics/charlie/open")).toHaveLength(1));
+  });
+
+  it("clears the highlight on any plain click in the card, not only Open", async () => {
+    start();
+    const charlie = await screen.findByRole("article", { name: "Charlie" });
+    fireEvent.click(within(charlie).getByRole("button", { name: "Favourite Charlie" }), {
+      shiftKey: true,
+    });
+    expect(server.called("POST", "/api/topics/charlie/open")).toHaveLength(0);
+    fireEvent.click(within(charlie).getByText("Summary timed out"));
+    await waitFor(() => expect(server.called("POST", "/api/topics/charlie/open")).toHaveLength(1));
+    // A card that doesn't glow has nothing to dismiss.
+    fireEvent.click(within(card("Bravo")).getByRole("button", { name: "Favourite Bravo" }));
+    expect(server.called("POST", "/api/topics/bravo/open")).toHaveLength(0);
   });
 
   it("shows the bell count and provider health, and has an enabled New topic button", async () => {
@@ -767,7 +792,8 @@ describe("the subagent tree on the card", () => {
     start();
     await screen.findByRole("article", { name: "Alpha" });
     // The newest thread (the one shown) has none; pick the older one, which has one.
-    fireEvent.change(within(card("Alpha")).getByRole("combobox"), { target: { value: "1" } });
+    fireEvent.click(within(card("Alpha")).getByRole("button", { name: /^Thread: / }));
+    fireEvent.click(within(card("Alpha")).getByRole("menuitemradio", { name: /Older thread/ }));
     const run = card("Alpha").querySelector(".dk-run") as HTMLElement;
     expect(run.textContent).toBe("waiting on subagents");
     expect(button()?.textContent).toBe("1 subagent");
@@ -809,7 +835,9 @@ describe("the Artifacts menu on the card", () => {
     await screen.findByRole("article", { name: "Alpha" });
     const button = within(card("Alpha")).getByRole("button", { name: "Artifacts · 2" });
     expect(button.closest(".dk-links")?.textContent).toContain("3 links");
-    const menu = within(card("Alpha")).getByRole("menu", { hidden: true });
+    const menu = card("Alpha").querySelector(
+      '[role="menu"][aria-label="Artifacts"]',
+    ) as HTMLElement;
     const items = within(menu).getAllByRole("menuitem", { hidden: true });
     expect(items).toHaveLength(2);
     expect(items[0]?.getAttribute("href")).toBe("/topic/alpha/doc/11");
