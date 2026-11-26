@@ -291,13 +291,16 @@ describe("stageArgs", () => {
     expect(has(a, "--allowedTools", "Read,Grep,Glob,mcp__claude_ai_Slack")).toBe(true);
     expect(has(a, "--add-dir", "/repo")).toBe(true);
     expect(has(a, "--strict-mcp-config")).toBe(false);
-    expect(has(a, "--setting-sources", "")).toBe(true);
+    // The user's settings, so the claude.ai connectors load.
+    expect(has(a, "--setting-sources", "user")).toBe(true);
+    expect(has(a, "--setting-sources", "")).toBe(false);
     expect(has(a, "--disable-slash-commands")).toBe(true);
   });
 
   it("gives decide and tidy-up no tools and no connectors", () => {
     for (const s of ["decide", "tidy-up"] as const) {
       const a = stageArgs(s, "sonnet", "low");
+      expect(has(a, "--setting-sources", "")).toBe(true);
       expect(has(a, "--tools", "")).toBe(true);
       expect(has(a, "--strict-mcp-config")).toBe(true);
       expect(has(a, "--allowedTools")).toBe(false);

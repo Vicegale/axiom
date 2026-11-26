@@ -29,6 +29,12 @@ export const STAGE_SYSTEM_PROMPT =
  * sources (user and project settings, hooks, permission rules) and no slash commands or skills.
  */
 const TRIM_FLAGS = ["--setting-sources", "", "--disable-slash-commands"];
+/**
+ * Gather and the connector probe need the user's settings: the claude.ai connectors (Slack, Google
+ * Drive) only load with them (owner, 2026-11-26). Axiom's own hooks in those settings do nothing
+ * here, since the call runs with AXIOM_INTERNAL=1.
+ */
+export const CONNECTOR_FLAGS = ["--setting-sources", "user", "--disable-slash-commands"];
 
 const READ_ONLY_TOOLS = ["Read", "Grep", "Glob"];
 const PROMOTED_TOOLS = ["Read", "Grep", "Glob", "Edit", "Write", "Bash"];
@@ -68,7 +74,7 @@ export function stageArgs(
     "--no-session-persistence",
     "--output-format",
     "json",
-    ...TRIM_FLAGS,
+    ...(stage === "gather" ? CONNECTOR_FLAGS : TRIM_FLAGS),
   ];
   const dirs = (tools.addDirs ?? []).flatMap((d) => ["--add-dir", d]);
   switch (stage) {

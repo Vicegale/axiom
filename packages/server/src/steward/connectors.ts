@@ -81,8 +81,9 @@ export function probeClaudeMcp(cli: string, o: ProbeOptions = {}): Promise<Probe
         "--output-format",
         "stream-json",
         "--verbose",
+        // The user's settings: claude.ai connectors only load with them (see CONNECTOR_FLAGS).
         "--setting-sources",
-        "",
+        "user",
         "--disable-slash-commands",
         "--tools",
         "Read",
