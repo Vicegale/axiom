@@ -20,6 +20,7 @@ const request = (over: Partial<PendingRequest> & { id: string }): PendingRequest
   createdAt: null,
   decidable: false,
   openUrl: null,
+  choices: [],
   ...over,
 });
 
@@ -211,6 +212,45 @@ describe("a Claude Code approval", () => {
     expect(screen.getByRole("status", { name: "Answers sent" }).textContent).toMatch(
       /^Allowed: Bash: \$ npm test/,
     );
+  });
+
+  it("offers the 'don't ask again' choices; one allows and sends its index", async () => {
+    const withChoices = {
+      ...approval,
+      choices: [
+        { index: 0, label: "Always allow Bash(npm test:*) in this project" },
+        { index: 1, label: "Accept all edits for this session" },
+      ],
+    };
+    show(
+      [{ id: 1, provider: "claude-code", status: "hitl", pendingRequests: 1 }],
+      [[1, [withChoices]]],
+    );
+    const a = within(await card());
+    const group = await a.findByRole("group", { name: "Allow, and don't ask again:" });
+    fireEvent.click(
+      within(group).getByRole("button", { name: "Accept all edits for this session" }),
+    );
+    await waitFor(() =>
+      expect(server.called("POST", "/api/approvals/7")[0]?.body).toEqual({
+        decision: "allow",
+        suggestion: 1,
+      }),
+    );
+    expect(screen.getByRole("status", { name: "Answers sent" }).textContent).toMatch(
+      /^Allowed \(Accept all edits for this session\): Bash/,
+    );
+  });
+
+  it("shows no choices when Claude Code offered none, or while denying", async () => {
+    show(
+      [{ id: 1, provider: "claude-code", status: "hitl", pendingRequests: 1 }],
+      [[1, [{ ...approval, choices: [{ index: 0, label: "Accept all edits for this session" }] }]]],
+    );
+    const a = within(await card());
+    await a.findByRole("group", { name: "Allow, and don't ask again:" });
+    fireEvent.click(a.getByRole("button", { name: "Deny" }));
+    expect(a.queryByRole("group", { name: "Allow, and don't ask again:" })).toBeNull();
   });
 
   it("Deny asks for an optional reason, focuses it, and sends it", async () => {

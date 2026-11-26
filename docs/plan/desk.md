@@ -92,3 +92,20 @@ The owner asked for a better subagent view: a small tree with the top-level agen
 
 
 - **Amended 2026-11-25 (owner):** finished subagents stay in the tree for 30 minutes after they end (`SUBAGENT_KEEP_MS`), across turns, instead of clearing when the next turn starts (on T3 a subagent's result starts a new run at once, which emptied the tree). Claude Code: a new prompt deletes only rows that ended over 30 minutes ago, and the Desk lists only running rows and those within the window. T3: the reader adds rows whose `completed_at` is within the window, whatever their run.
+
+## D13: "don't ask again" from the card (2026-11-26)
+
+The owner: "When using Claude Code, we need a way to change the permissions, to avoid being spammed with allow requests." (02, Q17.)
+
+| Slice | What | Done when |
+| --- | --- | --- |
+| D13 | **Permission rules on the approval.** The card offers, next to Allow and Deny, the "don't ask again" choices Claude Code gives with the request (`permission_suggestions`); picking one allows the call and sends the choice back as `updatedPermissions`. | Choosing one stops repeat prompts in that session and saves project rules; tests pass; checked with a real `claude -p` session. |
+
+## D13 as built (2026-11-26)
+
+- **What Claude Code does (verified with `claude -p` 2.1.325 on throwaway folders):** the `PermissionRequest` input carries `permission_suggestions` (the terminal prompt's choices: `addRules` such as `Bash(npm run *)` to `localSettings`, `setMode` `acceptEdits` for the session, `addDirectories`) and `permission_mode`. An allow with `updatedPermissions` applies them: an `addRules` for `session` covers later calls at once; for `localSettings` it writes `.claude/settings.local.json` but does not reach the running session (the next matching call still asked); `setMode acceptEdits` works; `setMode bypassPermissions` is ignored.
+- **Storage:** migration 0017 adds `approval.suggestions` (the cleaned suggestions, JSON) and `approval.applied` (what the allow sent back, JSON; NULL for a plain allow). Core `permissions.ts`: `cleanSuggestions` keeps only allow rules, `acceptEdits` and directories (at most 6, no duplicates, strings up to 500 characters; bypass, `plan`, deny/ask rules and unknown kinds are dropped); `describePermissionUpdate` labels them ("Always allow Bash(npm run *) in this project", "Accept all edits for this session", "Allow access to … for this session"); `updatesToApply` adds a session copy to a rule saved in a settings file.
+- **Decision:** `decideApproval(id, "allow", message, owner, { suggestion: i })`, and `POST /api/approvals/:id` `{ decision: "allow", suggestion: i }` (400 for a deny with a suggestion or an unknown index). History: an `authorization` with `standing: true` and the rule as its scope ("Allowed Bash: $ npm test, and: Always allow Bash(npm test:*) in this project"). The hook prints `{"behavior":"allow","updatedPermissions":[…]}`.
+- **Card:** `requests[].choices` (`{index, label}`); under Allow / Deny a group "Allow, and don't ask again:" with one button per choice (hidden while denying). The live status says "Allowed (<choice>)".
+- **Checked end to end:** a real `claude -p` session attached in a temp database ran three `npm run` calls; Axiom got one approval with the suggestion `Bash(npm run *)`, the owner side picked it, the other two ran without asking, and the project's `.claude/settings.local.json` gained the rule.
+- **Not covered:** T3-run Claude threads (T3 asks for those itself, and its API cannot approve them); bypass mode; seeing or removing standing rules in Axiom (02, Q17).

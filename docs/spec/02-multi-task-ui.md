@@ -15,6 +15,7 @@ The owner's reference for it is a screen called **Desk** ([docs/design/reference
 - It also includes a text box to reply, along with a model and effort picker and the option to send in the selected thread or start a new one attached to this topic.
 - Topics can be favourited in this view, and drag sorted (see the Are We Leonida Yet? dashboard, 09 References).
 - Change from the reference: the reply box stays hidden until the owner decides to reply, to save screen space.
+- 2026-11-26: "When using Claude Code, we need a way to change the permissions, to avoid being spammed with allow requests."
 
 ### What the reference shows (reading of the screenshot)
 
@@ -80,3 +81,5 @@ The owner's reference for it is a screen called **Desk** ([docs/design/reference
 15. **"Steward":** is that the proactive agent of 03, shown as an on/off toggle on the Desk?
    - Answered 2026-11-25: yes; implemented later with 03.
 16. Reply box: hidden behind a "Reply" button on the card. Does it close again after sending, and do drafts survive a refresh?
+17. **Permission rules from the card (owner, 2026-11-26):** how should the owner change a Claude Code session's permissions from Axiom, so the card is not a stream of one-off Allow clicks?
+   - Built 2026-11-26 for review (plan D13): the approval on the card also offers Claude Code's own "don't ask again" choices, the ones its terminal prompt shows (for example "Always allow Bash(npm run *) in this project", "Accept all edits for this session"). Picking one allows the call and stops matching prompts at once; a project rule is also saved to the project's `.claude/settings.local.json`. Not possible from a hook: bypass mode. Still open: is this enough, or does the owner also want rules Axiom keeps itself (for example per topic), a list of the standing rules, or a way to remove one from Axiom?

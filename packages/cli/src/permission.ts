@@ -11,6 +11,8 @@
  * `{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}`
  * runs the tool; `{"behavior":"deny","message":"..."}` blocks it and the model sees the message;
  * printing nothing falls back to the normal prompt (denied in `-p`, which has no terminal).
+ * An allow can carry `updatedPermissions`: the "don't ask again" choice the owner picked from
+ * the request's `permission_suggestions` (core `permissions.ts`, verified 2026-11-26).
  */
 import { readFileSync } from "node:fs";
 import {
@@ -19,6 +21,7 @@ import {
   defaultDatabasePath,
   describeToolUse,
   openDatabase,
+  type PermissionUpdate,
 } from "@axiom/core";
 import { logFailure } from "./hook.js";
 
@@ -42,10 +45,21 @@ interface PermissionPayload {
   session_id?: string;
   tool_name?: string;
   tool_input?: unknown;
+  /** The terminal prompt's "don't ask again" choices (Claude Code 2.1+). */
+  permission_suggestions?: unknown;
 }
 
-export function decisionJson(decision: "allow" | "deny", message?: string): string {
-  const d = decision === "allow" ? { behavior: "allow" } : { behavior: "deny", message };
+export function decisionJson(
+  decision: "allow" | "deny",
+  message?: string,
+  updatedPermissions?: PermissionUpdate[] | null,
+): string {
+  const d =
+    decision === "deny"
+      ? { behavior: "deny", message }
+      : updatedPermissions && updatedPermissions.length > 0
+        ? { behavior: "allow", updatedPermissions }
+        : { behavior: "allow" };
   return JSON.stringify({
     hookSpecificOutput: { hookEventName: "PermissionRequest", decision: d },
   });
@@ -82,6 +96,7 @@ export async function runPermissionHook(
       toolName: payload.tool_name,
       inputSummary: describeToolUse(payload.tool_name, payload.tool_input),
       hookPid: process.pid,
+      suggestions: payload.permission_suggestions,
     });
     approvalId = approval.id;
 
@@ -103,7 +118,7 @@ export async function runPermissionHook(
       const a = axiom.getApproval(approval.id);
       if (a.decidedAt === null) continue;
       if (a.decision === "allow" || a.decision === "deny") {
-        write(decisionJson(a.decision, a.message ?? "Denied by the owner in Axiom"));
+        write(decisionJson(a.decision, a.message ?? "Denied by the owner in Axiom", a.applied));
         // The agent carries on: it is working again, not waiting on the owner.
         const th = axiom.getThread(thread.id);
         if (th.status === "hitl" && th.waitingOnOwner) axiom.threadWorking(thread.id);

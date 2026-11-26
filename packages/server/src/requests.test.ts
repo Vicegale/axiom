@@ -524,6 +524,54 @@ describe("approvals API (Claude Code)", () => {
     expect(entry?.body).toBe("Denied Bash: $ npm test: run the linter first");
   });
 
+  it("offers Claude Code's 'don't ask again' choices, and an allow can send one", async () => {
+    const th = thread("claude-code", "sess-1");
+    const rule = {
+      type: "addRules",
+      rules: [{ toolName: "Bash", ruleContent: "npm test:*" }],
+      behavior: "allow",
+      destination: "localSettings",
+    };
+    const edits = { type: "setMode", mode: "acceptEdits", destination: "session" };
+    const a = cli.requestApproval(th.id, {
+      toolName: "Bash",
+      inputSummary: "$ npm test",
+      hookPid: process.pid,
+      suggestions: [rule, edits],
+    });
+    await start();
+    const q = await api(`/api/threads/${th.id}/requests`);
+    expect(q.body.requests[0].choices).toEqual([
+      { index: 0, label: "Always allow Bash(npm test:*) in this project" },
+      { index: 1, label: "Accept all edits for this session" },
+    ]);
+    const post = (body: unknown) => api(`/api/approvals/${a.id}`, { method: "POST", body });
+    expect((await post({ decision: "allow", suggestion: 2 })).status).toBe(400);
+    expect((await post({ decision: "deny", suggestion: 0 })).status).toBe(400);
+    expect((await post({ decision: "allow", suggestion: -1 })).status).toBe(400);
+    const r = await post({ decision: "allow", suggestion: 0 });
+    expect(r.status).toBe(200);
+    expect(cli.getApproval(a.id).applied).toEqual([{ ...rule, destination: "session" }, rule]);
+    const auth = cli.listEntries("demo").find((e) => e.kind === "authorization");
+    expect(auth).toMatchObject({
+      body: "Allowed Bash: $ npm test, and: Always allow Bash(npm test:*) in this project",
+      data: { scope: "Always allow Bash(npm test:*) in this project", standing: true },
+    });
+  });
+
+  it("a plain allow sends no rule", async () => {
+    const th = thread("claude-code", "sess-1");
+    const a = cli.requestApproval(th.id, {
+      toolName: "Edit",
+      inputSummary: "Editing a.ts",
+      hookPid: process.pid,
+      suggestions: [{ type: "setMode", mode: "acceptEdits", destination: "session" }],
+    });
+    await start();
+    await api(`/api/approvals/${a.id}`, { method: "POST", body: { decision: "allow" } });
+    expect(cli.getApproval(a.id)).toMatchObject({ decision: "allow", applied: null });
+  });
+
   it("validates the body, the id and the approval", async () => {
     const th = thread("claude-code", "sess-1");
     const a = approval(th.id);

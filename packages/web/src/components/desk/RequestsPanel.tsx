@@ -166,7 +166,10 @@ function QuestionForm({
   );
 }
 
-/** A Claude Code permission request: Allow, or Deny with an optional reason. */
+/**
+ * A Claude Code permission request: Allow, Deny with an optional reason, or allow with one of
+ * Claude Code's "don't ask again" choices (a rule, or accepting edits for the session).
+ */
 function ApprovalForm({
   request,
   busy,
@@ -174,8 +177,9 @@ function ApprovalForm({
 }: {
   request: PendingRequest;
   busy: boolean;
-  onDecide: (decision: "allow" | "deny", message?: string) => void;
+  onDecide: (decision: "allow" | "deny", message?: string, suggestion?: number) => void;
 }) {
+  const choices = request.choices ?? [];
   const uid = useId();
   const [denying, setDenying] = useState(false);
   const [reason, setReason] = useState("");
@@ -260,6 +264,22 @@ function ApprovalForm({
           </button>
         </div>
       )}
+      {!denying && choices.length > 0 ? (
+        <fieldset className="rq-always" aria-busy={busy || undefined}>
+          <legend className="rq-note">Allow, and don't ask again:</legend>
+          {choices.map((c) => (
+            <button
+              type="button"
+              key={c.index}
+              className="btn sm"
+              disabled={busy}
+              onClick={() => onDecide("allow", undefined, c.index)}
+            >
+              {c.label}
+            </button>
+          ))}
+        </fieldset>
+      ) : null}
     </div>
   );
 }
@@ -393,9 +413,15 @@ export function RequestsPanel({ thread }: { thread: DeskThread }) {
               <ApprovalForm
                 request={r}
                 busy={busy === r.id}
-                onDecide={(decision, why) =>
-                  run(r, decision === "allow" ? "Allowed" : "Denied", () =>
-                    api.decideApproval(r.id, decision, why),
+                onDecide={(decision, why, suggestion) =>
+                  run(
+                    r,
+                    decision === "deny"
+                      ? "Denied"
+                      : suggestion === undefined
+                        ? "Allowed"
+                        : `Allowed (${r.choices.find((c) => c.index === suggestion)?.label})`,
+                    () => api.decideApproval(r.id, decision, why, suggestion),
                   )
                 }
               />

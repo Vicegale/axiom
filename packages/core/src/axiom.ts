@@ -39,6 +39,12 @@ import {
 } from "./constants.js";
 import { AxiomError } from "./errors.js";
 import {
+  cleanSuggestions,
+  describePermissionUpdate,
+  type PermissionUpdate,
+  updatesToApply,
+} from "./permissions.js";
+import {
   entryWriteError,
   isAxiomEntryKind,
   manualStatusError,
@@ -156,6 +162,25 @@ function camel<T>(row: Row | undefined): T {
     out[name] = BOOLEAN_COLUMNS.has(key) ? value === 1 : value;
   }
   return out as T;
+}
+
+/** An `approval` row, with its JSON columns parsed (a damaged value reads as empty). */
+function approvalFromRow(row: Row): Approval {
+  const { suggestions, applied, ...rest } = row;
+  const json = (v: unknown): unknown => {
+    if (typeof v !== "string") return null;
+    try {
+      return JSON.parse(v);
+    } catch {
+      return null;
+    }
+  };
+  const done = json(applied);
+  return {
+    ...camel<Omit<Approval, "suggestions" | "applied">>(rest),
+    suggestions: cleanSuggestions(json(suggestions)),
+    applied: Array.isArray(done) ? cleanSuggestions(done) : null,
+  };
 }
 
 function messageOf(row: Row | undefined): StewardMessage {
@@ -1473,19 +1498,27 @@ export class Axiom {
    */
   requestApproval(
     threadId: number,
-    input: { toolName: string; inputSummary: string; hookPid?: number },
+    input: {
+      toolName: string;
+      inputSummary: string;
+      hookPid?: number;
+      /** Claude Code's `permission_suggestions`, untrusted; cleaned before they are stored. */
+      suggestions?: unknown;
+    },
   ): Approval {
     const toolName = oneLine(input.toolName, 100) || "tool";
     const summary = oneLine(input.inputSummary, MAX_ACTIVITY_CHARS) || toolName;
+    const suggestions = cleanSuggestions(input.suggestions);
     return this.tx(() => {
       const id = this.run(
-        `INSERT INTO approval (thread_id, tool_name, input_summary, created_at, hook_pid)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO approval (thread_id, tool_name, input_summary, created_at, hook_pid, suggestions)
+         VALUES (?, ?, ?, ?, ?, ?)`,
         threadId,
         toolName,
         summary,
         this.iso(),
         input.hookPid ?? null,
+        suggestions.length > 0 ? JSON.stringify(suggestions) : null,
       );
       this.threadWaitingOnOwner(threadId, `Permission to use ${toolName}: ${summary}`);
       return this.approvalRow(id);
@@ -1495,7 +1528,7 @@ export class Axiom {
   private approvalRow(id: number): Approval {
     const row = this.get<Row>("SELECT * FROM approval WHERE id = ?", id);
     if (!row) throw new AxiomError("not-found", `approval not found: ${id}`);
-    return camel<Approval>(row);
+    return approvalFromRow(row);
   }
 
   getApproval(id: number): Approval {
@@ -1507,7 +1540,7 @@ export class Axiom {
     return this.all<Row>(
       "SELECT * FROM approval WHERE thread_id = ? AND decided_at IS NULL ORDER BY id",
       threadId,
-    ).map((r) => camel<Approval>(r));
+    ).map(approvalFromRow);
   }
 
   /** Pending approvals per thread id (for the Desk's counts). */
@@ -1520,13 +1553,17 @@ export class Axiom {
 
   /**
    * The owner's decision. Writes the history entry (`authorization` for allow, `owner input` for
-   * deny); the waiting hook picks the decision up and moves the thread back to working. Throws `conflict` when the approval was already decided or expired.
+   * deny); the waiting hook picks the decision up and moves the thread back to working. With
+   * `options.suggestion` (an index into the approval's `suggestions`), the allow also sends that
+   * "don't ask again" choice to Claude Code, and the authorization is standing. Throws `conflict`
+   * when the approval was already decided or expired, `validation` for a bad suggestion.
    */
   decideApproval(
     id: number,
     decision: "allow" | "deny",
     message: string | undefined,
     actor: Actor,
+    options: { suggestion?: number } = {},
   ): Approval {
     ownerOnly(actor, "decide an approval");
     return this.tx(() => {
@@ -1534,17 +1571,39 @@ export class Axiom {
       if (a.decidedAt !== null) {
         throw new AxiomError("conflict", "this approval was already decided or has expired");
       }
+      let choice: PermissionUpdate | undefined;
+      if (options.suggestion !== undefined) {
+        if (decision !== "allow") {
+          throw new AxiomError("validation", "only an allow can carry a permission rule");
+        }
+        choice = a.suggestions[options.suggestion];
+        if (!choice) {
+          throw new AxiomError("validation", `no such suggestion: ${options.suggestion}`);
+        }
+      }
       const note = message?.trim() ? oneLine(message, 500) : null;
       this.run(
-        "UPDATE approval SET decided_at = ?, decision = ?, message = ? WHERE id = ?",
+        "UPDATE approval SET decided_at = ?, decision = ?, message = ?, applied = ? WHERE id = ?",
         this.iso(),
         decision,
         note,
+        choice ? JSON.stringify(updatesToApply(choice)) : null,
         id,
       );
       const th = this.threadRow(a.threadId);
       const what = `${a.toolName}: ${a.inputSummary}`;
-      if (decision === "allow") {
+      if (decision === "allow" && choice) {
+        const rule = describePermissionUpdate(choice);
+        this.addEntry(
+          th.topicId,
+          {
+            kind: "authorization",
+            body: `Allowed ${what}, and: ${rule}`,
+            data: { scope: rule, standing: true },
+          },
+          actor,
+        );
+      } else if (decision === "allow") {
         this.addEntry(
           th.topicId,
           {

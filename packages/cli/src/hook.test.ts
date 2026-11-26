@@ -1066,6 +1066,42 @@ describe("axiom hook permission", () => {
     });
   });
 
+  it("stores Claude Code's suggestions and sends the chosen one back with the allow", async () => {
+    const s = session();
+    s.attach();
+    const rule = {
+      type: "addRules",
+      rules: [{ toolName: "Bash", ruleContent: "npm test:*" }],
+      behavior: "allow",
+      destination: "localSettings",
+    };
+    const input = payload(
+      "PermissionRequest",
+      {
+        tool_name: "Bash",
+        tool_input: { command: "npm test" },
+        permission_suggestions: [rule, { type: "setMode", mode: "bypassPermissions" }],
+      },
+      SID,
+    );
+    const h = startHook(s, input);
+    const pending = await pendingApproval(s.db);
+    expect(pending.suggestions).toEqual([rule]); // bypass cannot work from a hook: dropped
+    const owner = openDatabase(s.db);
+    owner.decideApproval(pending.id, "allow", undefined, { kind: "owner" }, { suggestion: 0 });
+    owner.close();
+    const r = await h.done;
+    expect(JSON.parse(r.out)).toEqual({
+      hookSpecificOutput: {
+        hookEventName: "PermissionRequest",
+        decision: {
+          behavior: "allow",
+          updatedPermissions: [{ ...rule, destination: "session" }, rule],
+        },
+      },
+    });
+  });
+
   it("times out silently and leaves the approval expired", async () => {
     const s = session();
     s.attach();

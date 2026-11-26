@@ -25,6 +25,7 @@ import type {
   View,
   WorkItemStatus,
 } from "./constants.js";
+import type { PermissionUpdate } from "./permissions.js";
 
 export type TopicRef = number | string;
 
@@ -248,6 +249,10 @@ export interface Approval {
   decision: "allow" | "deny" | "expired" | null;
   message: string | null;
   hookPid: number | null;
+  /** Claude Code's "don't ask again" choices for this request (cleaned; may be empty). */
+  suggestions: PermissionUpdate[];
+  /** What the owner's allow sent back to Claude Code (`updatedPermissions`); null for a plain allow. */
+  applied: PermissionUpdate[] | null;
 }
 
 // ---------------------------------------------------------------------------

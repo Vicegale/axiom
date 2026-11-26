@@ -55,7 +55,7 @@ describe("opening", () => {
     expect(pragma("journal_mode")).toBe("wal");
     expect(pragma("foreign_keys")).toBe(1);
     expect(pragma("busy_timeout")).toBe(5000);
-    expect(pragma("user_version")).toBe(16);
+    expect(pragma("user_version")).toBe(17);
     const names = (
       ax.db
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
@@ -76,7 +76,7 @@ describe("opening", () => {
     a.close();
     const b = openDatabase(path);
     expect(b.getTopic("keep").title).toBe("keep");
-    expect(Object.values(b.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(16);
+    expect(Object.values(b.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(17);
     b.close();
   });
 
@@ -108,7 +108,7 @@ describe("opening", () => {
     );
     raw.close();
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(16);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(17);
     const links = ax.getTopic("t").links;
     expect(links).toHaveLength(1);
     expect(links[0]).toMatchObject({ label: "A", description: null });
@@ -137,7 +137,7 @@ describe("opening", () => {
     );
     raw.close();
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(16);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(17);
     const t = ax.getTopic("t");
     expect(t).toMatchObject({ title: "T", favorite: false, deskHidden: false, deskOrder: null });
     expect(t.threads[0]).toMatchObject({
@@ -196,7 +196,7 @@ describe("opening", () => {
     raw.close();
 
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(16);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(17);
     expect(ax.db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
     const entries = ax.listEntries("t");
     expect(entries.map((e) => [e.id, e.author, e.body, e.threadId, e.correctsEntryId])).toEqual([
@@ -271,7 +271,7 @@ describe("opening", () => {
     raw.close();
 
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(16);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(17);
     expect(ax.db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
     expect(ax.getStewardItem(1)).toMatchObject({
       promotion: "simple",
@@ -285,6 +285,45 @@ describe("opening", () => {
     // The item still cascades to its suggestion when deleted.
     ax.db.exec("DELETE FROM steward_item WHERE id = 2");
     expect(ax.db.prepare("SELECT COUNT(*) AS n FROM steward_suggestion").get()).toEqual({ n: 0 });
+    ax.close();
+  });
+
+  it("upgrades a version 16 database: approvals keep their rows and read with no suggestions", () => {
+    const path = join(dir, "v16.db");
+    const raw = new DatabaseSync(path);
+    raw.exec("PRAGMA foreign_keys = ON");
+    const all = readdirSync(fileURLToPath(new URL("../migrations/", import.meta.url)))
+      .filter((f) => /^\d{4}_.*\.sql$/.test(f))
+      .sort()
+      .slice(0, 16);
+    migrate(
+      raw,
+      all.map((f, i) => ({
+        version: i + 1,
+        sql: readFileSync(fileURLToPath(new URL(`../migrations/${f}`, import.meta.url)), "utf8"),
+      })),
+    );
+    raw.exec(
+      "INSERT INTO topic (slug, title, created_at, last_worked_at) VALUES ('t', 'T', 'x', 'x')",
+    );
+    raw.exec(
+      `INSERT INTO thread (id, topic_id, provider, provider_thread_id, status_changed_at, started_at)
+       VALUES (1, 1, 'claude-code', 's', 'x', 'x')`,
+    );
+    raw.exec(
+      `INSERT INTO approval (id, thread_id, tool_name, input_summary, created_at, decided_at, decision)
+       VALUES (3, 1, 'Bash', '$ ls', 'x', 'y', 'allow')`,
+    );
+    raw.close();
+
+    const ax = openDatabase(path);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(17);
+    expect(ax.getApproval(3)).toMatchObject({
+      toolName: "Bash",
+      decision: "allow",
+      suggestions: [],
+      applied: null,
+    });
     ax.close();
   });
 
@@ -352,9 +391,9 @@ describe("opening", () => {
         );
       });
     const results = await Promise.all(Array.from({ length: 6 }, run));
-    expect(results).toEqual(Array(6).fill("16 wal"));
+    expect(results).toEqual(Array(6).fill("17 wal"));
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(16);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(17);
     ax.close();
   }, 60_000);
 });

@@ -207,6 +207,8 @@ export interface PendingRequest {
   decidable: boolean;
   /** `t3code://` link to the thread, for approvals T3 must answer. */
   openUrl: string | null;
+  /** Claude Code approvals: the "don't ask again" choices; `index` goes back with an allow. */
+  choices: { index: number; label: string }[];
 }
 
 export type RequestAnswers = Record<string, string | string[]>;
@@ -718,10 +720,11 @@ export const api = {
     request<{ ok: true }>("POST", `/api/threads/${threadId}/requests/${enc(requestId)}/answer`, {
       answers,
     }),
-  decideApproval: (id: string, decision: "allow" | "deny", message?: string) =>
+  decideApproval: (id: string, decision: "allow" | "deny", message?: string, suggestion?: number) =>
     request<unknown>("POST", `/api/approvals/${enc(id)}`, {
       decision,
       ...(message ? { message } : {}),
+      ...(suggestion !== undefined ? { suggestion } : {}),
     }),
   steward: () => request<StewardView>("GET", "/api/steward"),
   stewardCount: () => request<{ count: number }>("GET", "/api/steward/count"),

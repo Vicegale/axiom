@@ -11,7 +11,14 @@
  * - Claude Code approvals: rows in the `approval` table, written by the `PermissionRequest` hook,
  *   which polls for the owner's decision made here.
  */
-import { type Actor, type Approval, type Axiom, AxiomError, type Thread } from "@axiom/core";
+import {
+  type Actor,
+  type Approval,
+  type Axiom,
+  AxiomError,
+  describePermissionUpdate,
+  type Thread,
+} from "@axiom/core";
 import type { Context, Hono } from "hono";
 import { z } from "zod";
 import type { ChangeBus } from "./events.js";
@@ -43,6 +50,11 @@ export interface PendingRequest {
   decidable: boolean;
   /** `t3code://` link of the thread, for approvals T3 must answer. */
   openUrl: string | null;
+  /**
+   * Claude Code approvals: the "don't ask again" choices Claude Code offered, as the card labels
+   * them; `index` goes back as `suggestion` with an allow.
+   */
+  choices: { index: number; label: string }[];
 }
 
 export interface RequestsOptions {
@@ -63,6 +75,8 @@ const bodies = {
   decision: z.strictObject({
     decision: z.enum(["allow", "deny"]),
     message: z.string().max(500).optional(),
+    /** Allow only: also send this "don't ask again" choice (an index into `choices`). */
+    suggestion: z.number().int().min(0).optional(),
   }),
 };
 
@@ -239,6 +253,7 @@ export function registerRequestRoutes(app: Hono, o: RequestsOptions): void {
       decidable: false,
       // Always offered: T3 may refuse answers from outside its own app (see the answer route).
       openUrl: t3.threadUrl(th.providerThreadId, th.environmentId),
+      choices: [],
     };
   };
 
@@ -254,6 +269,7 @@ export function registerRequestRoutes(app: Hono, o: RequestsOptions): void {
     createdAt: a.createdAt,
     decidable: true,
     openUrl: null,
+    choices: a.suggestions.map((u, index) => ({ index, label: describePermissionUpdate(u) })),
   });
 
   app.get("/api/threads/:id/requests", (c) => {
@@ -294,7 +310,9 @@ export function registerRequestRoutes(app: Hono, o: RequestsOptions): void {
         "The agent is no longer waiting for this (it was answered in the terminal or timed out).",
       );
     }
-    const decided = ax.decideApproval(id, body.decision, body.message, owner);
+    const decided = ax.decideApproval(id, body.decision, body.message, owner, {
+      suggestion: body.suggestion,
+    });
     bus.emit();
     return c.json(decided);
   });
