@@ -237,8 +237,95 @@ describe("axiom hook", () => {
       background_tasks: [{ id: "b1", type: "shell", status: "running", command: "npm run dev" }],
     });
     s.hook("stop", onlyShell);
-    expect(s.topic().status).toBe("idle");
+    expect(s.topic().status).toBe("monitoring"); // waiting on its own command (01)
     expect(s.notifications()).toContain("agent stopped");
+    s.hook("prompt", PROMPT); // re-invoked when the command finished
+    expect(s.topic().status).toBe("wip");
+    s.hook("stop", payload("Stop", { background_tasks: [] }));
+    expect(s.topic().status).toBe("idle");
+  });
+
+  describe("background commands", () => {
+    const SHELL = { id: "b1", type: "shell", status: "running", command: "sleep 40" };
+    const waiting = (...tasks: object[]) => payload("Stop", { background_tasks: tasks });
+
+    it("a stop while a command runs is monitoring, named in the history, with no target needed", () => {
+      const s = session();
+      s.attach();
+      s.hook("prompt", PROMPT);
+      s.hook("stop", waiting(SHELL, { ...SHELL, id: "b2", status: "completed" }, SHELL));
+      const t = s.topic();
+      expect(t.status).toBe("monitoring");
+      expect(t.threads[0].status).toBe("monitoring");
+      expect(t.history.map((e) => e.body)).toContain(
+        "Thread stopped, waiting on 2 background commands",
+      );
+      const ax = openDatabase(s.db);
+      try {
+        expect(ax.topicWaitsOnCommands("demo")).toBe(true);
+        const stop = ax.listThreadStopsSince(0).at(-1);
+        expect(stop?.commands).toBe(2);
+      } finally {
+        ax.close();
+      }
+    });
+
+    it("finished commands only are a plain stop", () => {
+      const s = session();
+      s.attach();
+      s.hook("prompt", PROMPT);
+      s.hook("stop", waiting({ ...SHELL, status: "completed" }));
+      expect(s.topic().status).toBe("idle");
+    });
+
+    it("hitl and done still win over a running command", () => {
+      const s = session();
+      s.attach();
+      s.hook("prompt", PROMPT);
+      const agent = { CLAUDECODE: "1", CLAUDE_CODE_SESSION_ID: SID };
+      s.exec(["topic", "status", "hitl", "--reason", "Asked a question"], undefined, agent);
+      s.hook("stop", waiting(SHELL));
+      expect(s.topic().status).toBe("hitl");
+      s.hook("prompt", PROMPT);
+      s.exec(["topic", "status", "done"], undefined, agent);
+      s.hook("stop", waiting(SHELL));
+      expect(s.topic().status).toBe("done");
+    });
+
+    it("the session ending drops a monitoring thread back to idle", () => {
+      const s = session();
+      s.attach();
+      s.hook("prompt", PROMPT);
+      s.hook("stop", waiting(SHELL));
+      s.hook("session-end", payload("SessionEnd", { reason: "other" }));
+      expect(s.topic().status).toBe("idle");
+      const ax = openDatabase(s.db);
+      try {
+        expect(ax.topicWaitsOnCommands("demo")).toBe(false);
+      } finally {
+        ax.close();
+      }
+    });
+
+    it("inside a T3 session already stopped by the sync, a running command makes it monitoring", () => {
+      const s = session();
+      s.exec(["topic", "new", "demo", "--title", "Demo"]);
+      s.exec(["thread", "attach", "demo", "--provider", "t3", "--id", "t3-cmd"]);
+      const t3 = { T3CODE_THREAD_ID: "t3-cmd" };
+      const ax = openDatabase(s.db);
+      try {
+        const th = ax.findThread({ provider: "t3", providerThreadId: "t3-cmd" });
+        if (!th) throw new Error("no thread");
+        ax.threadWorking(th.id);
+        ax.threadStopped(th.id); // the sync saw the run finish first
+      } finally {
+        ax.close();
+      }
+      expect(s.topic().status).toBe("idle");
+      s.hook("stop", waiting(SHELL), t3);
+      expect(s.topic().status).toBe("monitoring");
+      expect(s.topic().history.map((e) => e.body)).toContain("Waiting on 1 background command");
+    });
   });
 
   it("inside an attached T3 session, a stop with running subagents is recorded and keeps it wip", () => {

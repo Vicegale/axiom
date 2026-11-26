@@ -313,8 +313,12 @@ export class Steward {
         ...new Set(
           stops
             .filter(
+              // A stop that only waits on the agent's own background commands is not news.
               (x) =>
-                x.stewardEnabled && x.topicStatus !== null && EVENT_STATUSES.has(x.topicStatus),
+                x.stewardEnabled &&
+                x.commands === 0 &&
+                x.topicStatus !== null &&
+                EVENT_STATUSES.has(x.topicStatus),
             )
             .map((x) => `${x.topicSlug} (${x.topicStatus})`),
         ),

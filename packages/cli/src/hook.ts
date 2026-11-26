@@ -95,6 +95,21 @@ export function runningSubagentCount(p: HookPayload): number {
   return runningSubagents(p).length;
 }
 
+/**
+ * Running background commands a Stop payload lists in `background_tasks`: everything running that
+ * is not a subagent. Claude Code 2.1.325 lists both `Bash` with `run_in_background` and `Monitor`
+ * as `type: "shell"` (checked 2026-11-26); other types count too, so a new name still counts.
+ */
+export function runningCommandCount(p: HookPayload): number {
+  const tasks = (p as { background_tasks?: unknown }).background_tasks;
+  if (!Array.isArray(tasks)) return 0;
+  return tasks.filter((t) => {
+    if (typeof t !== "object" || t === null) return false;
+    const { type, status } = t as { type?: unknown; status?: unknown };
+    return type !== "subagent" && status === "running";
+  }).length;
+}
+
 /** The Agent (called Task in older versions) tool: the one that starts a subagent. */
 function isSubagentTool(name: string): boolean {
   return name === "Agent" || name === "Task";
@@ -158,6 +173,7 @@ export function runHook(
     }
     const payload = parsed as HookPayload;
     const subagents = runningSubagentCount(payload);
+    const commands = runningCommandCount(payload);
 
     // Runs before every tool call: one short write, no history, no notification, no refresh.
     if (event === "pre-tool") {
@@ -203,6 +219,7 @@ export function runHook(
             const reply = lastReply(payload);
             if (reply) axiom.setThreadReply(thread.id, reply);
             axiom.setRunningSubagents(thread.id, subagents);
+            axiom.setRunningCommands(thread.id, subagents > 0 ? 0 : commands);
             // The T3 sync may have seen the finished run first and stopped the thread already.
             if (
               subagents > 0 &&
@@ -210,9 +227,12 @@ export function runHook(
               axiom.getThread(thread.id).status !== "wip"
             ) {
               axiom.threadWorking(thread.id);
+            } else if (subagents === 0 && commands > 0) {
+              axiom.threadWaitingOnCommands(thread.id);
             }
           } else if (event === "session-end") {
             axiom.setRunningSubagents(thread.id, 0);
+            axiom.setRunningCommands(thread.id, 0);
           }
           axiom.requestProviderRefresh("t3");
         }
@@ -258,10 +278,14 @@ export function runHook(
           const reply = lastReply(payload);
           if (reply) axiom.setThreadReply(thread.id, reply);
           // Waiting on running subagents is not stopping: the thread stays wip until it is
-          // re-invoked and stops again with none left.
+          // re-invoked and stops again with none left. Waiting only on background commands is a
+          // stop into `monitoring` (01): each command re-invokes the agent when it finishes.
           axiom.setRunningSubagents(thread.id, subagents);
           axiom.keepSubagents(thread.id, runningSubagents(payload));
-          if (subagents === 0) axiom.threadStopped(thread.id);
+          if (subagents === 0) {
+            axiom.setRunningCommands(thread.id, commands);
+            axiom.threadStopped(thread.id);
+          }
           recordRuntime(axiom, thread.id, payload);
           break;
         }

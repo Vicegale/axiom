@@ -55,9 +55,24 @@ export interface StopInput {
   waitingOnOwner: boolean;
   hasPrLink: boolean;
   confirmedMonitorTargets: number;
+  /**
+   * Background commands (shells, monitors) still running when the agent stopped. Each one
+   * re-invokes the agent when it finishes, so the thread is waiting on something it watches.
+   */
+  runningCommands?: number;
 }
 
 export function stopStatus(input: StopInput): TopicStatus {
+  const status = declaredStopStatus(input);
+  // Waiting on a command the agent watches is monitoring, not idle (owner, 2026-11-26).
+  // A declared `monitoring` without a target is not blocked either: the command is the target.
+  // `hitl`, `done`, `blocked` and `review` with a PR still win.
+  const waiting = (input.runningCommands ?? 0) > 0;
+  if (waiting && (status === "idle" || input.declaredStatus === "monitoring")) return "monitoring";
+  return status;
+}
+
+function declaredStopStatus(input: StopInput): TopicStatus {
   if (input.waitingOnOwner) return "hitl";
   switch (input.declaredStatus) {
     case "hitl":

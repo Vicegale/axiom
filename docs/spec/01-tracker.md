@@ -64,20 +64,22 @@ A **task** is a unit of work inside a topic, such as a row of a build plan (`S7`
 
 ### When an agent stops
 
-**Waiting on subagents is not stopping** (owner, 2026-11-25). If the agent ends its turn while subagents it started are still running, the thread stays `wip` (and so do its task and topic). The stop table below applies only when the thread stops with no running subagents. Claude Code reports this in the `Stop` hook payload (`background_tasks` entries with `type: "subagent"` and `status: "running"`; tested 2026-11-25); when the subagent finishes, the parent is re-invoked (a new prompt event), and its next stop is judged again. Background shell commands (dev servers, monitors) do not count.
+**Waiting on subagents is not stopping** (owner, 2026-11-25). If the agent ends its turn while subagents it started are still running, the thread stays `wip` (and so do its task and topic). The stop table below applies only when the thread stops with no running subagents. Claude Code reports this in the `Stop` hook payload (`background_tasks` entries with `type: "subagent"` and `status: "running"`; tested 2026-11-25); when the subagent finishes, the parent is re-invoked (a new prompt event), and its next stop is judged again. Background shell commands (dev servers, monitors) do not count here; see the next rule.
+
+**Waiting on a command is monitoring** (owner, 2026-11-26: "When the agent is waiting for a command to finish, the task should go into monitoring mode. Currently it just goes into idle."). If the agent stops with no running subagents but with background commands still running (`background_tasks` entries of any other type with `status: "running"`; Claude Code 2.1.325 lists both a backgrounded `Bash` command and a `Monitor` as `type: "shell"`, checked 2026-11-26), a stop that would be `idle`, or `monitoring` without a confirmed target, is `monitoring` instead. The command is what the agent watches, so no monitor target is needed: each one re-invokes the agent when it finishes (a new prompt event, checked 2026-11-26), and the next stop is judged again. `hitl`, `done`, `blocked` and `review` with a PR still win. If the session ends first, the thread goes back to `idle`, because its commands end with it. Steward's tidy rule and checklist leave such a topic alone, and such a stop does not wake Steward. A dev server left running also counts, so its topic stays `monitoring` until the session ends (Q31).
 
 
 The owner asked for a common-sense rule (2026-11-25). Whatever the outcome, stopping raises a notification.
 
 | Last status the agent set | Topic after it stops |
 | --- | --- |
-| nothing, or only `wip` (automatic) | `idle` |
+| nothing, or only `wip` (automatic) | `idle`; `monitoring` while a background command runs |
 | `hitl` (it asked a question) | stays `hitl` |
 | `done` | stays `done` |
 | `blocked` | stays `blocked` |
 | (the thread errored) | `error` |
 | `review` | stays `review` if the topic has a linked PR; otherwise `idle` |
-| `monitoring` | stays `monitoring` if the topic has at least one confirmed monitoring target; otherwise `blocked`, because nothing will check it |
+| `monitoring` | stays `monitoring` if the topic has at least one confirmed monitoring target or a background command runs; otherwise `blocked`, because nothing will check it |
 
 The thread status follows the same table when the topic has several threads.
 - No other status is set automatically. In particular, opening a PR does not move a topic to `review`, because a PR can exist before it is ready for review.
@@ -151,6 +153,7 @@ Everything else is an attached record: threads, specs, artifacts, PRs, links, an
 - 2026-11-25: Staleness is never applied automatically. Axiom shows a "mark as stale" prompt and the owner decides. This replaces the "topic went stale" notification.
 - 2026-11-25: `stale` is a new topic status. The prompt appears when a topic has been `idle` with no activity for N days (N configurable; default to be set when building, 14 suggested).
 - 2026-11-25: Topics are closed by moving them to `done`, either by an agent on its own or by the owner. That is the main defence against stale topics.
+- 2026-11-26: An agent that stops while its own background commands still run (shells, monitors) moves to `monitoring`, not `idle`, with no monitor target needed (owner). See "When an agent stops".
 
 ## Open questions
 
@@ -217,3 +220,5 @@ Everything else is an attached record: threads, specs, artifacts, PRs, links, an
     - Answered 2026-11-25: replaced by a "mark as stale" prompt. Never automatic; the owner decides.
 30. What does marking a topic stale do, and what triggers the prompt?
     - Answered 2026-11-25: `stale` is a new status. The prompt shows for a topic `idle` with no activity for N days.
+31. A background command the agent does not wait on (a dev server it left running) also keeps the topic `monitoring` until the session ends: Claude Code's payload does not tell the two apart. Is that acceptable, or should long-lived commands be told apart (for example by the agent declaring `idle`)?
+32. A stop into `monitoring` on a background command still raises the "agent stopped" notification, and the owner gets another one when the command re-invokes the agent and it stops again. Should the first one be skipped?

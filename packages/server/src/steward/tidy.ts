@@ -10,7 +10,8 @@ import { parsePrTarget } from "./pr.js";
  * (b) A topic in `monitoring` with no confirmed monitor target becomes `blocked`. 01's stop table
  *     already does this when a thread stops, but not for a topic set to `monitoring` by hand or
  *     one whose target was removed later, which is what this covers (after a short grace, so an
- *     agent that has just set `monitoring` can still add its target).
+ *     agent that has just set `monitoring` can still add its target). A topic whose thread is
+ *     monitoring its own background commands is left alone: they re-invoke the agent.
  */
 
 const actor = { kind: "steward" } as const;
@@ -70,6 +71,8 @@ export function runTidy(ax: Axiom, o: TidyOptions): StewardItem[] {
       } else if (t.status === "monitoring") {
         const confirmed = ax.getTopic(t.slug).monitorTargets.some((m) => m.state === "confirmed");
         if (confirmed) continue;
+        // An agent waiting on its own background commands needs no target: they re-invoke it.
+        if (ax.topicWaitsOnCommands(t.id)) continue;
         const since = ax
           .listEntries(t.slug)
           .reverse()

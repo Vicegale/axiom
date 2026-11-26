@@ -48,6 +48,37 @@ describe("stop table", () => {
       { ...base, declaredStatus: "monitoring", confirmedMonitorTargets: 0 },
       "blocked",
     ],
+    ["a background command running", { ...base, runningCommands: 1 }, "monitoring"],
+    [
+      "a background command and review without a PR",
+      { ...base, declaredStatus: "review", runningCommands: 2 },
+      "monitoring",
+    ],
+    [
+      "a background command and monitoring without a target",
+      { ...base, declaredStatus: "monitoring", runningCommands: 1 },
+      "monitoring",
+    ],
+    [
+      "a background command does not override hitl",
+      { ...base, declaredStatus: "hitl", runningCommands: 1 },
+      "hitl",
+    ],
+    [
+      "a background command does not override waiting on the owner",
+      { ...base, waitingOnOwner: true, runningCommands: 1 },
+      "hitl",
+    ],
+    [
+      "a background command does not override done",
+      { ...base, declaredStatus: "done", runningCommands: 1 },
+      "done",
+    ],
+    [
+      "a background command does not override blocked",
+      { ...base, declaredStatus: "blocked", runningCommands: 1 },
+      "blocked",
+    ],
   ])("%s", (_name, input, expected) => {
     expect(stopStatus(input)).toBe(expected);
   });

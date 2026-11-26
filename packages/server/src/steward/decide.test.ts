@@ -635,6 +635,23 @@ describe("tidying", () => {
     expect(ax.getTopic("ok").status).toBe("monitoring");
   });
 
+  it("(b) leaves a topic alone while its thread waits on its own background commands", () => {
+    const th = ax.attachThread(
+      "alpha",
+      { provider: "claude-code", providerThreadId: "t-cmd" },
+      owner,
+    );
+    ax.threadWorking(th.id);
+    ax.setRunningCommands(th.id, 1);
+    ax.threadStopped(th.id);
+    expect(ax.getTopic("alpha").status).toBe("monitoring");
+    t += MONITORING_GRACE_MS + 1000;
+    expect(tidy()).toEqual([]);
+    expect(ax.getTopic("alpha").status).toBe("monitoring");
+    ax.threadEnded(th.id, "other"); // its commands end with the session
+    expect(ax.getTopic("alpha").status).toBe("idle");
+  });
+
   it("runs in a wake before stage 2, which is told what changed", async () => {
     ax.setTopicStatus("alpha", "review", owner);
     ax.addLink("alpha", { kind: "pr", target: "acme/app#12" }, owner);

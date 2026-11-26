@@ -126,7 +126,7 @@ export async function runChecklist(i: ChecklistInput): Promise<ChecklistResult> 
     }
     if (t.status === "monitoring") {
       const confirmed = ax.getTopic(t.slug).monitorTargets.some((m) => m.state === "confirmed");
-      if (!confirmed) {
+      if (!confirmed && !ax.topicWaitsOnCommands(t.id)) {
         spots.push({
           kind: "no monitor target",
           text: `Topic ${t.slug} is in monitoring but has no confirmed monitor target.`,

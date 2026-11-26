@@ -1089,6 +1089,76 @@ export class Axiom {
     return typeof v === "number" ? v : 0;
   }
 
+  /**
+   * How many background commands (shells, monitors; not subagents) were still running when the
+   * thread last stopped. A stop with any is `monitoring`, not `idle` (01, "When an agent stops").
+   * Kept as a setting, like the subagent count.
+   */
+  setRunningCommands(threadId: number, count: number): void {
+    const key = `commands:${threadId}`;
+    if (count > 0) {
+      this.run(
+        "INSERT INTO setting (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+        key,
+        JSON.stringify(count),
+      );
+    } else {
+      this.run("DELETE FROM setting WHERE key = ?", key);
+    }
+  }
+
+  runningCommands(threadId: number): number {
+    const v = this.getSetting(`commands:${threadId}`);
+    return typeof v === "number" ? v : 0;
+  }
+
+  /**
+   * True when an open thread of the topic is `monitoring` because it waits on its own background
+   * commands: the topic needs no monitor target for that, and Steward leaves it alone.
+   */
+  topicWaitsOnCommands(topic: TopicRef): boolean {
+    const t = this.topicRow(topic);
+    return !!this.get(
+      `SELECT 1 FROM thread JOIN setting ON setting.key = 'commands:' || thread.id
+       WHERE thread.topic_id = ? AND thread.ended_at IS NULL AND thread.status = 'monitoring'`,
+      t.id,
+    );
+  }
+
+  /**
+   * A T3 thread's hook reported running commands after the T3 sync had already stopped the thread
+   * as `idle`: it is monitoring them. Does nothing otherwise. No notification: the stop raised it.
+   */
+  threadWaitingOnCommands(threadId: number): Thread {
+    return this.tx(() => {
+      const th = this.threadRow(threadId);
+      const n = this.runningCommands(threadId);
+      if (th.endedAt !== null || th.status !== "idle" || n === 0) return th;
+      this.run(
+        `UPDATE thread SET status = 'monitoring', status_changed_at = ?,
+           status_changed_seq = (SELECT COALESCE(MAX(status_changed_seq), 0) + 1 FROM thread)
+         WHERE id = ?`,
+        this.iso(),
+        threadId,
+      );
+      this.insertEntry({
+        topicId: th.topicId,
+        author: "axiom",
+        threadId,
+        kind: "thread event",
+        body: `Waiting on ${commandCount(n)}`,
+        data: {
+          event: "waiting on commands",
+          commands: n,
+          provider: th.provider,
+          providerThreadId: th.providerThreadId,
+        },
+      });
+      this.recomputeFromThreads(this.topicRow(th.topicId), "thread waiting on commands", threadId);
+      return this.threadRow(threadId);
+    });
+  }
+
   getThread(id: number): Thread {
     return this.threadRow(id);
   }
@@ -1642,6 +1712,8 @@ export class Axiom {
         body: "Thread working",
         clear: true,
       });
+      // The next stop reports whatever commands are still running then.
+      this.setRunningCommands(threadId, 0);
       // The thread's task, if it named one, is being worked on (01, Tasks). Stopping or ending
       // never touches it: the agent sets `done` or `blocked`. A task already `done` stays done:
       // a thread still pointing at it is doing follow-up work, not reopening it.
@@ -1666,9 +1738,11 @@ export class Axiom {
   }
 
   threadStopped(threadId: number): Thread {
+    const n = this.runningCommands(threadId);
     return this.threadEvent(threadId, {
       event: "stopped",
-      body: "Thread stopped",
+      body: n > 0 ? `Thread stopped, waiting on ${commandCount(n)}` : "Thread stopped",
+      data: n > 0 ? { commands: n } : undefined,
       notify: { kind: "agent stopped", body: "The agent stopped" },
       statusFromStop: true,
     });
@@ -1687,6 +1761,11 @@ export class Axiom {
   threadEnded(threadId: number, reason?: string): Thread {
     return this.tx(() => {
       const th = this.threadRow(threadId);
+      // A thread that ends while still running (killed, crashed session) is no longer working,
+      // and the background commands it was monitoring end with its session.
+      const live =
+        th.endedAt === null &&
+        (th.status === "wip" || (th.status === "monitoring" && this.runningCommands(threadId) > 0));
       if (th.endedAt === null) {
         this.run(
           "UPDATE thread SET ended_at = ?, end_reason = ? WHERE id = ?",
@@ -1695,8 +1774,8 @@ export class Axiom {
           threadId,
         );
         this.cancelSubagents(threadId);
-        // A thread that ends while still running (killed, crashed session) is no longer working.
-        if (th.status === "wip") {
+        this.setRunningCommands(threadId, 0);
+        if (live) {
           this.run(
             `UPDATE thread SET status = 'idle', status_changed_at = ?,
                status_changed_seq = (SELECT COALESCE(MAX(status_changed_seq), 0) + 1 FROM thread)
@@ -1714,11 +1793,9 @@ export class Axiom {
         body: `Thread ended${reason ? `: ${reason}` : ""}`,
         data: { event: "ended", provider: th.provider, providerThreadId: th.providerThreadId },
       });
-      // Only a thread that was still running changes the topic; otherwise a session ending would
+      // Only a thread that was still live changes the topic; otherwise a session ending would
       // overwrite a status set by hand (for example the owner marking the topic done).
-      if (th.endedAt === null && th.status === "wip") {
-        this.recomputeFromThreads(this.topicRow(th.topicId), "thread ended", threadId);
-      }
+      if (live) this.recomputeFromThreads(this.topicRow(th.topicId), "thread ended", threadId);
       return this.threadRow(threadId);
     });
   }
@@ -1754,6 +1831,8 @@ export class Axiom {
       clear?: boolean;
       waiting?: boolean;
       notify?: { kind: NotificationKind; body: string };
+      /** Extra fields for the entry's data. */
+      data?: Record<string, unknown>;
     },
   ): Thread {
     return this.tx(() => {
@@ -1773,6 +1852,7 @@ export class Axiom {
               "SELECT COUNT(*) AS n FROM monitor_target WHERE topic_id = ? AND state = 'confirmed'",
               th.topicId,
             )?.n ?? 0,
+          runningCommands: this.runningCommands(threadId),
         });
       }
       if (status === undefined) throw new AxiomError("validation", "thread event without a status");
@@ -1795,7 +1875,12 @@ export class Axiom {
         threadId,
         kind: "thread event",
         body: ev.body,
-        data: { event: ev.event, provider: th.provider, providerThreadId: th.providerThreadId },
+        data: {
+          event: ev.event,
+          ...ev.data,
+          provider: th.provider,
+          providerThreadId: th.providerThreadId,
+        },
       });
       if (ev.notify) this.insertNotification(topic.id, threadId, ev.notify.kind, ev.notify.body);
       this.recomputeFromThreads(topic, `thread ${ev.event}`, threadId);
@@ -2679,7 +2764,8 @@ export class Axiom {
     return this.all<Row>(
       `SELECT entry.id AS entry_id, entry.at, entry.thread_id, topic.id AS topic_id,
               topic.slug AS topic_slug, topic.status AS topic_status,
-              topic.steward_enabled AS steward_enabled
+              topic.steward_enabled AS steward_enabled,
+              COALESCE(json_extract(entry.data, '$.commands'), 0) AS commands
        FROM entry JOIN topic ON topic.id = entry.topic_id
        WHERE entry.id > ? AND entry.kind = 'thread event'
          AND json_extract(entry.data, '$.event') = 'stopped'
@@ -3976,4 +4062,9 @@ export class Axiom {
       JSON.stringify(checked),
     );
   }
+}
+
+/** "1 background command", "2 background commands". */
+function commandCount(n: number): string {
+  return `${n} background command${n === 1 ? "" : "s"}`;
 }

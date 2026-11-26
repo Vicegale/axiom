@@ -291,6 +291,8 @@ export interface ThreadStop {
   topicSlug: string;
   topicStatus: TopicStatus | null;
   stewardEnabled: boolean;
+  /** Background commands the thread was still waiting on when it stopped (0: none). */
+  commands: number;
 }
 
 export interface StewardWake {

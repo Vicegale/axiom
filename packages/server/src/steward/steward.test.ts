@@ -245,6 +245,24 @@ describe("event wakes", () => {
     expect(ax.listStewardWakes()).toHaveLength(before + 1);
   });
 
+  it("ignores a stop that only waits on the agent's own background commands", async () => {
+    enable();
+    const { claude, s } = setup();
+    ax.createTopic({ slug: "cmd", title: "cmd", goal: "g" }, owner);
+    const th = ax.attachThread(
+      "cmd",
+      { provider: "claude-code", providerThreadId: "t-cmd" },
+      owner,
+    );
+    ax.threadWorking(th.id);
+    ax.setRunningCommands(th.id, 1);
+    ax.threadStopped(th.id);
+    expect(ax.getTopic("cmd").status).toBe("monitoring");
+    s.scanStops();
+    await s.settle();
+    expect(claude.runs()).toBe(0);
+  });
+
   it("ignores a stop on a topic with Steward switched off, and stops while Steward is off", async () => {
     enable();
     const { claude, s } = setup();
