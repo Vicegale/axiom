@@ -25,6 +25,10 @@ Working definitions. They change as the spec settles; `docs/spec/` wins where th
 | Steward view | The third view beside Tracker and Desk: Steward's questions to the owner, its memory and a chat with it. See `docs/spec/03-ambient-agent.md`. |
 | Steward memory | General-purpose knowledge Steward keeps that belongs to no topic. Steward manages it itself; the owner can view and edit it. |
 | Memory core | The short part of the Steward memory loaded into every stage-2 run and chat without searching: must-know facts plus an index of the rest. |
+| Wake | One run of Steward: a blind-spot check, then gather (a cheap model summarises what changed), tidy, decide (a stronger model judges it), and sometimes promoted work. Started by the timer, an event, Run now or a check request. |
+| Finding | Something Steward tells the owner, with a level: `urgent` (also a desktop notification), `attention` or `info`. Written to the topic's history by `steward`. |
+| Promotion | Handing a finding to a stronger model to prepare a fix, chosen by how complex Steward rates it; the fix is offered only after Axiom's own test run passes. |
+| Release copy | The detached git worktree at `~/.local/share/axiom/app` that the live service, hooks and CLI run from, so development in the checkout never reaches the real database. Updated by `scripts/install.sh`. |
 | Provider | A source of threads Axiom watches: Claude Code directly or the T3 service (Codex later). See `docs/spec/04-agent-connectors.md`. |
 | Connector | How Axiom talks to an external agent (a service API or a CLI such as Claude Code or Codex). Third-party connectors like Slack come from the harness. |
 | Work log | The current Markdown system in GPT Command Center (`docs/work/`) that Axiom will replace. |
