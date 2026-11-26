@@ -340,6 +340,57 @@ describe("POST /api/topics/:slug/threads/new", () => {
     expect(ownerInputs()[0].body).toBe("Build the thing\nwith care");
   });
 
+  describe("when T3 has claudeAgent turned off for the project", () => {
+    function setup(instances: Record<string, unknown>) {
+      topic();
+      const t3Dir = join(dir, "t3");
+      const fixture = new T3Fixture(t3Dir);
+      fixture.project("p1", { root: join(dir, "repo") });
+      fixture.close();
+      mkdirSync(join(dir, "repo"));
+      writeFileSync(
+        join(t3Dir, "settings.json"),
+        JSON.stringify({
+          providerInstances: instances,
+          projectSettingsOverrides: {
+            p1: { providerInstances: { claudeAgent: { enabled: false } } },
+          },
+        }),
+      );
+      return t3Dir;
+    }
+    const body = {
+      text: "Go",
+      provider: "t3",
+      project: "p1",
+      providerInstance: "claudeAgent",
+      model: "claude-opus-5-5",
+    };
+
+    it("starts the thread on the project's own Claude instance", async () => {
+      const t3Dir = setup({
+        claudeAgent: { driver: "claudeAgent", enabled: true },
+        claudeWork: { driver: "claudeAgent", enabled: true },
+      });
+      const t3 = fake("t3", "", '{"threadId":"w-1"}');
+      await start({ t3Cli: t3.path, t3Dir });
+      const r = await api("/api/topics/demo/threads/new", { method: "POST", body });
+      expect(r.status).toBe(201);
+      expect(t3.argv()).toContain("claudeWork");
+      expect(t3.argv()).not.toContain("claudeAgent");
+    });
+
+    it("400 with what to change when no Claude instance is on", async () => {
+      const t3Dir = setup({ claudeAgent: { driver: "claudeAgent", enabled: true } });
+      const t3 = fake("t3", "", '{"threadId":"w-1"}');
+      await start({ t3Cli: t3.path, t3Dir });
+      const r = await api("/api/topics/demo/threads/new", { method: "POST", body });
+      expect(r.status).toBe(400);
+      expect(r.body.error.message).toMatch(/"claudeAgent" turned off for project/);
+      expect(t3.ran()).toBe(false);
+    });
+  });
+
   it("starts a T3 thread with only the defaults when no model is given", async () => {
     const t3 = fake("t3", "", '{"thread":{"id":"n-1"}}');
     topic();

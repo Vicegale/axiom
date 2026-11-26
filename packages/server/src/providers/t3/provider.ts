@@ -1,6 +1,8 @@
 import type { Axiom, RuntimePatch, Thread } from "@axiom/core";
 import {
+  pickProviderInstance,
   readT3Meta,
+  readT3Settings,
   T3Db,
   type T3Project,
   type T3Request,
@@ -317,6 +319,15 @@ export class T3Provider {
     } finally {
       db.close();
     }
+  }
+
+  /**
+   * The provider instance T3 will accept for a new thread in `projectId` when `requested` was
+   * asked for (see `pickProviderInstance`); `requested` when T3's settings can't be read.
+   */
+  providerInstanceFor(projectId: string | null, requested: string): string | null {
+    const settings = readT3Settings(this.dir);
+    return settings ? pickProviderInstance(settings, projectId, requested) : requested;
   }
 
   /** Live T3 projects for the new-topic dialog. Throws when T3 cannot be read. */

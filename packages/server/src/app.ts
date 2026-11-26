@@ -1047,6 +1047,7 @@ export function createApp(ctx: AppContext): Hono {
     claudeCli: ctx.claudeCli ?? "claude",
     graceMs: ctx.sendGraceMs,
     listProjects: () => ctx.t3.listProjects(),
+    providerInstanceFor: (projectId, requested) => ctx.t3.providerInstanceFor(projectId, requested),
   });
 
   registerRequestRoutes(app, {

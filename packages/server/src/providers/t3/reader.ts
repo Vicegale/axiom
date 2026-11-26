@@ -4,6 +4,9 @@
  * Files (folder `~/.t3/userdata`, or `AXIOM_T3_DIR`):
  * - `server-runtime.json`: `serverVersion`, `port`.
  * - `environment-id`: the T3 environment id (one per install), when present.
+ * - `settings.json`: `providerInstances` (`driver`, `enabled`, `config.enabled`) and
+ *   `projectSettingsOverrides[projectId].providerInstances[id].enabled`, to pick a provider
+ *   instance T3 will accept for a new thread (see `instanceEnabled`).
  * - `statev2.sqlite` (WAL), opened with `readOnly: true`, short queries only.
  *
  * Tables and columns relied on (T3 server 0.1.11-nightly.20261118.4890, migration 98):
@@ -187,6 +190,87 @@ export function readT3Meta(dir: string): T3Meta {
     } catch {}
   }
   return { serverVersion, port, environmentId: readText(join(dir, "environment-id")) };
+}
+
+/** `settings.json` as far as provider instances go; `null` when missing or unreadable. */
+export interface T3ProviderSettings {
+  providerInstances?: Record<string, { driver?: unknown; enabled?: unknown; config?: unknown }>;
+  projectSettingsOverrides?: Record<
+    string,
+    { providerInstances?: Record<string, { enabled?: unknown }> } | undefined
+  >;
+}
+
+export function readT3Settings(dir: string): T3ProviderSettings | null {
+  const raw = readText(join(dir, "settings.json"));
+  if (!raw) return null;
+  try {
+    const j = JSON.parse(raw) as unknown;
+    return j && typeof j === "object" ? (j as T3ProviderSettings) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Drivers T3 leaves off until turned on (T3's `DEFAULT_DISABLED_PROVIDER_DRIVERS`). */
+const OFF_BY_DEFAULT = new Set([
+  "cursor",
+  "grok",
+  "fx",
+  "kiro",
+  "muse",
+  "pi",
+  "opencode",
+  "antigravity",
+]);
+/** Instances T3 treats as on when `providerInstances` doesn't list them. */
+const ON_WHEN_UNLISTED = new Set(["codex", "claudeAgent"]);
+
+/**
+ * Whether T3 lets `projectId` start a thread on `instanceId`, by T3's own rule
+ * (`resolveProjectProviderInstanceEnabled`): the project's override, else the instance's
+ * `enabled` (or `config.enabled`), else its driver's default.
+ */
+export function instanceEnabled(
+  s: T3ProviderSettings,
+  projectId: string | null,
+  instanceId: string,
+): boolean {
+  const override = projectId
+    ? s.projectSettingsOverrides?.[projectId]?.providerInstances?.[instanceId]?.enabled
+    : undefined;
+  if (typeof override === "boolean") return override;
+  const all = s.providerInstances ?? {};
+  if (!Object.hasOwn(all, instanceId)) return ON_WHEN_UNLISTED.has(instanceId);
+  const inst = all[instanceId] ?? {};
+  const config = inst.config as { enabled?: unknown } | null | undefined;
+  const configEnabled =
+    config && typeof config === "object" && typeof config.enabled === "boolean"
+      ? config.enabled
+      : undefined;
+  if (inst.enabled === false || configEnabled === false) return false;
+  if (typeof inst.enabled === "boolean") return inst.enabled;
+  if (configEnabled !== undefined) return configEnabled;
+  return typeof inst.driver === "string" ? !OFF_BY_DEFAULT.has(inst.driver) : true;
+}
+
+/**
+ * The provider instance to start a `projectId` thread on when `requested` was asked for:
+ * `requested` itself when T3 allows it, else another enabled instance of the same driver (an
+ * owner who turned off `claudeAgent` and set up their own Claude instance), else `null`.
+ */
+export function pickProviderInstance(
+  s: T3ProviderSettings,
+  projectId: string | null,
+  requested: string,
+): string | null {
+  if (instanceEnabled(s, projectId, requested)) return requested;
+  const all = s.providerInstances ?? {};
+  const driver = typeof all[requested]?.driver === "string" ? all[requested].driver : requested;
+  for (const [id, inst] of Object.entries(all)) {
+    if (id !== requested && inst?.driver === driver && instanceEnabled(s, projectId, id)) return id;
+  }
+  return null;
 }
 
 interface ThreadRow {

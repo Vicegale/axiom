@@ -374,7 +374,10 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
               Could not list T3 projects ({t3Error}). Type the project's folder instead.
             </ComposerNote>
           ) : model && provider === "t3" ? (
-            <ComposerNote>Runs on T3's "{T3_INSTANCE}" provider instance.</ComposerNote>
+            <ComposerNote>
+              Runs on T3's Claude provider ("{T3_INSTANCE}", or the project's own Claude instance
+              when that one is off).
+            </ComposerNote>
           ) : modelRequired ? (
             <ComposerNote>This project has no default model, so one is required.</ComposerNote>
           ) : null}

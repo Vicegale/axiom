@@ -5,7 +5,13 @@ import { type Actor, type Axiom, openDatabase } from "@axiom/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { T3_VERSION, T3Fixture } from "../../test-t3.js";
 import { decide, T3Provider } from "./provider.js";
-import { parseQuestions, readT3Meta, T3Db } from "./reader.js";
+import {
+  instanceEnabled,
+  parseQuestions,
+  pickProviderInstance,
+  readT3Meta,
+  T3Db,
+} from "./reader.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const owner: Actor = { kind: "owner" };
@@ -223,6 +229,46 @@ describe("reader", () => {
     } finally {
       db.close();
     }
+  });
+});
+
+describe("provider instances (T3's settings.json)", () => {
+  it("follows T3's rule: project override, then the instance, then the driver default", () => {
+    const s = {
+      providerInstances: {
+        claudeAgent: { driver: "claudeAgent", enabled: true },
+        off: { driver: "claudeAgent", enabled: false },
+        cfgOff: { driver: "claudeAgent", config: { enabled: false } },
+        oc: { driver: "opencode" },
+      },
+      projectSettingsOverrides: { p1: { providerInstances: { claudeAgent: { enabled: false } } } },
+    };
+    expect(instanceEnabled(s, "p1", "claudeAgent")).toBe(false);
+    expect(instanceEnabled(s, "p2", "claudeAgent")).toBe(true);
+    expect(instanceEnabled(s, null, "off")).toBe(false);
+    expect(instanceEnabled(s, null, "cfgOff")).toBe(false);
+    expect(instanceEnabled(s, null, "oc")).toBe(false);
+    expect(instanceEnabled({}, null, "claudeAgent")).toBe(true);
+    expect(instanceEnabled({}, null, "someOther")).toBe(false);
+  });
+
+  it("picks another enabled instance of the same driver, or null", () => {
+    const s = {
+      providerInstances: {
+        claudeAgent: { driver: "claudeAgent", enabled: false },
+        codex: { driver: "codex" },
+        mine: { driver: "claudeAgent" },
+      },
+    };
+    expect(pickProviderInstance(s, "p1", "claudeAgent")).toBe("mine");
+    expect(
+      pickProviderInstance(
+        { providerInstances: { claudeAgent: { enabled: false } } },
+        "p1",
+        "claudeAgent",
+      ),
+    ).toBeNull();
+    expect(pickProviderInstance({}, "p1", "claudeAgent")).toBe("claudeAgent");
   });
 });
 

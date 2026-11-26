@@ -181,6 +181,43 @@ function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   return r.data;
 }
 
+/**
+ * The provider instance to pass to `t3 thread start`: the one asked for, or the project's own
+ * instance of the same provider when T3 has the asked-for one turned off for that project (T3
+ * would refuse it with "Provider instance ... is disabled for project ..."). `project` is a T3
+ * project id or a folder inside one; when it can't be matched or T3 can't be read, the asked-for
+ * instance goes through and T3 decides.
+ */
+function t3InstanceFor(o: SendingOptions, project: string, requested: string): string {
+  if (!o.providerInstanceFor) return requested;
+  let match: T3Project | undefined;
+  try {
+    const projects = o.listProjects?.() ?? [];
+    const root = (p: T3Project) => p.workspaceRoot.replace(/(.)\/+$/, "$1");
+    match =
+      projects.find((p) => p.id === project) ??
+      projects
+        .filter((p) => project === root(p) || project.startsWith(`${root(p)}/`))
+        .sort((a, b) => root(b).length - root(a).length)[0];
+  } catch {
+    match = undefined;
+  }
+  if (!match) return requested;
+  let instance: string | null;
+  try {
+    instance = o.providerInstanceFor(match.id, requested);
+  } catch {
+    return requested;
+  }
+  if (instance === null) {
+    throw new AxiomError(
+      "validation",
+      `T3 has "${requested}" turned off for project "${match.title}", and no other instance of it is on. Turn it on in T3 (the project's settings, or Settings → Providers), or choose another project.`,
+    );
+  }
+  return instance;
+}
+
 /** The id of the thread `t3 thread start --json` created. */
 export function parseStartedThreadId(stdout: string): string {
   let data: unknown;
@@ -206,6 +243,8 @@ export interface SendingOptions {
   graceMs?: number;
   /** The live T3 projects; throws when T3 cannot be read. */
   listProjects?: () => T3Project[];
+  /** The instance T3 accepts in a project for the one asked for; `null` when none is on. */
+  providerInstanceFor?: (projectId: string | null, requested: string) => string | null;
 }
 
 const isDir = (p: string) => {
@@ -375,7 +414,8 @@ export function registerSendRoutes(app: Hono, o: SendingOptions): void {
           if (!input.providerInstance || !input.model) {
             throw new AxiomError("validation", "T3 needs providerInstance and model together");
           }
-          args.push("--provider", input.providerInstance, "--model", input.model);
+          const instance = t3InstanceFor(o, project, input.providerInstance);
+          args.push("--provider", instance, "--model", input.model);
           if (input.effort) args.push("--option", `effort=${input.effort}`);
         }
         args.push("--json");
