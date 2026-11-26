@@ -714,6 +714,14 @@ export function buildProgram(env: NodeJS.ProcessEnv, write: (s: string) => void)
     .argument("[args...]")
     .allowUnknownOption()
     .action(() => {});
+  sub(
+    program,
+    "update",
+    "pull the latest main into your Axiom checkout, reinstall and restart the server: `axiom update [--dry-run] [install options]`",
+  )
+    .argument("[args...]")
+    .allowUnknownOption()
+    .action(() => {});
   sub(program, "hook", "record a Claude Code hook event from stdin (used by installed hooks)")
     .addArgument(new Argument("<event>").choices(HOOK_EVENTS))
     .action(() => {});

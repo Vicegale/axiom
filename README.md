@@ -75,7 +75,7 @@ Run `scripts/install.sh --help` for the options: `--yes` answers yes to every qu
 
 The live `axiom` command, the Claude Code hooks, the skill and the service all run from the release copy, so builds, new migrations and uncommitted or untracked files in your checkout never reach the real database or your agents' hooks. Only committed work does, when you update.
 
-**Updating:** from your checkout, `scripts/install.sh` (add `--ref <commit-ish>` for something other than `main`). It moves the release copy to that commit, rebuilds, re-points the commands, hooks and service, and restarts the service on the new build; it refuses if the release copy has local changes; restart a server you started by hand. The app shows a banner when the server is older than the build.
+**Updating:** `axiom update` pulls the latest `main` into your checkout (fast-forward only: it refuses if your `main` has diverged from its upstream) and then runs the checkout's `scripts/install.sh --ref main`; install options such as `--yes` are passed through, and `--dry-run` shows what it would do. To install something other than `main`, run `scripts/install.sh --ref <commit-ish>` from your checkout. Either way it moves the release copy to that commit, rebuilds, re-points the commands, hooks and service, and restarts the service on the new build; it refuses if the release copy has local changes; restart a server you started by hand. The app shows a banner when the server is older than the build.
 
 **Without the service:** run `axiom server` (add `--port N` to change the port) whenever you want Axiom up.
 

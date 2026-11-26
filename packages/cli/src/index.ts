@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import { serverArgs } from "./server-command.js";
+import { updateArgs } from "./update.js";
 
 const argv = process.argv.slice(2);
 const forServer = serverArgs(argv);
+const forUpdate = updateArgs(argv);
 const rest: string[] = [];
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === "--db") i++;
@@ -20,6 +22,12 @@ if (rest[0] === "hook") {
     const { runHook } = await import("./hook.js");
     process.exitCode = runHook(rest[1] ?? "", process.env, { db });
   }
+} else if (forUpdate) {
+  const { runUpdate } = await import("./update.js");
+  process.exitCode = runUpdate(forUpdate, {
+    out: (t) => process.stdout.write(`${t}\n`),
+    err: (t) => process.stderr.write(`${t}\n`),
+  });
 } else if (forServer) {
   const { runServerCli } = await import("@axiom/server");
   runServerCli(forServer, { stdout: (t) => process.stdout.write(t) }).catch((e: unknown) => {

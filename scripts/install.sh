@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Installs Axiom on Linux or macOS from a release copy of this checkout. Safe to re-run: it is also
-# the update step. Written for bash 3.2, the version macOS ships.
+# the update step (`axiom update` pulls main, then runs it). Written for bash 3.2, the version
+# macOS ships.
 #
 #   scripts/install.sh [--ref COMMIT] [--app-dir DIR] [--yes] [--no-hooks] [--no-allow-agents]
 #                      [--no-service] [--no-skill] [--bin-dir DIR]
@@ -63,7 +64,7 @@ while [ $# -gt 0 ]; do
       shift
       ;;
     -h | --help)
-      sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'
+      sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
       ;;
     *) echo "unknown option: $1 (see --help)" >&2; exit 2 ;;
@@ -350,9 +351,9 @@ if [ "$SERVICE_RUNNING" = 1 ]; then
   else
     echo "  Stop the service:  systemctl --user disable --now axiom.service"
   fi
-  echo "  Update later:  scripts/install.sh [--ref <commit>]   (from this checkout; restarts the service)"
+  echo "  Update later:  axiom update   (pulls main into this checkout, reinstalls, restarts the service)"
 else
   echo "  Start the server:  axiom server        (then open $URL)"
   echo "  Or as a service:   scripts/install.sh --service"
-  echo "  Update later:  scripts/install.sh [--ref <commit>]   (from this checkout; then restart the server)"
+  echo "  Update later:  axiom update   (pulls main into this checkout and reinstalls; then restart the server)"
 fi
