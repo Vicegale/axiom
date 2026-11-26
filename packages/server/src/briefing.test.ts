@@ -61,4 +61,23 @@ describe("briefing", () => {
     expect(b).not.toContain("  - T8 (to do)");
     expect(b).toContain("  - and 3 more open.");
   });
+
+  it("lists the topic's open Steward items compactly, with a ready fix", () => {
+    const item = (over: Record<string, unknown>) =>
+      ({
+        kind: "finding",
+        level: "attention",
+        title: "CI is red",
+        fixBranch: null,
+        ...over,
+      }) as never;
+    const b = briefing(topic(), [], "x", [
+      item({ fixBranch: "steward/fix-ci" }),
+      item({ kind: "question", level: null, title: "Keep the flag?" }),
+    ]);
+    expect(b).toContain("axiom steward items --topic fix-import");
+    expect(b).toContain("  - finding, attention: CI is red, fix ready on steward/fix-ci");
+    expect(b).toContain("  - question: Keep the flag?");
+    expect(briefing(topic(), [], "x")).not.toContain("Steward");
+  });
 });

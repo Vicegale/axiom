@@ -1,4 +1,11 @@
-import type { Entry, Thread, TopicDetail, TopicStatus, TopicSummary } from "@axiom/core";
+import type {
+  Entry,
+  StewardItemWithFix,
+  Thread,
+  TopicDetail,
+  TopicStatus,
+  TopicSummary,
+} from "@axiom/core";
 
 const useColor = (): boolean => process.stdout.isTTY === true && !process.env.NO_COLOR;
 
@@ -108,7 +115,35 @@ export interface MonitorView {
   target: string | null;
 }
 
-export function topicText(t: TopicDetail, monitors: MonitorView[], history: Entry[]): string {
+export function stewardItemJson(i: StewardItemWithFix) {
+  return {
+    id: i.id,
+    kind: i.kind,
+    level: i.level,
+    state: i.state,
+    topic: i.topicSlug,
+    title: i.title,
+    body: i.body,
+    note: i.note,
+    fixBranch: i.fixBranch,
+    createdAt: i.createdAt,
+  };
+}
+
+/** One line per open Steward item of a topic: kind, level, title and the fix branch if ready. */
+export function stewardLines(items: readonly StewardItemWithFix[]): string[] {
+  return items.map(
+    (i) =>
+      `  #${i.id} ${i.kind}${i.level ? ` ${i.level}` : ""}  ${i.title}${i.fixBranch ? `  (fix ready: ${i.fixBranch})` : ""}`,
+  );
+}
+
+export function topicText(
+  t: TopicDetail,
+  monitors: MonitorView[],
+  history: Entry[],
+  steward: readonly StewardItemWithFix[] = [],
+): string {
   const out: string[] = [];
   out.push(`${t.slug}: ${t.title}`);
   out.push(
@@ -137,6 +172,7 @@ export function topicText(t: TopicDetail, monitors: MonitorView[], history: Entr
       ? monitors.map((m) => `  #${m.id} ${m.kind}  ${m.state}${m.target ? `  ${m.target}` : ""}`)
       : ["  (none)"]),
   );
+  if (steward.length) out.push("", "Steward", ...stewardLines(steward));
   out.push("", `History (last ${history.length})`);
   out.push(...(history.length ? history.map(entryText) : ["  (none)"]));
   return out.join("\n");

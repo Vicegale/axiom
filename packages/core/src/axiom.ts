@@ -92,13 +92,17 @@ import type {
   StewardBlindSpot,
   StewardCapCheck,
   StewardChat,
+  StewardFamilyUsage,
   StewardItem,
+  StewardItemWithFix,
   StewardMemory,
   StewardMessage,
   StewardMessageMeta,
   StewardModelUsage,
   StewardPrRecord,
+  StewardRequest,
   StewardRun,
+  StewardServerBeat,
   StewardSuggestion,
   StewardWake,
   Subagent,
@@ -127,6 +131,12 @@ const BOOLEAN_COLUMNS = new Set([
   "desk_hidden",
   "steward_enabled",
 ]);
+
+/** The owner writes memory items up to this long (Steward writes shorter ones). */
+export const OWNER_MEMORY_TEXT_MAX = 2000;
+
+/** A check of one topic may be asked for this often (ST10). */
+export const STEWARD_CHECK_INTERVAL_MS = 10 * 60_000;
 
 /** The longest reply kept on a thread, in characters. */
 export const MAX_REPLY_CHARS = 200_000;
@@ -2361,6 +2371,177 @@ export class Axiom {
     this.run("DELETE FROM steward_state WHERE key IN ('heartbeat', 'enabledSince')");
   }
 
+  // -- requests from the CLI (ST10) and the server's own beat
+
+  private requestRow(id: number): StewardRequest {
+    return camel<StewardRequest>(this.get<Row>("SELECT * FROM steward_request WHERE id = ?", id));
+  }
+
+  /**
+   * The CLI's ask for a wake; the server runs it (the CLI never does). `run` is the owner's Run
+   * now. `check` (a wake on one topic, for an agent or the owner) is refused while Steward is off,
+   * for an unknown or steward-disabled topic, and when a check for the topic was asked for in the
+   * last `STEWARD_CHECK_INTERVAL_MS`.
+   */
+  requestStewardWake(
+    input: { kind: "run" | "check"; topic?: TopicRef },
+    actor: Actor,
+  ): StewardRequest {
+    if (actor.kind !== "owner" && actor.kind !== "agent") {
+      throw new AxiomError("permission", "only the owner or an agent can ask Steward for a wake");
+    }
+    if (input.kind === "run") {
+      ownerOnly(actor, "run Steward now");
+      return this.requestRow(this.insertRequest("run", null, actor));
+    }
+    if (input.topic === undefined) throw new AxiomError("validation", "a check needs a topic");
+    return this.tx(() => {
+      if (!this.getStewardSettings().enabled) {
+        throw new AxiomError("conflict", "Steward is off, so it cannot check a topic now");
+      }
+      const t = this.topicRow(input.topic as TopicRef);
+      if (!t.stewardEnabled) {
+        throw new AxiomError("conflict", `Steward is switched off for ${t.slug}`);
+      }
+      const last = this.get<{ created_at: string }>(
+        "SELECT created_at FROM steward_request WHERE kind = 'check' AND topic = ? ORDER BY id DESC LIMIT 1",
+        t.slug,
+      );
+      if (last) {
+        const next = Date.parse(last.created_at) + STEWARD_CHECK_INTERVAL_MS;
+        if (next > this.clock().getTime()) {
+          throw new AxiomError(
+            "conflict",
+            `a check of ${t.slug} was asked for at ${last.created_at}; the next one is allowed after ${new Date(next).toISOString()}`,
+          );
+        }
+      }
+      return this.requestRow(this.insertRequest("check", t.slug, actor));
+    });
+  }
+
+  private insertRequest(kind: "run" | "check", topic: string | null, actor: Actor): number {
+    return this.run(
+      "INSERT INTO steward_request (kind, topic, requested_by, thread_id, created_at) VALUES (?, ?, ?, ?, ?)",
+      kind,
+      topic,
+      actor.kind,
+      actor.kind === "agent" ? (actor.threadId ?? null) : null,
+      this.iso(),
+    );
+  }
+
+  /** Requests the server has not picked up yet, oldest first. */
+  listStewardRequests(filter: { pending?: boolean; limit?: number } = {}): StewardRequest[] {
+    return this.all<Row>(
+      `SELECT * FROM steward_request ${filter.pending ? "WHERE handled_at IS NULL" : ""}
+       ORDER BY id ${filter.pending ? "" : "DESC"} LIMIT ?`,
+      filter.limit ?? 100,
+    ).map((r) => camel<StewardRequest>(r));
+  }
+
+  /** The server picked a request up (the first call) or learned how it ended (later calls). */
+  handleStewardRequest(id: number, result: string, actor: Actor): StewardRequest {
+    this.stewardWriter(actor, "handle a request");
+    this.run(
+      "UPDATE steward_request SET handled_at = COALESCE(handled_at, ?), result = ? WHERE id = ?",
+      this.iso(),
+      result,
+      id,
+    );
+    return this.requestRow(id);
+  }
+
+  /** The scheduler says it is alive; the CLI reads this to tell whether a server is running. */
+  setStewardServerBeat(beat: Omit<StewardServerBeat, "at">, actor: Actor): void {
+    this.stewardWriter(actor, "record the server's beat");
+    this.run(
+      "INSERT INTO steward_state (key, value) VALUES ('server', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+      JSON.stringify({ ...beat, at: this.iso() }),
+    );
+  }
+
+  clearStewardServerBeat(): void {
+    this.run("DELETE FROM steward_state WHERE key = 'server'");
+  }
+
+  /** The server's last beat while it is fresh; null when no server looks to be running. */
+  getStewardServerBeat(): StewardServerBeat | null {
+    const row = this.get<{ value: string }>("SELECT value FROM steward_state WHERE key = 'server'");
+    if (!row) return null;
+    const beat = JSON.parse(row.value) as StewardServerBeat;
+    return this.clock().getTime() - Date.parse(beat.at) <= beat.freshMs ? beat : null;
+  }
+
+  /** Tokens used today per model family against its cap, in the order haiku, sonnet, opus, others. */
+  stewardUsageByFamily(day: string = localDay(this.clock())): StewardFamilyUsage[] {
+    const caps = this.getStewardSettings().dailyCaps;
+    const today = this.stewardUsageForDay(day);
+    const families = new Set<string>([
+      ...Object.keys(caps),
+      ...today.map((u) => modelFamily(u.model)),
+    ]);
+    const usage = [...families].map<StewardFamilyUsage>((family) => {
+      const mine = today.filter((u) => modelFamily(u.model) === family);
+      return {
+        family,
+        models: mine.map((u) => u.model),
+        runs: mine.reduce((n, u) => n + u.runs, 0),
+        used: mine.reduce((n, u) => n + u.total, 0),
+        cap: Object.hasOwn(caps, family) ? (caps[family] ?? null) : null,
+      };
+    });
+    const order = ["haiku", "sonnet", "opus"];
+    return usage.sort((a, b) => {
+      const [x, y] = [order.indexOf(a.family), order.indexOf(b.family)];
+      return (x < 0 ? 99 : x) - (y < 0 ? 99 : y) || a.family.localeCompare(b.family);
+    });
+  }
+
+  /**
+   * Items (open by default) with the branch of their ready fix. A prepared fix that sits inside
+   * an open finding is shown on the finding, so it is not listed on its own. Most pressing first:
+   * urgent and attention findings, questions, suggestions, info; newest first within each.
+   */
+  listStewardItemsWithFix(
+    filter: { state?: StewardItemState | "all"; topic?: TopicRef; kind?: StewardItemKind } = {},
+  ): StewardItemWithFix[] {
+    const state = filter.state ?? "open";
+    const all = this.listStewardItems({
+      ...(state === "all" ? {} : { state }),
+      ...(filter.topic !== undefined ? { topic: filter.topic } : {}),
+    });
+    const open = this.listStewardItems({ state: "open" });
+    const openFindings = new Set(open.filter((i) => i.kind === "finding").map((i) => i.id));
+    const branchOf = (itemId: number) => this.listStewardSuggestions(itemId)[0]?.branch ?? null;
+    const rank = (i: StewardItem): number =>
+      i.kind === "finding"
+        ? i.level === "urgent"
+          ? 0
+          : i.level === "attention"
+            ? 1
+            : 4
+        : i.kind === "question"
+          ? 2
+          : 3;
+    return all
+      .filter((i) => filter.kind === undefined || i.kind === filter.kind)
+      .filter(
+        (i) =>
+          !(i.kind === "suggestion" && i.parentItemId !== null && openFindings.has(i.parentItemId)),
+      )
+      .map<StewardItemWithFix>((i) => {
+        let fixBranch: string | null = null;
+        if (i.kind === "suggestion") fixBranch = branchOf(i.id);
+        else if (i.kind === "finding") {
+          const fix = open.find((x) => x.kind === "suggestion" && x.parentItemId === i.id);
+          fixBranch = fix ? branchOf(fix.id) : null;
+        }
+        return { ...i, fixBranch };
+      })
+      .sort((a, b) => rank(a) - rank(b) || b.id - a.id);
+  }
+
   private prRecordRow(row: Row): StewardPrRecord {
     const r = camel<
       Omit<StewardPrRecord, "snapshot" | "active" | "fired"> & {
@@ -3372,6 +3553,15 @@ export class Axiom {
     }
   }
 
+  private memoryTextLength(text: string, actor: Actor): void {
+    if (actor.kind === "owner" && text.trim().length > OWNER_MEMORY_TEXT_MAX) {
+      throw new AxiomError(
+        "validation",
+        `a memory item is at most ${OWNER_MEMORY_TEXT_MAX} characters`,
+      );
+    }
+  }
+
   addStewardMemory(input: StewardMemoryInput, actor: Actor): StewardMemory {
     this.memoryWriter(actor, "add to Steward's memory");
     parseWith(stewardMemoryScopeSchema, input.scope, "memory scope");
@@ -3381,6 +3571,7 @@ export class Axiom {
       throw new AxiomError("validation", "Steward's own memory items are not from the owner");
     }
     if (!input.text.trim()) throw new AxiomError("validation", "a memory item needs text");
+    this.memoryTextLength(input.text, actor);
     if (input.scope === "attached") {
       parseWith(stewardAttachedKindSchema, input.attachedKind, "attached kind");
       if (!input.attachedKey?.trim()) {
@@ -3425,6 +3616,7 @@ export class Axiom {
   ): StewardMemory {
     this.memoryWriter(actor, "change Steward's memory");
     if (!text.trim()) throw new AxiomError("validation", "a memory item needs text");
+    this.memoryTextLength(text, actor);
     if (source !== undefined) parseWith(stewardMemorySourceSchema, source, "memory source");
     if (actor.kind === "steward" && source === "owner") {
       throw new AxiomError("validation", "Steward's own memory items are not from the owner");

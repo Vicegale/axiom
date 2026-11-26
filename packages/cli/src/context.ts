@@ -12,6 +12,11 @@ import {
 /** Wrong flags or arguments; the CLI exits with 2. */
 export class UsageError extends Error {}
 
+export function parseId(text: string, what: string): number {
+  if (!/^\d+$/.test(text)) throw new UsageError(`${what} must be a number, got "${text}"`);
+  return Number(text);
+}
+
 export interface CurrentThreadId {
   provider: Provider;
   providerThreadId: string;

@@ -1,7 +1,9 @@
-import type { Link, TaskDetail, TopicDetail } from "@axiom/core";
+import type { Link, StewardItemWithFix, TaskDetail, TopicDetail } from "@axiom/core";
 
 /** Open tasks listed in a briefing; the rest are counted. */
 const MAX_TASKS = 8;
+/** Open Steward items listed in a briefing; the rest are counted. */
+const MAX_STEWARD = 5;
 
 /**
  * The Axiom context put before the owner's first message in a thread Axiom starts (a new topic's
@@ -9,7 +11,12 @@ const MAX_TASKS = 8;
  * agent's Axiom skill is opt-in per project; this message is the owner opting in for this thread.
  * The owner's own text is recorded on its own (as owner input), without the briefing.
  */
-export function briefing(topic: TopicDetail, tasks: readonly TaskDetail[], text: string): string {
+export function briefing(
+  topic: TopicDetail,
+  tasks: readonly TaskDetail[],
+  text: string,
+  steward: readonly StewardItemWithFix[] = [],
+): string {
   const lines = [
     "[Axiom] This thread is tracked in Axiom, the owner's work tracker. Use the `axiom` CLI as the `axiom` skill describes, even if this project's instructions don't mention Axiom.",
     `- Topic: \`${topic.slug}\`, "${topic.title}" (status: ${topic.status ?? "none"}). This thread is attached to it; \`axiom thread show\` confirms it (if it says otherwise, run \`axiom thread attach ${topic.slug}\`).`,
@@ -33,6 +40,17 @@ export function briefing(topic: TopicDetail, tasks: readonly TaskDetail[], text:
   );
   if (where.length > 0) {
     lines.push(`- Links: ${where.map((l) => `${l.kind} ${l.target}`).join("; ")}`);
+  }
+
+  if (steward.length > 0) {
+    lines.push(
+      `- Steward's open items here (\`axiom steward items --topic ${topic.slug}\`; the owner answers its questions, not you):`,
+    );
+    for (const i of steward.slice(0, MAX_STEWARD)) {
+      const fix = i.fixBranch ? `, fix ready on ${i.fixBranch}` : "";
+      lines.push(`  - ${i.kind}${i.level ? `, ${i.level}` : ""}: ${i.title}${fix}`);
+    }
+    if (steward.length > MAX_STEWARD) lines.push(`  - and ${steward.length - MAX_STEWARD} more.`);
   }
 
   lines.push(

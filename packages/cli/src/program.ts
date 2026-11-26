@@ -29,8 +29,8 @@ import {
   codexSandboxMode,
   disallowCliFrom,
 } from "./agent-access.js";
-import { Context, currentThreadId, UsageError } from "./context.js";
-import { entryText, table, topicTable, topicText, when } from "./format.js";
+import { Context, currentThreadId, parseId, UsageError } from "./context.js";
+import { entryText, stewardItemJson, table, topicTable, topicText, when } from "./format.js";
 import { HOOK_EVENTS, runHook } from "./hook.js";
 import {
   installInto,
@@ -39,16 +39,17 @@ import {
   writeSettings,
   writeTextWithBackup,
 } from "./hooks-settings.js";
+import { registerSteward } from "./steward.js";
 
 /** What a handler returns: text for people, data for `--json`. */
-interface Output {
+export interface Output {
   text: string;
   data: unknown;
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: commander options are untyped
-type Opts = Record<string, any>;
-type Handler = (ctx: Context, args: string[], opts: Opts) => Output;
+export type Opts = Record<string, any>;
+export type Handler = (ctx: Context, args: string[], opts: Opts) => Output;
 
 const collect = (value: string, previous: string[]): string[] => [...previous, value];
 
@@ -69,11 +70,6 @@ function parseRef(text: string): Ref {
   const i = text.indexOf(":");
   if (i <= 0) throw new UsageError(`invalid --ref "${text}" (expected <type>:<value>)`);
   return { type: text.slice(0, i) as RefType, value: text.slice(i + 1) };
-}
-
-function parseId(text: string, what: string): number {
-  if (!/^\d+$/.test(text)) throw new UsageError(`${what} must be a number, got "${text}"`);
-  return Number(text);
 }
 
 /** Accepts `to do`, `todo` and `to-do` for the first task status. */
@@ -168,9 +164,10 @@ export function buildProgram(env: NodeJS.ProcessEnv, write: (s: string) => void)
           ...m,
           target: detail.links.find((l) => l.id === m.linkId)?.target ?? null,
         }));
+        const steward = ctx.axiom.listStewardItemsWithFix({ topic: detail.slug });
         return {
-          data: { ...detail, monitorTargets, history },
-          text: topicText(detail, monitorTargets, history),
+          data: { ...detail, monitorTargets, steward: steward.map(stewardItemJson), history },
+          text: topicText(detail, monitorTargets, history, steward),
         };
       }),
     );
@@ -827,6 +824,8 @@ export function buildProgram(env: NodeJS.ProcessEnv, write: (s: string) => void)
       );
   agentsCommand(true);
   agentsCommand(false);
+
+  registerSteward(program, { sub, run });
 
   return program;
 }

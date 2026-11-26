@@ -24,7 +24,7 @@ export type {
   StewardWakeFinish,
   UpdateTaskInput,
 } from "./axiom.js";
-export { Axiom } from "./axiom.js";
+export { Axiom, OWNER_MEMORY_TEXT_MAX, STEWARD_CHECK_INTERVAL_MS } from "./axiom.js";
 export * from "./constants.js";
 export type { OpenOptions } from "./database.js";
 export { defaultDatabasePath, migrate, openDatabase } from "./database.js";

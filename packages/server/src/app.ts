@@ -7,6 +7,7 @@ import {
   type Epic,
   effortSchema,
   notificationKindSchema,
+  OWNER_MEMORY_TEXT_MAX,
   providerSchema,
   STEWARD_ITEM_KINDS,
   STEWARD_ITEM_STATES,
@@ -49,8 +50,6 @@ import { buildStewardView, deskStewardStrips, stewardCount } from "./steward/vie
 
 const owner: Actor = { kind: "owner" };
 const PING_MS = 15_000;
-/** The owner writes memory items up to this long (Steward writes shorter ones). */
-const OWNER_MEMORY_TEXT_MAX = 2000;
 
 export interface AppContext {
   ax: Axiom;

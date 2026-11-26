@@ -1,9 +1,9 @@
 import {
   type Axiom,
   countTokens,
-  modelFamily,
   type StewardAction,
   type StewardBlindSpot,
+  type StewardFamilyUsage,
   type StewardItem,
   type StewardMemory,
   type StewardRun,
@@ -77,14 +77,7 @@ export interface StewardViewWake {
   stages: StewardViewStage[];
 }
 
-export interface StewardViewUsage {
-  /** `haiku`, `sonnet`, `opus` or the model itself when of no known family. */
-  family: string;
-  models: string[];
-  runs: number;
-  used: number;
-  cap: number | null;
-}
+export type StewardViewUsage = StewardFamilyUsage;
 
 export interface StewardView {
   enabled: boolean;
@@ -302,27 +295,7 @@ export function buildStewardView(ax: Axiom, nextWakeAt: string | null): StewardV
   const briefWake = wakeRows.find((w) => w.brief !== null);
   const latest = wakeRows[0];
 
-  // Token use today: one row per family with a cap or with runs today.
-  const today = ax.stewardUsageForDay();
-  const families = new Set<string>([
-    ...Object.keys(settings.dailyCaps),
-    ...today.map((u) => modelFamily(u.model)),
-  ]);
-  const usage = [...families].map<StewardViewUsage>((family) => {
-    const mine = today.filter((u) => modelFamily(u.model) === family);
-    return {
-      family,
-      models: mine.map((u) => u.model),
-      runs: mine.reduce((n, u) => n + u.runs, 0),
-      used: mine.reduce((n, u) => n + u.total, 0),
-      cap: Object.hasOwn(settings.dailyCaps, family) ? (settings.dailyCaps[family] ?? null) : null,
-    };
-  });
-  const order = ["haiku", "sonnet", "opus"];
-  usage.sort((a, b) => {
-    const [x, y] = [order.indexOf(a.family), order.indexOf(b.family)];
-    return (x < 0 ? 99 : x) - (y < 0 ? 99 : y) || a.family.localeCompare(b.family);
-  });
+  const usage = ax.stewardUsageByFamily();
 
   // Sources as the last checklist saw them: unreachable ones leave a "source unreachable" spot.
   const spots = latest?.blindSpots ?? [];

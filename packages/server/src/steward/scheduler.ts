@@ -161,7 +161,10 @@ export class Steward {
 
   start(): void {
     const tickMs = this.o.tickMs ?? DEFAULT_TICK_MS;
-    this.unsubscribe = this.o.bus?.subscribe(() => this.scanStops());
+    this.unsubscribe = this.o.bus?.subscribe(() => {
+      this.scanStops();
+      this.pickUpRequests();
+    });
     if (tickMs > 0) {
       this.timer = setInterval(() => void this.tick(), tickMs);
       this.timer.unref();
@@ -171,6 +174,11 @@ export class Steward {
 
   stop(): void {
     this.stopped = true;
+    try {
+      this.o.ax.clearStewardServerBeat();
+    } catch {
+      // the database may already be closed
+    }
     this.unsubscribe?.();
     clearInterval(this.timer);
   }
@@ -186,6 +194,8 @@ export class Steward {
     this.ticking = true;
     try {
       const s = this.settings();
+      this.beat();
+      this.pickUpRequests();
       if (!s.enabled) {
         if (this.enabledSince !== null) this.o.ax.clearStewardHeartbeat();
         this.enabledSince = null;
@@ -211,6 +221,73 @@ export class Steward {
       console.error("steward tick failed:", e);
     } finally {
       this.ticking = false;
+    }
+  }
+
+  /** Tells the CLI a server is running (and when the next timer wake is due). */
+  private beat(): void {
+    try {
+      const tickMs = this.o.tickMs ?? DEFAULT_TICK_MS;
+      this.o.ax.setStewardServerBeat(
+        { pid: process.pid, freshMs: Math.max(3 * tickMs, 90_000), nextWakeAt: this.nextWakeAt() },
+        actor,
+      );
+    } catch (e) {
+      console.error("steward beat failed:", e);
+    }
+  }
+
+  /**
+   * Requests the CLI wrote (`axiom steward check|run`): each is marked handled first, then
+   * becomes a wake request (`run` is an owner wake that ignores the on/off switch, `check` an
+   * event wake on its topic), and the row's result is updated when the wake is over.
+   */
+  pickUpRequests(): void {
+    if (this.stopped) return;
+    try {
+      for (const r of this.o.ax.listStewardRequests({ pending: true })) {
+        const ax = this.o.ax;
+        if (r.kind === "check" && r.topic !== null) {
+          let on = false;
+          try {
+            on = ax.getTopicStewardEnabled(r.topic);
+          } catch {
+            // the topic is gone
+          }
+          if (!on) {
+            ax.handleStewardRequest(
+              r.id,
+              "not run: the topic is gone or Steward is off for it",
+              actor,
+            );
+            continue;
+          }
+        }
+        ax.handleStewardRequest(r.id, "picked up", actor);
+        const wake =
+          r.kind === "run"
+            ? this.requestWake("owner", "asked from the CLI: run now", { force: true })
+            : this.requestWake(
+                "event",
+                r.requestedBy === "agent"
+                  ? `asked by an agent: check ${r.topic}`
+                  : `asked from the CLI: check ${r.topic}`,
+                { topic: r.topic ?? undefined },
+              );
+        const note = (result: string) => {
+          try {
+            ax.handleStewardRequest(r.id, result, actor);
+          } catch {
+            // the database may be closed by now
+          }
+        };
+        void wake.then(
+          (w) => note(w ? `wake #${w.id} ${w.status}` : "no wake ran (Steward is off or stopped)"),
+          (e) => note(`failed: ${e instanceof Error ? e.message : e}`),
+        );
+      }
+    } catch (e) {
+      console.error("steward request pickup failed:", e);
     }
   }
 

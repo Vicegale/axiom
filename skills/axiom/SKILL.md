@@ -98,7 +98,21 @@ Do these in order, before the final status:
 4. **Tasks:** mark the tasks you finished `done` (or `blocked`).
 5. **Status:** then `axiom topic status …` as above.
 
-## 5. Rules
+## 5. Steward
+
+Steward is the owner's ambient agent: it watches the topics, raises findings and questions, and keeps a memory. You only read it, and ask for a check when it matters.
+
+```sh
+axiom steward items --topic <slug>      # its open findings, questions, suggestions (and ready fix branches)
+axiom steward memory --topic <slug>     # what it remembers: core, this topic, its repositories
+axiom steward check <slug>              # ask it to look at the topic now
+```
+
+- When you pick up a topic, read its Steward items and memory with the first two (`axiom topic show` lists the items too).
+- Run `check` after you open a PR or move a topic to `review`, and only then. It spends the owner's tokens; it is refused while Steward is off and allowed once per topic every 10 minutes.
+- Never answer Steward's questions and never change its memory or switch it on or off; the owner does. Those commands refuse agents.
+
+## 6. Rules
 
 - Never bypass the owner's processes (review, CI, approvals). Axiom is a record, not a permission system.
 - Don't write secrets into entries. If one slips in, tell the owner; only they can delete entries.

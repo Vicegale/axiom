@@ -1,7 +1,13 @@
-import { basename } from "node:path";
-import type { Axiom, StewardMemory, StewardMemorySource, StewardWake } from "@axiom/core";
+import {
+  type Axiom,
+  knownRepos,
+  resolveAttachedKey,
+  type StewardMemory,
+  type StewardMemorySource,
+  type StewardWake,
+  topicRepoNames,
+} from "@axiom/core";
 import { z } from "zod";
-import { parsePrTarget } from "./pr.js";
 import { runStage, type StageContext } from "./runner.js";
 
 /**
@@ -56,53 +62,7 @@ export type MemoryChange = z.infer<typeof memoryChangeSchema>;
 
 // ---- attached keys ---------------------------------------------------------------------------
 
-/**
- * Repositories the tracker knows, by every name they go by (lower case): the folder of a
- * repository or worktree link (its path and its last segment) and the `owner/name` of a PR link
- * (and `name`). The first name a repository was seen under is its key.
- */
-export function knownRepos(ax: Axiom): Map<string, string> {
-  const out = new Map<string, string>();
-  const add = (primary: string, ...aliases: string[]) => {
-    for (const a of [primary, ...aliases])
-      if (a && !out.has(a.toLowerCase())) out.set(a.toLowerCase(), primary);
-  };
-  for (const kind of ["repository", "worktree"] as const) {
-    for (const l of ax.listLinksOfKind(kind)) {
-      const t = l.target.replace(/\/+$/, "");
-      add(t, basename(t));
-    }
-  }
-  for (const l of ax.listLinksOfKind("pr")) {
-    const p = parsePrTarget(l.target);
-    if (p) add(p.repo, p.repo.split("/")[1] ?? "");
-  }
-  return out;
-}
-
-/** Checks the thing an attached item is about and returns its key as it is stored. */
-export function resolveAttachedKey(ax: Axiom, kind: string, key: string): string {
-  const k = key.trim();
-  if (!k) throw new Error("attached memory needs the key it is attached to");
-  if (kind === "topic") {
-    try {
-      return ax.getTopic(k).slug;
-    } catch {
-      throw new Error(`"${k}" is not a topic slug`);
-    }
-  }
-  if (kind === "repo") {
-    const hit = knownRepos(ax).get(k.replace(/\/+$/, "").toLowerCase());
-    if (!hit)
-      throw new Error(`"${k}" is not a repository any topic links (a path, owner/name or name)`);
-    return hit;
-  }
-  if (kind === "person") {
-    if (k.length > 80 || /[\r\n]/.test(k)) throw new Error("a person's name is one short line");
-    return k;
-  }
-  throw new Error(`unknown attached kind "${kind}"`);
-}
+export { knownRepos, resolveAttachedKey };
 
 // ---- applying changes ------------------------------------------------------------------------
 
@@ -314,7 +274,6 @@ const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 export function buildRecall(ax: Axiom, about: RecallAbout): Recall {
   const topics = new Set(about.topics);
   const attached = ax.listStewardMemory({ scope: "attached" });
-  const repoNames = new Set<string>();
   const topicIds = new Map<number, string>();
   for (const slug of topics) {
     try {
@@ -323,24 +282,9 @@ export function buildRecall(ax: Axiom, about: RecallAbout): Recall {
       // a slug that is no longer a topic
     }
   }
-  if (attached.some((m) => m.attachedKind === "repo")) {
-    for (const kind of ["repository", "worktree", "pr"] as const) {
-      for (const l of ax.listLinksOfKind(kind)) {
-        if (!topicIds.has(l.topicId)) continue;
-        if (kind === "pr") {
-          const p = parsePrTarget(l.target);
-          if (p) {
-            repoNames.add(p.repo.toLowerCase());
-            repoNames.add((p.repo.split("/")[1] ?? "").toLowerCase());
-          }
-        } else {
-          const t = l.target.replace(/\/+$/, "");
-          repoNames.add(t.toLowerCase());
-          repoNames.add(basename(t).toLowerCase());
-        }
-      }
-    }
-  }
+  const repoNames = attached.some((m) => m.attachedKind === "repo")
+    ? topicRepoNames(ax, new Set(topicIds.keys()))
+    : new Set<string>();
   const haystack = (about.text ?? []).join("\n");
   const out = new Map<string, AttachedRecall>();
   for (const m of attached) {

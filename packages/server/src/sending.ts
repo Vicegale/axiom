@@ -337,7 +337,12 @@ export function registerSendRoutes(app: Hono, o: SendingOptions): void {
     const repo = topic.links.find((l) => l.kind === "repository")?.target;
     const title = firstLine(input.text);
     // The agent gets its Axiom context first; history keeps only the owner's words (record below).
-    const message = briefing(topic, ax.listTasks(slug), input.text);
+    const message = briefing(
+      topic,
+      ax.listTasks(slug),
+      input.text,
+      ax.listStewardItemsWithFix({ topic: slug }),
+    );
     let thread: Thread;
     try {
       if (input.provider === "t3") {

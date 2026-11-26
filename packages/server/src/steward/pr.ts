@@ -1,4 +1,4 @@
-import type { Axiom, StewardPrRecord, StewardSettings } from "@axiom/core";
+import { type Axiom, parsePrTarget, type StewardPrRecord, type StewardSettings } from "@axiom/core";
 import { describeGhError, GhError, ghJson, runGh } from "./gh.js";
 
 /**
@@ -53,15 +53,7 @@ export interface PrSnapshot {
   daysWithoutReviewer: number | null;
 }
 
-/** `owner/repo#12` or a github.com pull URL, as a repo and a number; null for anything else. */
-export function parsePrTarget(target: string): { repo: string; number: number } | null {
-  const t = target.trim();
-  const short = /^([\w.-]+\/[\w.-]+)#(\d+)$/.exec(t);
-  if (short) return { repo: short[1] as string, number: Number(short[2]) };
-  const url = /^https?:\/\/[^/]+\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/.exec(t);
-  if (url) return { repo: url[1] as string, number: Number(url[2]) };
-  return null;
-}
+export { parsePrTarget };
 
 interface ViewJson {
   number: number;

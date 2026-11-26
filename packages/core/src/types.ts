@@ -351,6 +351,40 @@ export interface StewardItem {
   topicSlug: string | null;
 }
 
+/** A request from the CLI for the server to start a wake (migration 0015). */
+export interface StewardRequest {
+  id: number;
+  kind: "run" | "check";
+  topic: string | null;
+  requestedBy: string;
+  threadId: number | null;
+  createdAt: string;
+  handledAt: string | null;
+  result: string | null;
+}
+
+/** What the server's scheduler last said about itself (written on every tick). */
+export interface StewardServerBeat {
+  at: string;
+  pid: number;
+  /** The beat counts as fresh for this long. */
+  freshMs: number;
+  nextWakeAt: string | null;
+}
+
+/** Tokens used today by one model family against its daily cap. */
+export interface StewardFamilyUsage {
+  /** `haiku`, `sonnet`, `opus` or the model itself when of no known family. */
+  family: string;
+  models: string[];
+  runs: number;
+  used: number;
+  cap: number | null;
+}
+
+/** An item with the branch of its ready fix (its own for a suggestion; its child's for a finding). */
+export type StewardItemWithFix = StewardItem & { fixBranch: string | null };
+
 export interface StewardSuggestion {
   id: number;
   itemId: number;
