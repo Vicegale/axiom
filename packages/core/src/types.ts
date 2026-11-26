@@ -399,6 +399,34 @@ export interface StewardMessage {
   text: string;
   at: string;
   memoryItemId: number | null;
+  /** What a Steward reply did: notes kept and actions started (null on owner messages). */
+  meta: StewardMessageMeta | null;
+}
+
+/** One thing Steward kept from a chat: on a topic (a history note or a goal / status change) or in its memory. */
+export interface StewardChatNote {
+  where: "topic" | "memory";
+  /** The topic's slug when `where` is `topic`. */
+  topic?: string;
+  /** `note`, `goal` or `status note`, for a topic. */
+  change?: "note" | "goal" | "status note";
+  /** The memory item when `where` is `memory`. */
+  memoryItemId?: number;
+  text: string;
+}
+
+/** One thing Steward did on the owner's request from a chat. */
+export interface StewardChatAction {
+  kind: "check topic";
+  topic: string;
+  /** False when Axiom did not start it; `detail` says why. */
+  started: boolean;
+  detail?: string;
+}
+
+export interface StewardMessageMeta {
+  noted: StewardChatNote[];
+  actions: StewardChatAction[];
 }
 
 /** Tokens used on one local day by one model, summed over runs. `total` follows `countTokens`. */

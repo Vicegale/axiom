@@ -4,6 +4,7 @@ import { api, type StewardItem, type StewardSettings, type StewardView } from ".
 import { SkipLink } from "../components";
 import { PageSwitch } from "../components/PageSwitch";
 import { MemoryMeter } from "../components/steward/MemoryMeter";
+import { StewardChat } from "../components/steward/StewardChat";
 import { FindingItem, QuestionItem, SuggestionItem } from "../components/steward/StewardItems";
 import { StewardSettingsDialog } from "../components/steward/StewardSettingsDialog";
 import { StewardToggle } from "../components/steward/StewardToggle";
@@ -226,6 +227,7 @@ export function StewardPage() {
         </div>
         <div className="st-bar-end">
           <StewardToggle />
+          <StewardChat />
           <button
             type="button"
             ref={settingsButton}

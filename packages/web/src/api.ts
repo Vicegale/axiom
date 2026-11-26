@@ -593,6 +593,44 @@ export interface NewTopicBody {
   repository?: string;
 }
 
+/** One thing Steward kept from a chat reply (GET /api/steward/chat). */
+export interface ChatNote {
+  where: "topic" | "memory";
+  topic?: string;
+  change?: "note" | "goal" | "status note";
+  memoryItemId?: number;
+  text: string;
+}
+
+export interface ChatAction {
+  kind: "check topic";
+  topic: string;
+  started: boolean;
+  detail?: string;
+}
+
+export interface ChatMessage {
+  id: number;
+  chatId: number;
+  role: "owner" | "steward";
+  text: string;
+  at: string;
+  memoryItemId: number | null;
+  meta: { noted: ChatNote[]; actions: ChatAction[] } | null;
+}
+
+export type ChatModel = "haiku" | "sonnet" | "opus";
+export type ChatEffort = "low" | "medium" | "high";
+
+export interface ChatView {
+  chat: { id: number; startedAt: string; model: string; effort: ChatEffort } | null;
+  messages: ChatMessage[];
+  /** A turn is being answered. */
+  running: boolean;
+  /** Why the last turn failed, until the next one starts. */
+  error: string | null;
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(path, {
     method,
@@ -691,6 +729,12 @@ export const api = {
   discardStewardFix: (id: number) => request<unknown>("POST", `/api/steward/items/${id}/discard`),
   dismissStewardItem: (id: number) => request<unknown>("POST", `/api/steward/items/${id}/dismiss`),
   undoStewardAction: (id: number) => request<unknown>("POST", `/api/steward/actions/${id}/undo`),
+  stewardChat: () => request<ChatView>("GET", "/api/steward/chat"),
+  startStewardChat: (model: ChatModel, effort: ChatEffort) =>
+    request<ChatView>("POST", "/api/steward/chat", { model, effort }),
+  sendStewardChat: (id: number, text: string, model: ChatModel, effort: ChatEffort) =>
+    request<ChatView>("POST", `/api/steward/chat/${id}/messages`, { text, model, effort }),
+  retryStewardChat: (id: number) => request<ChatView>("POST", `/api/steward/chat/${id}/retry`),
   stewardMemory: () => request<MemoryView>("GET", "/api/steward/memory"),
   addMemory: (body: NewMemoryBody) => request<MemoryEntry>("POST", "/api/steward/memory", body),
   editMemory: (id: number, text: string) =>

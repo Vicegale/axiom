@@ -5,6 +5,7 @@ import {
   type Axiom,
   AxiomError,
   type Epic,
+  effortSchema,
   notificationKindSchema,
   providerSchema,
   STEWARD_ITEM_KINDS,
@@ -40,6 +41,7 @@ import type { T3Provider } from "./providers/t3/provider.js";
 import { livePendingApprovals, registerRequestRoutes } from "./requests.js";
 import { registerSendRoutes } from "./sending.js";
 import { serveWeb } from "./static.js";
+import { ChatTurns, type RequestWake, runChatTurn } from "./steward/chat.js";
 import { adoptFix, discardFix, fixDiff } from "./steward/fixes.js";
 import { adoptRebase, isRebaseCopy, rebaseDiff, undoRebase } from "./steward/freshen.js";
 import { buildMemoryView, resolveAttachedKey } from "./steward/memory.js";
@@ -72,6 +74,10 @@ export interface AppContext {
   stewardNextWake?: () => string | null;
   /** Runs the memory tidy-up now (owner's button); set once the scheduler exists. */
   stewardTidyUp?: () => Promise<StewardWake>;
+  /** Asks Steward for a wake (the chat's "check this topic"); set once the scheduler exists. */
+  stewardRequestWake?: RequestWake;
+  /** The chat's running turns, so tests can wait for them (created with the app). */
+  chatTurns?: ChatTurns;
 }
 
 const STATUS_CODES = { "not-found": 404, permission: 403, validation: 400, conflict: 409 } as const;
@@ -97,6 +103,11 @@ function intParam(value: string, what: string): number {
   if (!/^\d+$/.test(value)) throw bad(`${what} must be a positive integer`);
   return Number(value);
 }
+
+const chatModel = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._[\]-]{0,63}$/, "not a model name");
 
 const bodies = {
   status: z.strictObject({ status: topicStatusSchema, reason: z.string().optional() }),
@@ -850,6 +861,76 @@ export function createApp(ctx: AppContext): Hono {
       throw bad(e instanceof Error ? e.message : String(e));
     }
     return c.json({ wake, memory: buildMemoryView(ax) });
+  });
+
+  // The Steward chat (ST9). A turn is one headless call that runs in the background: the owner's
+  // message is stored at once, the reply appears when it is done (an SSE change), and `running`
+  // and `error` tell the drawer what is going on.
+  const chatTurns = ctx.chatTurns ?? new ChatTurns();
+  ctx.chatTurns = chatTurns;
+  const chatView = (id: number) => {
+    const chat = ax.getStewardChat(id);
+    return {
+      chat,
+      messages: ax.listStewardMessages(id),
+      running: chatTurns.isRunning(id),
+      error: chatTurns.error(id),
+    };
+  };
+  const chatBodies = {
+    start: z.strictObject({ model: chatModel, effort: effortSchema }),
+    send: z.strictObject({
+      text: z.string().trim().min(1).max(8000),
+      model: chatModel.optional(),
+      effort: effortSchema.optional(),
+    }),
+  };
+  const runChat = (id: number) => {
+    const cli = ax.getSetting("claudeCli");
+    chatTurns.start(
+      id,
+      () =>
+        runChatTurn({
+          ctx: { ax, cli: typeof cli === "string" && cli ? cli : (ctx.claudeCli ?? "claude") },
+          chat: ax.getStewardChat(id),
+          requestWake: ctx.stewardRequestWake,
+        }),
+      () => bus.emit(),
+    );
+  };
+  app.get("/api/steward/chat", (c) => {
+    const latest = ax.listStewardChats(1)[0];
+    return c.json(
+      latest ? chatView(latest.id) : { chat: null, messages: [], running: false, error: null },
+    );
+  });
+  app.get("/api/steward/chat/:id", (c) => c.json(chatView(intParam(c.req.param("id"), "chat id"))));
+  app.post("/api/steward/chat", async (c) => {
+    const body = parse(chatBodies.start, await json(c));
+    const chat = write(() => ax.startStewardChat(body, owner));
+    return c.json(chatView(chat.id), 201);
+  });
+  app.post("/api/steward/chat/:id/messages", async (c) => {
+    const id = intParam(c.req.param("id"), "chat id");
+    const body = parse(chatBodies.send, await json(c));
+    if (chatTurns.isRunning(id)) throw new AxiomError("conflict", "Steward is still answering");
+    write(() => {
+      if (body.model !== undefined || body.effort !== undefined) {
+        ax.updateStewardChat(id, { model: body.model, effort: body.effort }, owner);
+      }
+      ax.addStewardMessage(id, { role: "owner", text: body.text }, owner);
+    });
+    runChat(id);
+    return c.json(chatView(id), 202);
+  });
+  // Tries the last turn again: the owner's message is still the last one and nothing answered it.
+  app.post("/api/steward/chat/:id/retry", (c) => {
+    const id = intParam(c.req.param("id"), "chat id");
+    if (chatTurns.isRunning(id)) throw new AxiomError("conflict", "Steward is still answering");
+    const last = ax.listStewardMessages(id).at(-1);
+    if (last?.role !== "owner") throw bad("there is nothing to retry");
+    runChat(id);
+    return c.json(chatView(id), 202);
   });
 
   app.post("/api/steward/actions/:id/undo", async (c) => {

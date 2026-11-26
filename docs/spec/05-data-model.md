@@ -205,11 +205,12 @@ What Steward reads, decides and does. Findings and Steward's changes to topics a
 | source | `wake`, `chat`, `tidy-up` or `owner` (the owner edits it directly). |
 | created_at, updated_at, retired_at | Steward may retire and delete its own items (03 autonomy rule). |
 
-**steward_chat** (started_at, model, effort) and **steward_message** (chat_id, role `owner` or `steward`, text, at, memory_item_id when Steward noted something).
+**steward_chat** (started_at, model, effort) and **steward_message** (chat_id, role `owner` or `steward`, text, at, memory_item_id when Steward noted something, `meta` JSON: the notes it kept and the actions it started, from migration 0014).
 
 ## Decisions
 
 - 2026-11-25: Steward's tables, the `steward` author and the `steward urgent` notification kind added for 03 (owner OK). 05 stays settled.
+- 2026-11-26: `steward_message.meta` added (migration 0014, ST9): `{noted: [{where: topic|memory, topic?, change?, memoryItemId?, text}], actions: [{kind: "check topic", topic, started, detail?}]}` on a Steward reply, so the chat can show "Noted … → topic/memory" and what it started.
 - 2026-11-25: `steward_item.note` added (migration 0013, ST6): a quiet fact beside a finding (`report only`, `promotion skipped: cap reached`, `no local repository`, `couldn't prepare a fix: …`, `fix adopted: …`). A prepared fix is a `suggestion` item whose `parent_item_id` is its finding and whose fingerprint is `fix:<finding fingerprint>`; its `steward_suggestion.base` is `<owner's branch>@<commit the fix started from>`.
 - 2026-11-25: `steward_item.promotion` added (migration 0012, ST3). A `status change` entry made by Steward has author `steward` and `by: "steward"` in its data.
 

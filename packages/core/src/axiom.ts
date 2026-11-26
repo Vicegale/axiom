@@ -95,6 +95,7 @@ import type {
   StewardItem,
   StewardMemory,
   StewardMessage,
+  StewardMessageMeta,
   StewardModelUsage,
   StewardPrRecord,
   StewardRun,
@@ -145,6 +146,19 @@ function camel<T>(row: Row | undefined): T {
     out[name] = BOOLEAN_COLUMNS.has(key) ? value === 1 : value;
   }
   return out as T;
+}
+
+function messageOf(row: Row | undefined): StewardMessage {
+  const m = camel<Omit<StewardMessage, "meta"> & { meta: string | null }>(row);
+  let meta: StewardMessageMeta | null = null;
+  if (m.meta) {
+    try {
+      meta = JSON.parse(m.meta) as StewardMessageMeta;
+    } catch {
+      meta = null;
+    }
+  }
+  return { ...m, meta };
 }
 
 export interface CreateTopicInput {
@@ -3530,6 +3544,29 @@ export class Axiom {
     );
   }
 
+  /** The owner picks another model or effort in the middle of a chat; the next turn uses it. */
+  updateStewardChat(
+    id: number,
+    input: { model?: string; effort?: Effort },
+    actor: Actor,
+  ): StewardChat {
+    this.stewardWriter(actor, "change a chat");
+    if (input.effort !== undefined) parseWith(effortSchema, input.effort, "effort");
+    if (input.model !== undefined && !input.model.trim()) {
+      throw new AxiomError("validation", "a chat needs a model");
+    }
+    return this.tx(() => {
+      const c = this.chatRow(id);
+      this.run(
+        "UPDATE steward_chat SET model = ?, effort = ? WHERE id = ?",
+        input.model?.trim() ?? c.model,
+        input.effort ?? c.effort,
+        id,
+      );
+      return this.chatRow(id);
+    });
+  }
+
   private chatRow(id: number): StewardChat {
     const row = this.get<Row>("SELECT * FROM steward_chat WHERE id = ?", id);
     if (!row) throw new AxiomError("not-found", `Steward chat not found: ${id}`);
@@ -3549,7 +3586,12 @@ export class Axiom {
 
   addStewardMessage(
     chatId: number,
-    input: { role: StewardMessageRole; text: string; memoryItemId?: number },
+    input: {
+      role: StewardMessageRole;
+      text: string;
+      memoryItemId?: number;
+      meta?: StewardMessageMeta;
+    },
     actor: Actor,
   ): StewardMessage {
     this.stewardWriter(actor, "add a chat message");
@@ -3559,20 +3601,21 @@ export class Axiom {
       this.chatRow(chatId);
       if (input.memoryItemId !== undefined) this.memoryRow(input.memoryItemId);
       const id = this.run(
-        "INSERT INTO steward_message (chat_id, role, text, at, memory_item_id) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO steward_message (chat_id, role, text, at, memory_item_id, meta) VALUES (?, ?, ?, ?, ?, ?)",
         chatId,
         input.role,
         input.text,
         this.iso(),
         input.memoryItemId ?? null,
+        input.meta ? JSON.stringify(input.meta) : null,
       );
-      return camel<StewardMessage>(this.get<Row>("SELECT * FROM steward_message WHERE id = ?", id));
+      return messageOf(this.get<Row>("SELECT * FROM steward_message WHERE id = ?", id));
     });
   }
 
   listStewardMessages(chatId: number): StewardMessage[] {
     return this.all<Row>("SELECT * FROM steward_message WHERE chat_id = ? ORDER BY id", chatId).map(
-      (r) => camel<StewardMessage>(r),
+      messageOf,
     );
   }
 

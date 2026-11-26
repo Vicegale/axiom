@@ -1,9 +1,9 @@
 /* The Desk (02): a grid of topic cards. Tokens from tokens.css; the Mana-free tracker palette. */
 .dk-app {
-  display: grid; grid-template-rows: 2.75rem minmax(0, 1fr);
+  display: grid; grid-template-rows: minmax(2.75rem, auto) minmax(0, 1fr);
   height: 100vh; height: 100dvh; overflow: hidden; background: var(--bg);
 }
-.dk-app.has-banner { grid-template-rows: 2.75rem auto minmax(0, 1fr); }
+.dk-app.has-banner { grid-template-rows: minmax(2.75rem, auto) auto minmax(0, 1fr); }
 .dk-bar {
   display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap;
   padding: 0 0.875rem; min-height: 2.75rem; background: var(--panel); border-bottom: 1px solid var(--line);

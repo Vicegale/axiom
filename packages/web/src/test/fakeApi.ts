@@ -2,6 +2,8 @@ import { vi } from "vitest";
 import type {
   ArtifactData,
   AxiomNotification,
+  ChatMessage,
+  ChatView,
   DeskThread,
   DeskTopic,
   DocData,
@@ -256,6 +258,59 @@ export class FakeServer {
   /** Steward's memory (GET /api/steward/memory). */
   memory: MemoryEntry[] = [];
   memoryKeys: MemoryView["keys"] = { topics: [], repos: [] };
+  /** The Steward chat (GET /api/steward/chat). */
+  chat: ChatView = { chat: null, messages: [], running: false, error: null };
+  /** The next Steward reply, and whether it is held back (the turn stays running) or fails. */
+  chatReply: Pick<ChatMessage, "text" | "meta"> = { text: "All quiet.", meta: null };
+  chatHold = false;
+  chatFail: string | null = null;
+  /** Ends a held turn: the reply arrives. */
+  finishChat() {
+    this.chatHold = false;
+    this.chat.running = false;
+    this.addChat("steward", this.chatReply.text, this.chatReply.meta);
+  }
+  private addChat(role: ChatMessage["role"], text: string, meta: ChatMessage["meta"] = null) {
+    const id = this.chat.messages.length + 1;
+    this.chat.messages.push({
+      id,
+      chatId: this.chat.chat?.id ?? 1,
+      role,
+      text,
+      at: "2026-11-25T14:00:00.000Z",
+      memoryItemId: null,
+      meta,
+    });
+  }
+  private chatApi(method: string, path: string, body: Record<string, string>): Response {
+    if (method === "GET") return this.json(this.chat);
+    if (method === "POST" && path === "/api/steward/chat") {
+      const id = (this.chat.chat?.id ?? 0) + 1;
+      this.chat = {
+        chat: {
+          id,
+          startedAt: "2026-11-25T14:00:00.000Z",
+          model: body.model as string,
+          effort: body.effort,
+        },
+        messages: [],
+        running: false,
+        error: null,
+      } as unknown as ChatView;
+      return this.json(this.chat, 201);
+    }
+    if (path.endsWith("/messages") || path.endsWith("/retry")) {
+      if (path.endsWith("/messages")) this.addChat("owner", body.text as string);
+      this.chat.error = null;
+      if (this.chatFail) {
+        this.chat.error = this.chatFail;
+        this.chatFail = null;
+      } else if (this.chatHold) this.chat.running = true;
+      else this.addChat("steward", this.chatReply.text, this.chatReply.meta);
+      return this.json(this.chat, 202);
+    }
+    return this.json({ error: { code: "not-found", message: "no route" } }, 404);
+  }
   calls: Call[] = [];
   desk: DeskTopic[] = [];
   /** Full replies by thread id; a missing one is a 404. */
@@ -525,6 +580,9 @@ export class FakeServer {
     }
     if (method === "GET" && path === "/api/steward") {
       return this.json({ ...this.steward, enabled: this.settings.steward.enabled });
+    }
+    if (path === "/api/steward/chat" || path.startsWith("/api/steward/chat/")) {
+      return this.chatApi(method, path, body ?? {});
     }
     if (path.startsWith("/api/steward/memory")) return this.memoryApi(method, path, body);
     if (method === "GET" && path === "/api/steward/count") {

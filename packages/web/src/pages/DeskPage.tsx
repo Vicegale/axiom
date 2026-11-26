@@ -14,6 +14,7 @@ import { SkipLink } from "../components";
 import { DeskCard } from "../components/desk/DeskCard";
 import { NewTopicDialog } from "../components/desk/NewTopicDialog";
 import { PageSwitch } from "../components/PageSwitch";
+import { StewardChat } from "../components/steward/StewardChat";
 import { StewardToggle } from "../components/steward/StewardToggle";
 import { useResource } from "../data/useResource";
 import { hrefs } from "../layouts/shared/routes";
@@ -415,6 +416,7 @@ export function DeskPage() {
             ))}
           </ul>
           <StewardToggle />
+          <StewardChat />
           <button
             type="button"
             ref={newButton}
