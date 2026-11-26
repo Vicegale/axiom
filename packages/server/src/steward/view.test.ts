@@ -5,7 +5,7 @@ import { type Axiom, openDatabase } from "@axiom/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { startServer } from "../index.js";
 import { nextWorkingTime, Steward } from "./scheduler.js";
-import { buildStewardView, stewardCount } from "./view.js";
+import { buildStewardView, deskStewardStrips, stewardCount } from "./view.js";
 
 const owner = { kind: "owner" } as const;
 const steward = { kind: "steward" } as const;
@@ -174,5 +174,57 @@ describe("the routes", () => {
     } finally {
       await server.close();
     }
+  });
+});
+
+describe("the Desk strips", () => {
+  const alpha = () => ax.getTopic("alpha").id;
+  it("picks urgent first, with its prepared fix, and counts the rest", () => {
+    const { w, urgent } = seed();
+    ax.addStewardFix(
+      urgent.id,
+      {
+        title: "Fix for CI",
+        repository: "/r",
+        branch: "axiom/fix/ci",
+        base: "main",
+        worktree: "/w",
+        complexity: "simple",
+        diffstat: "1 file",
+        tests: "pass",
+        wakeId: w.id,
+      },
+      steward,
+    );
+    const s = deskStewardStrips(ax).get(alpha());
+    expect(s).toMatchObject({
+      itemId: urgent.id,
+      kind: "finding",
+      level: "urgent",
+      title: "CI failed",
+      fix: { branch: "axiom/fix/ci", kind: "fix" },
+      more: 2, // the attention finding and the question; the fix belongs to its finding
+    });
+    expect(s?.fix?.itemId).not.toBe(urgent.id);
+  });
+
+  it("falls to attention, then a question; info alone gets no strip", () => {
+    const { urgent } = seed();
+    ax.dismissStewardItem(urgent.id, owner);
+    expect(deskStewardStrips(ax).get(alpha())).toMatchObject({
+      title: "No reviewer",
+      fix: null,
+      more: 1,
+    });
+    const attention = ax.listStewardItems({ state: "open" }).find((i) => i.title === "No reviewer");
+    ax.dismissStewardItem(attention?.id as number, owner);
+    expect(deskStewardStrips(ax).get(alpha())).toMatchObject({
+      kind: "question",
+      title: "Skip Slack?",
+      more: 0,
+    });
+    const q = ax.listStewardItems({ state: "open" }).find((i) => i.kind === "question");
+    ax.dismissStewardItem(q?.id as number, owner);
+    expect(deskStewardStrips(ax).has(alpha())).toBe(false);
   });
 });

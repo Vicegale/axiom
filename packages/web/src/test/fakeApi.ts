@@ -195,6 +195,8 @@ export function deskTopic(over: Partial<DeskTopic> & { slug: string }): DeskTopi
     favorite: false,
     deskHidden: false,
     deskOrder: null,
+    stewardEnabled: true,
+    steward: null,
     taskCounts: { total: 0, done: 0 },
     linkCount: 0,
     artifacts: [],
@@ -497,11 +499,12 @@ export class FakeServer {
         ? this.json(r)
         : this.json({ error: { code: "not-found", message: "no reply" } }, 404);
     }
-    const deskM = /^\/api\/topics\/([^/]+)\/(favorite|desk-hidden)$/.exec(path);
+    const deskM = /^\/api\/topics\/([^/]+)\/(favorite|desk-hidden|steward-enabled)$/.exec(path);
     if (deskM && method === "POST") {
       const t = this.desk.find((x) => x.slug === decodeURIComponent(deskM[1] ?? ""));
       if (!t) return this.json({ error: { code: "not-found", message: "nope" } }, 404);
       if (deskM[2] === "favorite") t.favorite = body.on;
+      else if (deskM[2] === "steward-enabled") t.stewardEnabled = body.enabled;
       else t.deskHidden = body.hidden;
       return this.json({ slug: t.slug });
     }
@@ -535,6 +538,7 @@ export class FakeServer {
       if (stFixM[2] === "adopt" && this.adoptRefusal) {
         return this.json({ error: { code: "conflict", message: this.adoptRefusal } }, 409);
       }
+      for (const t of this.desk) if (t.steward?.fix?.itemId === id) t.steward = null;
       this.steward.ready = this.steward.ready.filter((i) => i.id !== id);
       for (const i of [...this.steward.needs, ...this.steward.info]) {
         if (i.prepared?.itemId === id) i.prepared = null;
@@ -544,6 +548,7 @@ export class FakeServer {
     const stItemM = /^\/api\/steward\/items\/(\d+)\/(answer|dismiss)$/.exec(path);
     if (stItemM && method === "POST") {
       const id = Number(stItemM[1]);
+      for (const t of this.desk) if (t.steward?.itemId === id) t.steward = null;
       for (const k of ["needs", "questions", "ready", "info"] as const) {
         this.steward[k] = this.steward[k].filter((i) => i.id !== id);
       }

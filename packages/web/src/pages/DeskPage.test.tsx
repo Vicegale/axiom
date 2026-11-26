@@ -172,7 +172,8 @@ describe("the Desk", () => {
     start();
     await screen.findByRole("article", { name: "Alpha" });
     expect(screen.getByRole("button", { name: "1 hidden" })).toBeTruthy();
-    fireEvent.click(within(card("Bravo")).getByRole("button", { name: /^Hide Bravo/ }));
+    fireEvent.click(within(card("Bravo")).getByRole("button", { name: /^More actions for Bravo/ }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Hide from the Desk" }));
     await waitFor(() => expect(titles()).not.toContain("Bravo"));
     expect(server.called("POST", "/api/topics/bravo/desk-hidden")[0]?.body).toEqual({
       hidden: true,
@@ -826,5 +827,184 @@ describe("the Artifacts menu on the card", () => {
     start();
     await screen.findByRole("article", { name: "Alpha" });
     await expectAccessible();
+  });
+  describe("Steward on the Desk", () => {
+    const strip = (over: Partial<NonNullable<DeskTopic["steward"]>> = {}) => ({
+      itemId: 10,
+      kind: "finding" as const,
+      level: "urgent" as const,
+      title: "CI failed on mtg#214",
+      fix: null,
+      more: 0,
+      ...over,
+    });
+
+    it("shows the Steward toggle with the next wake in the top bar", async () => {
+      server.settings.steward.enabled = true;
+      server.steward.nextWakeAt = "2026-11-25T14:30:00";
+      start();
+      await screen.findByRole("article", { name: "Alpha" });
+      const sw = await screen.findByRole("switch", { name: /Steward on/ });
+      expect(within(document.querySelector(".dk-bar") as HTMLElement).getByRole("switch")).toBe(sw);
+      await waitFor(() => expect(sw.textContent).toMatch(/next 14:30/));
+      fireEvent.click(sw);
+      await waitFor(() =>
+        expect(server.called("PUT", "/api/settings")[0]?.body).toMatchObject({
+          steward: { enabled: false },
+        }),
+      );
+    });
+
+    it("shows no strip for a topic with nothing from Steward", async () => {
+      start();
+      await screen.findByRole("article", { name: "Alpha" });
+      expect(document.querySelector(".dk-steward")).toBeNull();
+    });
+
+    it("urgent with a ready fix: Urgent tag, Adopt fix, Diff in the card, the rest as a link", async () => {
+      patch(0, {
+        steward: strip({ fix: { itemId: 11, branch: "axiom/fix/x", kind: "fix" }, more: 2 }),
+      });
+      server.fixDiff = {
+        diff: "diff --git a/x b/x\n+added line\n",
+        truncated: false,
+        branch: "axiom/fix/x",
+      };
+      start();
+      const c = await screen.findByRole("article", { name: "Alpha" });
+      const st = within(c).getByRole("region", { name: "Steward" });
+      expect(within(st).getByText("Urgent")).toBeTruthy();
+      expect(st.textContent).toContain("CI failed on mtg#214 · a fix is ready");
+      const more = within(st).getByRole("link", { name: "2 more in Steward" });
+      expect(more.getAttribute("href")).toBe("/steward");
+      const adopt = within(st).getByRole("button", { name: /^Adopt fix/ });
+      expect(adopt.getAttribute("title")).toBe(
+        "Applies it to your branch locally. Pushing stays yours.",
+      );
+      fireEvent.click(within(st).getByRole("button", { name: "Diff" }));
+      expect(await within(st).findByText("+added line")).toBeTruthy();
+      fireEvent.click(adopt);
+      await waitFor(() =>
+        expect(server.called("POST", "/api/steward/items/11/adopt")).toHaveLength(1),
+      );
+      await waitFor(() => expect(within(c).queryByRole("region", { name: "Steward" })).toBeNull());
+    });
+
+    it("attention finding: Dismiss, and Open in Steward when it is the only one", async () => {
+      patch(1, { steward: strip({ itemId: 12, level: "attention", title: "No reviewer" }) });
+      start();
+      const c = await screen.findByRole("article", { name: "Bravo" });
+      const st = within(c).getByRole("region", { name: "Steward" });
+      expect(within(st).queryByText("Urgent")).toBeNull();
+      expect(within(st).getByRole("link", { name: "Open in Steward" }).getAttribute("href")).toBe(
+        "/steward#st-item-12",
+      );
+      fireEvent.click(within(st).getByRole("button", { name: /^Dismiss/ }));
+      await waitFor(() =>
+        expect(server.called("POST", "/api/steward/items/12/dismiss")).toHaveLength(1),
+      );
+    });
+
+    it("question: Answer links to the item on the Steward page", async () => {
+      patch(1, {
+        steward: strip({ itemId: 20, kind: "question", level: null, title: "Skip Slack?" }),
+      });
+      start();
+      const c = await screen.findByRole("article", { name: "Bravo" });
+      const answer = within(c).getByRole("link", { name: /^Answer/ });
+      expect(answer.getAttribute("href")).toBe("/steward#st-item-20");
+    });
+
+    it("is accessible with a strip, the off mark and the menu open", async () => {
+      patch(0, {
+        steward: strip({ fix: { itemId: 11, branch: "axiom/fix/x", kind: "fix" }, more: 1 }),
+      });
+      patch(1, { stewardEnabled: false });
+      start();
+      const c = await screen.findByRole("article", { name: "Alpha" });
+      fireEvent.click(within(c).getByRole("button", { name: /^More actions for Alpha/ }));
+      await expectAccessible();
+    });
+
+    it("marks a topic Steward is off for", async () => {
+      patch(1, { stewardEnabled: false });
+      start();
+      const c = await screen.findByRole("article", { name: "Bravo" });
+      expect(within(c).getByTitle("Steward is off for this topic").textContent).toBe("Steward off");
+      expect(within(card("Alpha")).queryByText("Steward off")).toBeNull();
+    });
+
+    it("has a card menu with the per-topic switch, operable by keyboard", async () => {
+      start();
+      const c = await screen.findByRole("article", { name: "Alpha" });
+      // The icon row keeps the star and the open arrow; hide lives in the menu.
+      expect(within(c).queryByRole("button", { name: /^Hide / })).toBeNull();
+      const button = within(c).getByRole("button", { name: /^More actions for Alpha/ });
+      expect(button.getAttribute("aria-haspopup")).toBe("menu");
+      expect(button.getAttribute("aria-expanded")).toBe("false");
+
+      fireEvent.keyDown(button, { key: "ArrowDown" });
+      const menu = await screen.findByRole("menu");
+      expect(button.getAttribute("aria-expanded")).toBe("true");
+      const all = () => [
+        ...within(menu).getAllByRole("menuitem"),
+        ...within(menu).getAllByRole("menuitemcheckbox"),
+      ];
+      const names = () => all().map((e) => e.textContent);
+      expect(names()).toEqual([
+        "Favourite",
+        "Hide from the Desk",
+        "Open topic",
+        "Steward watches this topic",
+      ]);
+      const items = [
+        ...within(menu).getAllByRole("menuitem"),
+        ...within(menu).getAllByRole("menuitemcheckbox"),
+      ];
+      expect(document.activeElement).toBe(items[0]);
+      fireEvent.keyDown(menu, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(items[1]);
+      fireEvent.keyDown(menu, { key: "End" });
+      expect(document.activeElement).toBe(items[3]);
+      fireEvent.keyDown(menu, { key: "ArrowDown" });
+      expect(document.activeElement).toBe(items[0]);
+      fireEvent.keyDown(menu, { key: "ArrowUp" });
+      expect(document.activeElement).toBe(items[3]);
+
+      const sw = within(menu).getByRole("menuitemcheckbox", { name: /Steward watches/ });
+      expect(sw.getAttribute("aria-checked")).toBe("true");
+      fireEvent.click(sw);
+      await waitFor(() =>
+        expect(server.called("POST", "/api/topics/alpha/steward-enabled")[0]?.body).toEqual({
+          enabled: false,
+        }),
+      );
+      await waitFor(() =>
+        expect(
+          screen
+            .getByRole("menuitemcheckbox", { name: /Steward watches/ })
+            .getAttribute("aria-checked"),
+        ).toBe("false"),
+      );
+      await within(card("Alpha")).findByText("Steward off");
+
+      fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+      expect(screen.queryByRole("menu")).toBeNull();
+      expect(document.activeElement).toBe(button);
+    });
+
+    it("closes the menu on a click outside, and Favourite works from it", async () => {
+      start();
+      const c = await screen.findByRole("article", { name: "Alpha" });
+      fireEvent.click(within(c).getByRole("button", { name: /^More actions for Alpha/ }));
+      fireEvent.mouseDown(document.body);
+      expect(screen.queryByRole("menu")).toBeNull();
+      fireEvent.click(within(c).getByRole("button", { name: /^More actions for Alpha/ }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Favourite" }));
+      await waitFor(() =>
+        expect(server.called("POST", "/api/topics/alpha/favorite")[0]?.body).toEqual({ on: true }),
+      );
+      expect(screen.queryByRole("menu")).toBeNull();
+    });
   });
 });

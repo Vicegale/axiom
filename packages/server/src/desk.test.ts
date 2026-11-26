@@ -647,4 +647,40 @@ describe("reply images", () => {
     await expect(readReplyImage(`see ${txt}`, txt)).rejects.toMatchObject({ status: 403 });
     await expect(readReplyImage(null, png)).rejects.toMatchObject({ status: 404 });
   });
+
+  it("GET /api/desk carries Steward's strip and the per-topic switch, which the owner sets", async () => {
+    cli.createTopic({ slug: "quiet", title: "Quiet" }, owner);
+    cli.createTopic({ slug: "busy", title: "Busy" }, owner);
+    const w = cli.startStewardWake({ trigger: "timer" }, { kind: "steward" });
+    cli.recordStewardFinding(
+      { wakeId: w.id, topic: "busy", level: "attention", title: "No reviewer" },
+      { kind: "steward" },
+    );
+    cli.recordStewardFinding(
+      { wakeId: w.id, topic: "busy", level: "info", title: "FYI" },
+      { kind: "steward" },
+    );
+    await start();
+    let body = (await api("/api/desk")).body;
+    const by = (slug: string) => body.topics.find((t: Any) => t.slug === slug);
+    expect(by("quiet")).toMatchObject({ stewardEnabled: true, steward: null });
+    expect(by("busy").steward).toMatchObject({ title: "No reviewer", level: "attention", more: 0 });
+    expect(by("busy").steward.fix).toBeNull();
+
+    const r = await api("/api/topics/quiet/steward-enabled", {
+      method: "POST",
+      body: { enabled: false },
+    });
+    expect(r.status).toBe(200);
+    body = (await api("/api/desk")).body;
+    expect(by("quiet").stewardEnabled).toBe(false);
+    expect(
+      (await api("/api/topics/quiet/steward-enabled", { method: "POST", body: { enabled: 1 } }))
+        .status,
+    ).toBe(400);
+    expect(
+      (await api("/api/topics/nope/steward-enabled", { method: "POST", body: { enabled: true } }))
+        .status,
+    ).toBe(404);
+  });
 });

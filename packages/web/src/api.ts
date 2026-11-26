@@ -145,6 +145,19 @@ export interface DeskThread {
 }
 
 /** A topic card as GET /api/desk returns it. */
+/** What a Desk card shows of Steward's open items on its topic (GET /api/desk). */
+export interface DeskSteward {
+  /** The most important open item, and the one the strip shows. */
+  itemId: number;
+  kind: "finding" | "question" | "suggestion";
+  level: StewardLevel | null;
+  title: string;
+  /** A prepared fix for it: Adopt and Diff act on this suggestion item. */
+  fix: { itemId: number; branch: string; kind: "fix" | "rebase copy" } | null;
+  /** The other open items that need the owner. */
+  more: number;
+}
+
 export interface DeskTopic {
   slug: string;
   title: string;
@@ -153,6 +166,9 @@ export interface DeskTopic {
   favorite: boolean;
   deskHidden: boolean;
   deskOrder: number | null;
+  /** Off: Steward neither watches nor acts on this topic. */
+  stewardEnabled: boolean;
+  steward: DeskSteward | null;
   taskCounts: TaskCounts;
   linkCount: number;
   /** The topic's artifact links, for the card's Artifacts menu. */
@@ -643,6 +659,12 @@ export const api = {
     request<{ slug: string; deskHidden: boolean }>("POST", `/api/topics/${enc(slug)}/desk-hidden`, {
       hidden,
     }),
+  setStewardEnabled: (slug: string, enabled: boolean) =>
+    request<{ slug: string; stewardEnabled: boolean }>(
+      "POST",
+      `/api/topics/${enc(slug)}/steward-enabled`,
+      { enabled },
+    ),
   setDeskOrder: (slugs: string[]) =>
     request<{ slugs: string[] }>("PUT", "/api/desk/order", { slugs }),
   threadRequests: (id: number) =>

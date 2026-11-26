@@ -76,7 +76,7 @@ function DiffText({ diff }: { diff: string }) {
 }
 
 /** Diff, loaded when first opened. */
-function useDiff(id: number) {
+export function useDiff(id: number) {
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<
     { diff: string; truncated: boolean } | { error: string } | null
@@ -94,7 +94,7 @@ function useDiff(id: number) {
   return { open, state, toggle };
 }
 
-function DiffView({
+export function DiffView({
   id,
   diff,
   ready,
@@ -336,7 +336,7 @@ export function FindingItem({
   const change = statusChange(item);
   const rebase = rebaseInfo(item);
   return (
-    <li className={`st-item${item.level ? ` lv-${item.level}` : ""}`}>
+    <li className={`st-item${item.level ? ` lv-${item.level}` : ""}`} id={`st-item-${item.id}`}>
       <div className="st-item-main">
         <h3 className="st-item-title">
           {item.level === "urgent" ? <span className="st-lvl">Urgent</span> : null}
@@ -430,7 +430,7 @@ export function QuestionItem({
   };
 
   return (
-    <li className="st-item">
+    <li className="st-item" id={`st-item-${item.id}`}>
       <div className="st-item-main">
         <p className="st-item-text">{item.title}</p>
         {item.body ? <p className="st-item-text dim">{item.body}</p> : null}

@@ -31,3 +31,23 @@ export function Facet({ size = 16 }: { size?: number }) {
     </svg>
   );
 }
+
+/** Facet struck through and faded: Steward is off for this topic. */
+export function FacetOff({ size = 13 }: { size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 1.5 14.5 8 8 14.5 1.5 8Z" />
+      <path d="M8 1.5v13L1.5 8z" fill="currentColor" opacity=".45" />
+      <path d="M2 14 14 2" strokeLinecap="round" />
+    </svg>
+  );
+}

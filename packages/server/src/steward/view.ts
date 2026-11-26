@@ -119,6 +119,68 @@ export function stewardCount(ax: Axiom): number {
     ).length;
 }
 
+/** What a Desk card shows of Steward's open items on its topic: the most important, and the rest. */
+export interface DeskSteward {
+  /** The item the strip shows. */
+  itemId: number;
+  kind: StewardItem["kind"];
+  level: StewardItem["level"];
+  title: string;
+  /** A prepared fix for it: Adopt and Diff act on this suggestion item. */
+  fix: { itemId: number; branch: string; kind: StewardSuggestion["kind"] } | null;
+  /** The other open items that need the owner, shown as "N more in Steward". */
+  more: number;
+}
+
+/**
+ * Per topic id, the strip for its Desk card. Only what needs the owner counts, as in the tab's
+ * count: urgent findings first, then attention findings, then questions, then standalone
+ * suggestions (a rebase copy); the newest first within a rank. Info items get no strip. A fix
+ * that sits inside an open finding belongs to that finding and is not counted on its own.
+ */
+export function deskStewardStrips(ax: Axiom): Map<number, DeskSteward> {
+  const open = ax.listStewardItems({ state: "open" });
+  const openFindingIds = new Set(open.filter((i) => i.kind === "finding").map((i) => i.id));
+  const rank = (i: StewardItem): number =>
+    i.kind === "finding"
+      ? i.level === "urgent"
+        ? 0
+        : i.level === "attention"
+          ? 1
+          : -1
+      : i.kind === "question"
+        ? 2
+        : i.parentItemId === null || !openFindingIds.has(i.parentItemId)
+          ? 3
+          : -1;
+  const byTopic = new Map<number, StewardItem[]>();
+  for (const i of open) {
+    if (i.topicId === null || rank(i) < 0) continue;
+    byTopic.set(i.topicId, [...(byTopic.get(i.topicId) ?? []), i]);
+  }
+  const strips = new Map<number, DeskSteward>();
+  for (const [topicId, items] of byTopic) {
+    const sorted = items.sort((a, b) => rank(a) - rank(b) || b.id - a.id);
+    const top = sorted[0] as StewardItem;
+    const fixItem =
+      top.kind === "suggestion"
+        ? top
+        : top.kind === "finding"
+          ? open.find((x) => x.kind === "suggestion" && x.parentItemId === top.id)
+          : undefined;
+    const sug = fixItem ? ax.listStewardSuggestions(fixItem.id)[0] : undefined;
+    strips.set(topicId, {
+      itemId: top.id,
+      kind: top.kind,
+      level: top.level,
+      title: top.title,
+      fix: fixItem && sug ? { itemId: fixItem.id, branch: sug.branch, kind: sug.kind } : null,
+      more: sorted.length - 1,
+    });
+  }
+  return strips;
+}
+
 function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }

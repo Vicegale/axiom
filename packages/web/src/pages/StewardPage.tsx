@@ -2,11 +2,11 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { api, type StewardItem, type StewardSettings, type StewardView } from "../api";
 import { SkipLink } from "../components";
-import { Facet } from "../components/Icons";
 import { PageSwitch } from "../components/PageSwitch";
 import { MemoryMeter } from "../components/steward/MemoryMeter";
 import { FindingItem, QuestionItem, SuggestionItem } from "../components/steward/StewardItems";
 import { StewardSettingsDialog } from "../components/steward/StewardSettingsDialog";
+import { StewardToggle } from "../components/steward/StewardToggle";
 import { useAxiom } from "../data/DataProvider";
 import { useActions } from "../data/useActions";
 import { useResource } from "../data/useResource";
@@ -171,6 +171,19 @@ export function StewardPage() {
     }
   }, [view]);
 
+  // A link from a Desk card (`/steward#st-item-20`) lands on that item: scroll to it and focus its
+  // first button (Answer for a question), once, when the view has loaded.
+  const jumped = useRef(false);
+  useEffect(() => {
+    if (!view || jumped.current) return;
+    jumped.current = true;
+    const id = window.location.hash.slice(1);
+    const el = id.startsWith("st-item-") ? document.getElementById(id) : null;
+    if (!el) return;
+    el.scrollIntoView?.({ block: "center" });
+    el.querySelector<HTMLElement>("button")?.focus();
+  }, [view]);
+
   const afterAct = () => {
     // The item leaves the list; keep focus on the page rather than on nothing.
     const h = document.getElementById(ids.needs);
@@ -194,16 +207,12 @@ export function StewardPage() {
     return ok;
   };
   const st = settings?.steward;
-  const setEnabled = (enabled: boolean) => {
-    if (st) void actions.saveSettings({ steward: { ...st, enabled } });
-  };
   const saveSteward = async (next: StewardSettings): Promise<string | null> => {
     const ok = await actions.saveSettings({ steward: next });
     return ok ? null : "Steward's settings were not saved.";
   };
 
   const on = view?.enabled ?? st?.enabled ?? false;
-  const next = view?.nextWakeAt ? hm(view.nextWakeAt) : null;
   const needsCount = view ? view.needs.length + view.questions.length : 0;
 
   return (
@@ -216,22 +225,7 @@ export function StewardPage() {
           <PageSwitch />
         </div>
         <div className="st-bar-end">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={on}
-            className={`st-toggle${on ? " on" : ""}`}
-            disabled={!st}
-            onClick={() => setEnabled(!on)}
-          >
-            <span className="st-sw" aria-hidden="true" />
-            <span className="st-ic">
-              <Facet size={14} />
-            </span>
-            <span>Steward {on ? "on" : "off"}</span>
-            {on && view?.running ? <span className="st-meta">running</span> : null}
-            {on && !view?.running && next ? <span className="st-meta">next {next}</span> : null}
-          </button>
+          <StewardToggle />
           <button
             type="button"
             ref={settingsButton}

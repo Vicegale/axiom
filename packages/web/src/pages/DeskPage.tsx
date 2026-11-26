@@ -14,6 +14,7 @@ import { SkipLink } from "../components";
 import { DeskCard } from "../components/desk/DeskCard";
 import { NewTopicDialog } from "../components/desk/NewTopicDialog";
 import { PageSwitch } from "../components/PageSwitch";
+import { StewardToggle } from "../components/steward/StewardToggle";
 import { useResource } from "../data/useResource";
 import { hrefs } from "../layouts/shared/routes";
 import { useShell } from "../layouts/shared/useShell";
@@ -413,6 +414,7 @@ export function DeskPage() {
               </li>
             ))}
           </ul>
+          <StewardToggle />
           <button
             type="button"
             ref={newButton}
@@ -473,6 +475,9 @@ export function DeskPage() {
                 onHide={() => void actions.setDeskHidden(t.slug, true)}
                 onOpen={() => void actions.open(t.slug)}
                 onSent={data.refresh}
+                onStewardEnabled={(on) => void actions.setStewardEnabled(t.slug, on)}
+                onAdoptSteward={actions.adoptSteward}
+                onDismissSteward={actions.dismissSteward}
               />
             ))}
           </div>

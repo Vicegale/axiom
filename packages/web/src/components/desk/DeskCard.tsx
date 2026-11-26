@@ -25,10 +25,13 @@ import {
 import { ago } from "../../lib/time";
 import { useNow } from "../../lib/useNow";
 import { ArtifactsMenu } from "../ArtifactsMenu";
+import { FacetOff } from "../Icons";
 import { StatusPill } from "../StatusPill";
+import { CardMenu } from "./CardMenu";
 import { ReplyMarkdown } from "./LazyReply";
 import { ReplyBox } from "./ReplyBox";
 import { RequestsPanel } from "./RequestsPanel";
+import { StewardStrip } from "./StewardStrip";
 
 export interface MoveHandle {
   moving: boolean;
@@ -46,6 +49,9 @@ interface Props {
   onHide: () => void;
   onOpen: () => void;
   onSent: () => void;
+  onStewardEnabled: (on: boolean) => void;
+  onAdoptSteward: (itemId: number) => Promise<boolean>;
+  onDismissSteward: (itemId: number) => Promise<boolean>;
 }
 
 function Icon({ d }: { d: string }) {
@@ -67,7 +73,6 @@ function Icon({ d }: { d: string }) {
 }
 
 const STAR = "M7 1.8l1.6 3.4 3.7.5-2.7 2.6.7 3.7L7 10.2 3.7 12l.7-3.7L1.7 5.7l3.7-.5z";
-const HIDE = "M1.5 7s2-3.6 5.5-3.6S12.5 7 12.5 7s-2 3.6-5.5 3.6S1.5 7 1.5 7zM2.5 11.5l9-9";
 const OPEN =
   "M8 2.5h3.5V6M11.5 2.5 6.5 7.5M10 8.5v2.2a.8.8 0 0 1-.8.8H3.3a.8.8 0 0 1-.8-.8V4.8a.8.8 0 0 1 .8-.8h2.2";
 const GRIP = "M5 3v.01M9 3v.01M5 7v.01M9 7v.01M5 11v.01M9 11v.01";
@@ -293,7 +298,19 @@ function RunLine({ thread, now }: { thread: DeskThread; now: Date }) {
   );
 }
 
-export function DeskCard({ topic, now, theme, move, onFavorite, onHide, onOpen, onSent }: Props) {
+export function DeskCard({
+  topic,
+  now,
+  theme,
+  move,
+  onFavorite,
+  onHide,
+  onOpen,
+  onSent,
+  onStewardEnabled,
+  onAdoptSteward,
+  onDismissSteward,
+}: Props) {
   const uid = useId();
   const threads = threadsByActivity(topic.threads);
   const [picked, setPicked] = useState<number | null>(null);
@@ -356,15 +373,16 @@ export function DeskCard({ topic, now, theme, move, onFavorite, onHide, onOpen, 
           >
             <Icon d={STAR} />
           </button>
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label={`Hide ${topic.title} from the Desk`}
-            title="Hide from the Desk (it stays in the tracker)"
-            onClick={onHide}
-          >
-            <Icon d={HIDE} />
-          </button>
+          <CardMenu
+            title={topic.title}
+            href={href}
+            favorite={topic.favorite}
+            stewardEnabled={topic.stewardEnabled}
+            onFavorite={() => onFavorite(!topic.favorite)}
+            onHide={onHide}
+            onOpen={open}
+            onStewardEnabled={onStewardEnabled}
+          />
           <Link
             href={href}
             className="icon-btn"
@@ -392,6 +410,12 @@ export function DeskCard({ topic, now, theme, move, onFavorite, onHide, onOpen, 
         <span>
           Last worked <time dateTime={topic.lastWorkedAt}>{ago(topic.lastWorkedAt, now)}</time>
         </span>
+        {topic.stewardEnabled ? null : (
+          <span className="dk-st-off" title="Steward is off for this topic">
+            <FacetOff />
+            Steward off
+          </span>
+        )}
         <span className="dk-links">
           <span>
             {topic.linkCount} {topic.linkCount === 1 ? "link" : "links"}
@@ -401,6 +425,14 @@ export function DeskCard({ topic, now, theme, move, onFavorite, onHide, onOpen, 
           ) : null}
         </span>
       </div>
+
+      {topic.steward ? (
+        <StewardStrip
+          steward={topic.steward}
+          onAdopt={onAdoptSteward}
+          onDismiss={onDismissSteward}
+        />
+      ) : null}
 
       <div className="dk-thread">
         <label htmlFor={`${uid}-th`}>Thread</label>

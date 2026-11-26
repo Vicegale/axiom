@@ -43,7 +43,7 @@ import { serveWeb } from "./static.js";
 import { adoptFix, discardFix, fixDiff } from "./steward/fixes.js";
 import { adoptRebase, isRebaseCopy, rebaseDiff, undoRebase } from "./steward/freshen.js";
 import { buildMemoryView, resolveAttachedKey } from "./steward/memory.js";
-import { buildStewardView, stewardCount } from "./steward/view.js";
+import { buildStewardView, deskStewardStrips, stewardCount } from "./steward/view.js";
 
 const owner: Actor = { kind: "owner" };
 const PING_MS = 15_000;
@@ -115,6 +115,7 @@ const bodies = {
   }),
   favorite: z.strictObject({ on: z.boolean() }),
   deskHidden: z.strictObject({ hidden: z.boolean() }),
+  stewardEnabled: z.strictObject({ enabled: z.boolean() }),
   deskOrder: z.strictObject({ slugs: z.array(z.string()) }),
   settings: z.strictObject({
     summaries: z.strictObject({ enabled: z.boolean() }).optional(),
@@ -480,6 +481,7 @@ export function createApp(ctx: AppContext): Hono {
 
   app.get("/api/desk", (c) => {
     const subagents = ax.listSubagents();
+    const strips = deskStewardStrips(ax);
     const topics = ax
       .listTopics()
       // Closed topics leave the Desk unless the owner favourited them.
@@ -494,6 +496,8 @@ export function createApp(ctx: AppContext): Hono {
           favorite: s.favorite,
           deskHidden: s.deskHidden,
           deskOrder: s.deskOrder,
+          stewardEnabled: s.stewardEnabled,
+          steward: s.stewardEnabled ? (strips.get(s.id) ?? null) : null,
           taskCounts: s.taskCounts,
           linkCount: d.links.length,
           // Only the artifacts (the card's menu), not every link.
@@ -552,6 +556,13 @@ export function createApp(ctx: AppContext): Hono {
     const slug = c.req.param("slug");
     write(() => ax.setTopicDeskHidden(slug, body.hidden, owner));
     return c.json({ slug, deskHidden: body.hidden });
+  });
+
+  app.post("/api/topics/:slug/steward-enabled", async (c) => {
+    const body = parse(bodies.stewardEnabled, await json(c));
+    const slug = c.req.param("slug");
+    write(() => ax.setTopicStewardEnabled(slug, body.enabled, owner));
+    return c.json({ slug, stewardEnabled: body.enabled });
   });
 
   app.put("/api/desk/order", async (c) => {
