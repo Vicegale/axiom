@@ -40,7 +40,7 @@ import type { ChangeBus } from "./events.js";
 import { registerNewTopicRoutes } from "./newtopic.js";
 import type { T3Provider } from "./providers/t3/provider.js";
 import { livePendingApprovals, registerRequestRoutes } from "./requests.js";
-import { registerSendRoutes } from "./sending.js";
+import { registerSendRoutes, threadPermissionMode } from "./sending.js";
 import { serveWeb } from "./static.js";
 import { type ChatTurnOptions, ChatTurns, type RequestWake, runChatTurn } from "./steward/chat.js";
 import { adoptFix, discardFix, fixDiff } from "./steward/fixes.js";
@@ -464,6 +464,8 @@ export function createApp(ctx: AppContext): Hono {
               contextMax: t.contextMax,
               at: t.runtimeAt,
             },
+      // The permission mode the owner last chose for a direct Claude Code session (null: default).
+      permissionMode: t.provider === "claude-code" ? threadPermissionMode(ax, t.id) : null,
       // The subagent tree of the current turn, oldest first: running and finished ones, each with
       // the id of the row it nests under (null: started by the thread itself).
       subagents: deskSubagents(t.endedAt === null ? (subagents.get(t.id) ?? []) : []),

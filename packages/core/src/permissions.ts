@@ -15,6 +15,23 @@
  */
 import { z } from "zod";
 
+/**
+ * The `claude --permission-mode` values the Desk composer offers (verified 2026-11-26, 2.1.325):
+ * `manual` asks for edits and commands; `acceptEdits` runs file edits (and `touch`, `mkdir`) but
+ * still asks for other commands; `auto` lets Claude Code approve what it judges safe; `plan` only
+ * plans; `bypassPermissions` never asks. `dontAsk` (deny whatever is not pre-allowed) is left
+ * out: in a run nobody watches it only makes the agent fail. A resumed session does not keep its
+ * mode, so it is passed on every run.
+ */
+export const PERMISSION_MODES = [
+  "manual",
+  "acceptEdits",
+  "auto",
+  "plan",
+  "bypassPermissions",
+] as const;
+export type PermissionMode = (typeof PERMISSION_MODES)[number];
+
 const MAX_SUGGESTIONS = 6;
 const MAX_TEXT = 500;
 

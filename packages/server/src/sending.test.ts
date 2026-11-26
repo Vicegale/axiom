@@ -247,6 +247,62 @@ describe("POST /api/threads/:id/send", () => {
     expect(cli.getThread(th.id)).toMatchObject({ model: null, effort: null, runtimeAt: null });
   });
 
+  it("passes the permission mode, remembers it for the next runs, and shows it on the Desk", async () => {
+    const claude = fake("claude");
+    const th = thread("claude-code", "sess-4");
+    cli.threadEnded(th.id, "other");
+    await start({ claudeCli: claude.path });
+    const send = async (body: object) => {
+      const r = await api(`/api/threads/${th.id}/send`, { method: "POST", body });
+      expect(r.status).toBe(200);
+      await until(() => claude.ran());
+      rmSync(join(claude.path, "..", "finished"));
+      cli.threadEnded(th.id, "other");
+      return claude.argv();
+    };
+    const flags = ["-p", "--resume", "sess-4", "--allowedTools=Bash(axiom *)"];
+    expect(await send({ text: "a", permissionMode: "acceptEdits" })).toEqual([
+      ...flags,
+      "--permission-mode",
+      "acceptEdits",
+    ]);
+    // A resumed session drops its mode, so the next run without a choice passes it again.
+    expect(await send({ text: "b" })).toEqual([...flags, "--permission-mode", "acceptEdits"]);
+    expect(await send({ text: "c", permissionMode: "manual" })).toEqual([
+      ...flags,
+      "--permission-mode",
+      "manual",
+    ]);
+    await send({ text: "d", permissionMode: "bypassPermissions" });
+    const desk = await api("/api/desk");
+    const row = desk.body.topics[0].threads.find((t: Any) => t.id === th.id);
+    expect(row.permissionMode).toBe("bypassPermissions");
+  });
+
+  it("400 for an unknown permission mode, and for one on a T3 thread", async () => {
+    const t3 = fake("t3");
+    const cc = thread("claude-code", "sess-5");
+    cli.threadEnded(cc.id, "other");
+    const th = thread("t3", "t3-9");
+    await start({ t3Cli: t3.path });
+    const post = (id: number, body: object) =>
+      api(`/api/threads/${id}/send`, { method: "POST", body });
+    expect((await post(cc.id, { text: "x", permissionMode: "dontAsk" })).status).toBe(400);
+    const r = await post(th.id, { text: "x", permissionMode: "acceptEdits" });
+    expect(r.status).toBe(400);
+    expect(r.body.error.message).toMatch(/change it in T3/);
+    expect(t3.ran()).toBe(false);
+  });
+
+  it("puts a chosen permission mode in the resume command", async () => {
+    const th = thread("claude-code", "sess-6");
+    cli.setInternalSetting(`threadPermissionMode:${th.id}`, "auto");
+    await start();
+    const r = await api(`/api/threads/${th.id}/send`, { method: "POST", body: { text: "hi" } });
+    expect(r.status).toBe(409);
+    expect(r.body.error.resumeCommand).toBe("claude --resume sess-6 --permission-mode auto");
+  });
+
   it("answers 409 with the resume command while the session is open, and runs nothing", async () => {
     const claude = fake("claude");
     const th = thread("claude-code", "sess-3");
@@ -498,6 +554,30 @@ describe("POST /api/topics/:slug/threads/new", () => {
     expect(cli.threadCwd(r.body.id)).toBe(work);
     expect(cli.getThread(r.body.id)).toMatchObject({ model: "claude-haiku-5-5", effort: "low" });
     expect(ownerInputs()).toHaveLength(1);
+  });
+
+  it("starts a Claude Code session in the chosen permission mode; T3 refuses one", async () => {
+    const work = join(dir, "repo");
+    mkdirSync(work);
+    const claude = fake("claude");
+    const t3 = fake("t3");
+    topic();
+    cli.addLink("demo", { kind: "repository", target: work }, owner);
+    await start({ claudeCli: claude.path, t3Cli: t3.path });
+    const r = await api("/api/topics/demo/threads/new", {
+      method: "POST",
+      body: { text: "Start here", provider: "claude-code", permissionMode: "auto" },
+    });
+    expect(r.status).toBe(201);
+    await until(() => claude.ran());
+    expect(claude.argv().slice(-2)).toEqual(["--permission-mode", "auto"]);
+    expect(cli.getSetting(`threadPermissionMode:${r.body.id}`)).toBe("auto");
+    const bad = await api("/api/topics/demo/threads/new", {
+      method: "POST",
+      body: { text: "Hi", provider: "t3", permissionMode: "auto" },
+    });
+    expect(bad.status).toBe(400);
+    expect(t3.ran()).toBe(false);
   });
 
   it("400 for Claude Code without a cwd or repository", async () => {

@@ -6,11 +6,17 @@ import {
   type Effort,
   type EpicItem,
   type NewThreadBody,
+  type PermissionMode,
   type T3Project,
   type TicketItem,
   type Workspace,
 } from "../../api";
 import type { Provider } from "../../lib/domain";
+import {
+  PERMISSION_MODE_OPTIONS,
+  permissionModeLabel,
+  T3_PERMISSIONS_HINT,
+} from "../../lib/permissionModes";
 import { Modal } from "../Modal";
 import { ChipMenu, type ChipOption } from "./ChipMenu";
 import {
@@ -61,6 +67,7 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
   const [provider, setProvider] = useState<Provider>("t3");
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState<Effort | "">("");
+  const [mode, setMode] = useState<PermissionMode | "">("");
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string | null>(null);
   /** The error came from starting the thread: it shows inside the composer. */
@@ -192,6 +199,7 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
       if (provider === "t3") body.providerInstance = T3_INSTANCE;
       if (effort) body.effort = effort;
     }
+    if (provider === "claude-code" && mode) body.permissionMode = mode;
     await api.newThread(slug, body);
   };
 
@@ -475,6 +483,20 @@ export function NewTopicDialog({ onClose, onTopic, onDone }: Props) {
                   ]}
                   disabledReason={effortHint}
                   onChange={(v) => setEffort(v as Effort | "")}
+                />
+                <ChipMenu
+                  name="Permissions"
+                  display={
+                    mode && provider === "claude-code" ? permissionModeLabel(mode) : "Permissions"
+                  }
+                  valueText={
+                    mode && provider === "claude-code" ? permissionModeLabel(mode) : "default (Ask)"
+                  }
+                  muted={!mode || provider !== "claude-code"}
+                  value={mode}
+                  options={PERMISSION_MODE_OPTIONS}
+                  disabledReason={provider === "claude-code" ? undefined : T3_PERMISSIONS_HINT}
+                  onChange={(v) => setMode(v as PermissionMode)}
                 />
               </>
             }

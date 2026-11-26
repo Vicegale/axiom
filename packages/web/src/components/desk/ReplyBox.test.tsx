@@ -225,6 +225,34 @@ describe("ReplyBox", () => {
     });
   });
 
+  it("sends the chosen permission mode to a Claude Code thread", async () => {
+    const { onSent } = setup(CC);
+    expect(chip("Permissions: default (Ask)").getAttribute("aria-disabled")).toBeNull();
+    pick("Permissions: default (Ask)", "Bypass");
+    expect(chip("Permissions: Bypass").textContent).toContain("Bypass");
+    type("go");
+    fireEvent.click(send());
+    await waitFor(() => expect(onSent).toHaveBeenCalled());
+    expect(posts()[0]?.body).toEqual({ text: "go", permissionMode: "bypassPermissions" });
+  });
+
+  it("starts from the mode the thread last ran with, and sends it again", async () => {
+    const cc = { ...CC, permissionMode: "auto" as const };
+    const { onSent } = setup(cc, [T3, cc]);
+    expect(chip("Permissions: Auto")).toBeTruthy();
+    type("go");
+    fireEvent.click(send());
+    await waitFor(() => expect(onSent).toHaveBeenCalled());
+    expect(posts()[0]?.body).toEqual({ text: "go", permissionMode: "auto" });
+  });
+
+  it("turns the permissions chip off for T3, with the reason", () => {
+    setup(T3);
+    const c = chip("Permissions: default (Ask)");
+    expect(c.getAttribute("aria-disabled")).toBe("true");
+    expect(c.title).toMatch(/change it in T3/);
+  });
+
   it("a menu moves with the arrow keys and Escape closes it without collapsing the box", async () => {
     setup(CC);
     await screen.findByRole("menuitemradio", { name: "claude-sonnet-5-5", hidden: true });

@@ -16,6 +16,7 @@ The owner's reference for it is a screen called **Desk** ([docs/design/reference
 - Topics can be favourited in this view, and drag sorted (see the Are We Leonida Yet? dashboard, 09 References).
 - Change from the reference: the reply box stays hidden until the owner decides to reply, to save screen space.
 - 2026-11-26: "When using Claude Code, we need a way to change the permissions, to avoid being spammed with allow requests."
+- 2026-11-26: "I think this needs a box when starting a new thread or sending a new message where I can set the permissions."
 
 ### What the reference shows (reading of the screenshot)
 
@@ -83,3 +84,4 @@ The owner's reference for it is a screen called **Desk** ([docs/design/reference
 16. Reply box: hidden behind a "Reply" button on the card. Does it close again after sending, and do drafts survive a refresh?
 17. **Permission rules from the card (owner, 2026-11-26):** how should the owner change a Claude Code session's permissions from Axiom, so the card is not a stream of one-off Allow clicks?
    - Built 2026-11-26 for review (plan D13): the approval on the card also offers Claude Code's own "don't ask again" choices, the ones its terminal prompt shows (for example "Always allow Bash(npm run *) in this project", "Accept all edits for this session"). Picking one allows the call and stops matching prompts at once; a project rule is also saved to the project's `.claude/settings.local.json`. Not possible from a hook: bypass mode. Still open: is this enough, or does the owner also want rules Axiom keeps itself (for example per topic), a list of the standing rules, or a way to remove one from Axiom?
+   - Built 2026-11-26 for review (plan D14), after the owner asked for "a box when starting a new thread or sending a new message where I can set the permissions": a **Permissions** chip in the card's composer and in the New topic dialog, for Claude Code: Ask (default), Accept edits, Auto, Plan, Bypass. Axiom remembers the choice per thread and passes it on every run, since a resumed session does not keep it. T3 threads: the chip is off, because T3 keeps a thread's mode itself and its CLI cannot set one (most T3 threads already run `full-access`).

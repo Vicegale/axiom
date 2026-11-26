@@ -1,7 +1,14 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { statSync } from "node:fs";
-import { type Actor, type Axiom, AxiomError, type Thread } from "@axiom/core";
+import {
+  type Actor,
+  type Axiom,
+  AxiomError,
+  PERMISSION_MODES,
+  type PermissionMode,
+  type Thread,
+} from "@axiom/core";
 import type { Context, Hono } from "hono";
 import { z } from "zod";
 import { briefing } from "./briefing.js";
@@ -49,9 +56,21 @@ export function agentEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 
 const q = (s: string) => `'${s.replace(/'/g, "'\\''")}'`;
 
+const modeKey = (threadId: number) => `threadPermissionMode:${threadId}`;
+
+/**
+ * The permission mode the owner last chose for a direct Claude Code session (null: never chosen,
+ * Claude Code's default). Kept because a resumed session does not keep its mode.
+ */
+export function threadPermissionMode(ax: Axiom, threadId: number): PermissionMode | null {
+  const v = ax.getSetting(modeKey(threadId));
+  return (PERMISSION_MODES as readonly unknown[]).includes(v) ? (v as PermissionMode) : null;
+}
+
 export function resumeCommand(ax: Axiom, th: Pick<Thread, "id" | "providerThreadId">): string {
   const cwd = ax.threadCwd(th.id);
-  const resume = `claude --resume ${th.providerThreadId}`;
+  const mode = threadPermissionMode(ax, th.id);
+  const resume = `claude --resume ${th.providerThreadId}${mode && mode !== "manual" ? ` --permission-mode ${mode}` : ""}`;
   return cwd ? `cd ${q(cwd)} && ${resume}` : resume;
 }
 
@@ -156,12 +175,14 @@ const bodies = {
     text: textField,
     model: z.string().min(1).optional(),
     effort: z.enum(EFFORTS).optional(),
+    permissionMode: z.enum(PERMISSION_MODES).optional(),
   }),
   newThread: z.strictObject({
     text: textField,
     provider: z.enum(["t3", "claude-code"]),
     model: z.string().min(1).optional(),
     effort: z.enum(EFFORTS).optional(),
+    permissionMode: z.enum(PERMISSION_MODES).optional(),
     providerInstance: z.string().min(1).optional(),
     project: z.string().min(1).optional(),
     cwd: z.string().min(1).optional(),
@@ -274,13 +295,24 @@ export function registerSendRoutes(app: Hono, o: SendingOptions): void {
 
   // Sessions Axiom starts run with `-p`, where nobody can answer a prompt in a terminal:
   // the agent's own record keeping (the `axiom` CLI) is always allowed; anything else
-  // still asks, through the PermissionRequest hook (the Desk card). The `=` form keeps
-  // the variadic flag from swallowing later arguments.
-  const claudeFlags = (model?: string, effort?: string) => [
+  // asks through the PermissionRequest hook (the Desk card), unless the owner's permission
+  // mode lets it run. The `=` form keeps the variadic flag from swallowing later arguments.
+  const claudeFlags = (model?: string, effort?: string, mode?: PermissionMode | null) => [
     "--allowedTools=Bash(axiom *)",
     ...(model ? ["--model", model] : []),
     ...(effort ? ["--effort", effort] : []),
+    ...(mode ? ["--permission-mode", mode] : []),
   ];
+
+  /** The mode for this run: the one chosen now (remembered for the next runs), else the last one. */
+  const modeFor = (threadId: number, chosen: PermissionMode | undefined) => {
+    if (chosen === undefined) return threadPermissionMode(ax, threadId);
+    ax.setInternalSetting(modeKey(threadId), chosen);
+    return chosen;
+  };
+
+  const T3_MODE =
+    "T3 keeps its own permission mode for a thread, and its CLI cannot set one; change it in T3.";
 
   const body = async (c: Context): Promise<unknown> => {
     try {
@@ -322,6 +354,7 @@ export function registerSendRoutes(app: Hono, o: SendingOptions): void {
             "T3 cannot change the model or effort of an existing thread; start a new thread to choose them.",
           );
         }
+        if (input.permissionMode !== undefined) throw new AxiomError("validation", T3_MODE);
         const r = await runCapture(
           t3Cli(),
           ["thread", "send", th.providerThreadId, "-"],
@@ -346,10 +379,16 @@ export function registerSendRoutes(app: Hono, o: SendingOptions): void {
         }
         ax.threadReopened(th.id);
         recordChoice(th.id, input);
+        const mode = modeFor(th.id, input.permissionMode);
         try {
           await spawnDetached(
             claudeCli(),
-            ["-p", "--resume", th.providerThreadId, ...claudeFlags(input.model, input.effort)],
+            [
+              "-p",
+              "--resume",
+              th.providerThreadId,
+              ...claudeFlags(input.model, input.effort, mode),
+            ],
             input.text,
             ax.threadCwd(th.id) ?? undefined,
             graceMs,
@@ -385,6 +424,7 @@ export function registerSendRoutes(app: Hono, o: SendingOptions): void {
     let thread: Thread;
     try {
       if (input.provider === "t3") {
+        if (input.permissionMode !== undefined) throw new AxiomError("validation", T3_MODE);
         const project = input.project ?? repo;
         if (!project) {
           throw new AxiomError(
@@ -440,10 +480,11 @@ export function registerSendRoutes(app: Hono, o: SendingOptions): void {
         );
         ax.setThreadCwd(thread.id, cwd);
         recordChoice(thread.id, input);
+        const mode = modeFor(thread.id, input.permissionMode);
         try {
           await spawnDetached(
             claudeCli(),
-            ["-p", "--session-id", sessionId, ...claudeFlags(input.model, input.effort)],
+            ["-p", "--session-id", sessionId, ...claudeFlags(input.model, input.effort, mode)],
             message,
             cwd,
             graceMs,

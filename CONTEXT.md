@@ -29,6 +29,7 @@ Working definitions. They change as the spec settles; `docs/spec/` wins where th
 | Finding | Something Steward tells the owner, with a level: `urgent` (also a desktop notification), `attention` or `info`. Written to the topic's history by `steward`. |
 | Resolved | A Steward item Steward closed itself, with the reason: no longer true, or the owner said it is handled. Separate from *dismissed*, which only the owner does. |
 | Permission rule | A "don't ask again" choice for a Claude Code permission prompt (always allow a command pattern in this project, accept edits for this session, ...). Claude Code offers them with the prompt; the owner can pick one on the Desk card's approval. See plan `desk.md` D13. |
+| Permission mode | How freely a Claude Code run acts without asking: Ask (default), Accept edits, Auto, Plan or Bypass (`claude --permission-mode`). Chosen in the Desk composer and remembered per thread. See plan `desk.md` D14. |
 | Research stages | Gather and the chat: the Steward calls that may look things up (linked folders, read-only git and `gh`, connectors' read tools), as opposed to decide and tidy-up, which read only their prompt. |
 | Promotion | Handing a finding to a stronger model to prepare a fix, chosen by how complex Steward rates it; the fix is offered only after Axiom's own test run passes. |
 | Release copy | The detached git worktree at `~/.local/share/axiom/app` that the live service, hooks and CLI run from, so development in the checkout never reaches the real database. Updated by `scripts/install.sh`. |

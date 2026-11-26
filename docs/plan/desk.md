@@ -109,3 +109,19 @@ The owner: "When using Claude Code, we need a way to change the permissions, to 
 - **Card:** `requests[].choices` (`{index, label}`); under Allow / Deny a group "Allow, and don't ask again:" with one button per choice (hidden while denying). The live status says "Allowed (<choice>)".
 - **Checked end to end:** a real `claude -p` session attached in a temp database ran three `npm run` calls; Axiom got one approval with the suggestion `Bash(npm run *)`, the owner side picked it, the other two ran without asking, and the project's `.claude/settings.local.json` gained the rule.
 - **Not covered:** T3-run Claude threads (T3 asks for those itself, and its API cannot approve them); bypass mode; seeing or removing standing rules in Axiom (02, Q17).
+
+## D14: permission mode in the composer (2026-11-26)
+
+The owner: "I think this needs a box when starting a new thread or sending a new message where I can set the permissions." (02, Q17.)
+
+| Slice | What | Done when |
+| --- | --- | --- |
+| D14 | **Permissions chip.** Next to Model and Effort in the card's composer and the New topic dialog: the `claude --permission-mode` for a Claude Code run, remembered per thread. | Sends and new threads pass the mode; the chip starts from the thread's last one; T3 explains why it is off; tests pass. |
+
+## D14 as built (2026-11-26)
+
+- **What Claude Code does (verified with `claude -p` 2.1.325, a logging `PermissionRequest` hook, throwaway folders):** `--permission-mode manual` asked for every call; `acceptEdits` ran Write, `touch` and `mkdir` but asked for `node` and `npm`; `auto` ran `node` and `npm` without asking; `bypassPermissions` works from the flag alone and never asked. A `--resume` run without the flag asked again: the mode is not kept with the session.
+- **Modes offered** (core `PERMISSION_MODES`): `manual` (Ask, the default), `acceptEdits`, `auto`, `plan`, `bypassPermissions`. `dontAsk` is left out (it denies whatever is not pre-allowed, so an unwatched run just fails).
+- **Server:** `POST /api/threads/:id/send` and `POST /api/topics/:slug/threads/new` take `permissionMode`; a Claude Code run gets `--permission-mode <mode>`. The choice is stored as the internal setting `threadPermissionMode:<thread id>` and reused when a later send gives none. The terminal resume command (the 409 for an open session) includes it. The Desk API has `threads[].permissionMode` (Claude Code threads; null when never chosen). A mode for a T3 thread, existing or new, is a 400: T3 keeps its own mode per thread, its CLI has no option for it, and T3's MCP launch cannot go above the caller's own mode.
+- **Web:** `lib/permissionModes.ts` (labels and one-line hints; Bypass is set apart in the menu with "Never asks: anything runs, destructive commands too"). The chip `Permissions` in `ReplyBox` starts from the selected thread's last mode and follows the thread picker; in `NewTopicDialog` it applies to a Claude Code first thread. Off for T3, with the reason.
+- **Not covered:** sessions the owner starts in a terminal (their mode is whatever the terminal set; Axiom does not read it yet, though hook payloads carry `permission_mode`); T3 modes.

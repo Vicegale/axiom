@@ -135,6 +135,8 @@ export interface DeskThread {
   activity: { text: string; at: string } | null;
   /** What it runs on: model, effort and context use (the latest only); null until known. */
   runtime: ThreadRuntime | null;
+  /** The permission mode the owner last chose for a Claude Code session; null: default (Ask). */
+  permissionMode?: PermissionMode | null;
   /** The subagents of the current turn, running and finished, oldest first; empty when there are none. */
   subagents: DeskSubagent[];
   hasReply: boolean;
@@ -559,6 +561,9 @@ export interface ArtifactData {
 
 export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
 
+/** `claude --permission-mode` values the composer offers (server `sending.ts`). */
+export type PermissionMode = "manual" | "acceptEdits" | "auto" | "plan" | "bypassPermissions";
+
 export interface ComposeOptions {
   source: string;
   providers: Record<Provider, { models: string[]; efforts: Effort[] }>;
@@ -568,6 +573,8 @@ export interface SendBody {
   text: string;
   model?: string;
   effort?: Effort;
+  /** Claude Code only; remembered for the thread's later runs. */
+  permissionMode?: PermissionMode;
 }
 
 export interface NewThreadBody extends SendBody {

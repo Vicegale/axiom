@@ -292,6 +292,24 @@ describe("+ New topic", () => {
     });
   });
 
+  it("starts a Claude Code thread in the chosen permission mode; T3 has the chip off", async () => {
+    await openDialog();
+    type("Title", "Fix it");
+    type(/^First message/, "Do the thing");
+    expect(chip("Permissions: default (Ask)").getAttribute("aria-disabled")).toBe("true");
+    pick("Provider: T3", "Claude Code");
+    pick("Folder: none", "Foo");
+    pick("Permissions: default (Ask)", "Accept edits");
+    submit();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(server.called("POST", "/api/topics/fix-it/threads/new")[0]?.body).toEqual({
+      text: "Do the thing",
+      provider: "claude-code",
+      cwd: "/home/u/projects/foo",
+      permissionMode: "acceptEdits",
+    });
+  });
+
   it("types a folder path for Claude Code with Type a path…", async () => {
     await openDialog();
     type("Title", "Fix it");

@@ -5,9 +5,15 @@ import {
   type ComposeOptions,
   type DeskThread,
   type Effort,
+  type PermissionMode,
   type T3Project,
   type Workspace,
 } from "../../api";
+import {
+  PERMISSION_MODE_OPTIONS,
+  permissionModeLabel,
+  T3_PERMISSIONS_HINT,
+} from "../../lib/permissionModes";
 import { readStored, removeStored, writeStored } from "../../lib/storage";
 import { ChipMenu, type ChipOption } from "./ChipMenu";
 import {
@@ -103,6 +109,8 @@ export function ReplyBox({
   const [options, setOptions] = useState<ComposeOptions | null>(null);
   const [model, setModel] = useState("");
   const [effort, setEffort] = useState<Effort | "">("");
+  // "" is Claude Code's default (Ask); a thread starts from the mode it last ran with.
+  const [mode, setMode] = useState<PermissionMode | "">(thread?.permissionMode ?? "");
   const [newProvider, setNewProvider] = useState<NewProvider>(thread?.provider ?? "t3");
   // T3 projects, fetched the first time the box is about to start a new T3 thread.
   const [projects, setProjects] = useState<T3Project[] | null>(null);
@@ -202,7 +210,10 @@ export function ReplyBox({
     setText(readStored(draftKey(topicSlug, next)) ?? "");
     setFailure(null);
     const t = threads.find((x) => x.id === next);
-    if (t) setNewProvider(t.provider);
+    if (t) {
+      setNewProvider(t.provider);
+      setMode(t.permissionMode ?? "");
+    }
   }
 
   const collapse = () => {
@@ -260,7 +271,11 @@ export function ReplyBox({
 
   const pickedOptions = (provider: NewProvider) =>
     provider === "claude-code"
-      ? { ...(model ? { model } : {}), ...(effort ? { effort } : {}) }
+      ? {
+          ...(model ? { model } : {}),
+          ...(effort ? { effort } : {}),
+          ...(mode ? { permissionMode: mode } : {}),
+        }
       : {};
 
   /** A new T3 thread: the chosen project, and a model on the `claudeAgent` instance. */
@@ -487,6 +502,16 @@ export function ReplyBox({
                 ]}
                 disabledReason={effortHint}
                 onChange={(v) => setEffort(v as Effort | "")}
+              />
+              <ChipMenu
+                name="Permissions"
+                display={mode && pickerOn ? permissionModeLabel(mode) : "Permissions"}
+                valueText={mode && pickerOn ? permissionModeLabel(mode) : "default (Ask)"}
+                muted={!mode || !pickerOn}
+                value={mode}
+                options={PERMISSION_MODE_OPTIONS}
+                disabledReason={pickerOn ? undefined : T3_PERMISSIONS_HINT}
+                onChange={(v) => setMode(v as PermissionMode)}
               />
             </>
           }

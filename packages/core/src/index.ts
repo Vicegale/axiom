@@ -30,10 +30,11 @@ export type { OpenOptions } from "./database.js";
 export { defaultDatabasePath, migrate, openDatabase } from "./database.js";
 export type { AxiomErrorCode } from "./errors.js";
 export { AxiomError } from "./errors.js";
-export type { PermissionDestination, PermissionUpdate } from "./permissions.js";
+export type { PermissionDestination, PermissionMode, PermissionUpdate } from "./permissions.js";
 export {
   cleanSuggestions,
   describePermissionUpdate,
+  PERMISSION_MODES,
   permissionUpdateSchema,
   updatesToApply,
 } from "./permissions.js";
