@@ -511,6 +511,33 @@ describe("Steward settings", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
+  it("explains each row and every model and effort option in tooltips", async () => {
+    fill();
+    await open();
+    const dlg = await screen.findByRole("dialog", { name: "Steward settings" });
+    const tipOf = (el: HTMLElement) => {
+      const id = el.getAttribute("aria-describedby");
+      return id ? (document.getElementById(id)?.textContent ?? "") : "";
+    };
+    expect(tipOf(within(dlg).getByRole("button", { name: "Gather" }))).toMatch(/Stage 1/);
+    const model = within(dlg).getByRole("combobox", { name: "Decide: model" });
+    expect(tipOf(model)).toMatch(/Haiku.*Sonnet \(selected\).*Opus/s);
+    const effort = within(dlg).getByRole("combobox", { name: "Decide: effort" });
+    expect(tipOf(effort)).toMatch(/Low.*Medium.*High.*Extra high.*Max/s);
+    expect(tipOf(within(dlg).getByRole("combobox", { name: "Hard: model" }))).toMatch(
+      /Report only.*does not start it/s,
+    );
+  });
+
+  it("runs a wake now from the working hours section", async () => {
+    fill();
+    await open();
+    const dlg = await screen.findByRole("dialog", { name: "Steward settings" });
+    fireEvent.click(within(dlg).getByRole("button", { name: "Run now" }));
+    await waitFor(() => expect(server.called("POST", "/api/steward/wake")).toHaveLength(1));
+    expect(await within(dlg).findByText(/Started/)).toBeTruthy();
+  });
+
   it("maps a complexity to report only", async () => {
     fill();
     await open();

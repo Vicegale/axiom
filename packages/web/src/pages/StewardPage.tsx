@@ -453,6 +453,8 @@ export function StewardPage() {
           settings={st}
           sources={view?.sources}
           onSave={saveSteward}
+          running={view?.running ?? false}
+          onRunNow={() => actions.runStewardNow()}
           onClose={() => setConfiguring(false)}
         />
       ) : null}

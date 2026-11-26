@@ -584,6 +584,9 @@ export class FakeServer {
     if (path === "/api/steward/chat" || path.startsWith("/api/steward/chat/")) {
       return this.chatApi(method, path, body ?? {});
     }
+    if (method === "POST" && path === "/api/steward/wake") {
+      return this.json({ ok: true }, 202);
+    }
     if (path.startsWith("/api/steward/memory")) return this.memoryApi(method, path, body);
     if (method === "GET" && path === "/api/steward/count") {
       const v = this.steward;

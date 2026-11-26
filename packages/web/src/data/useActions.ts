@@ -48,6 +48,7 @@ export function useActions() {
       restoreMemory: (id: number) => run(() => api.restoreMemory(id)),
       deleteMemory: (id: number) => run(() => api.deleteMemory(id)),
       tidyUpMemory: () => run(() => api.tidyUpMemory()),
+      runStewardNow: () => run(() => api.runStewardNow()),
       saveSettings: (patch: Partial<Settings>) =>
         run(async () => applySettings(await api.putSettings(patch))),
     }),

@@ -743,6 +743,7 @@ export const api = {
   restoreMemory: (id: number) => request<MemoryEntry>("POST", `/api/steward/memory/${id}/restore`),
   deleteMemory: (id: number) => request<{ ok: true }>("DELETE", `/api/steward/memory/${id}`),
   tidyUpMemory: () => request<unknown>("POST", "/api/steward/memory/tidy-up"),
+  runStewardNow: () => request<{ ok: true }>("POST", "/api/steward/wake"),
   health: () => request<Health>("GET", "/api/health"),
   composeOptions: () => request<ComposeOptions>("GET", "/api/compose/options"),
   sendToThread: (id: number, body: SendBody) =>

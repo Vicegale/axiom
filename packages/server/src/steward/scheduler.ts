@@ -81,6 +81,8 @@ interface WakeRequest {
   trigger: StewardWakeTrigger;
   details: string[];
   topic?: string;
+  /** The owner asked for it directly (Run now): runs even while Steward is off. */
+  force?: boolean;
   resolve: (w: StewardWake | null) => void;
   promise: Promise<StewardWake | null>;
 }
@@ -89,12 +91,13 @@ function newRequest(
   trigger: StewardWakeTrigger,
   detail: string | undefined,
   topic?: string,
+  force?: boolean,
 ): WakeRequest {
   let resolve!: (w: StewardWake | null) => void;
   const promise = new Promise<StewardWake | null>((r) => {
     resolve = r;
   });
-  return { trigger, details: detail ? [detail] : [], topic, resolve, promise };
+  return { trigger, details: detail ? [detail] : [], topic, force, resolve, promise };
 }
 
 export class Steward {
@@ -257,25 +260,27 @@ export class Steward {
    * (Steward is off or stopped). A request made while a wake runs is coalesced with other waiting
    * requests into one follow-up wake. Event and owner wakes ignore working hours; the timer
    * checks them itself. `opts.topic` restricts the wake to one topic (an owner wake from the chat).
+   * `opts.force` (the owner's Run now) runs it even while Steward is off.
    */
   requestWake(
     trigger: StewardWakeTrigger,
     detail: string | undefined,
-    opts: { topic?: string } = {},
+    opts: { topic?: string; force?: boolean } = {},
   ): Promise<StewardWake | null> {
-    if (this.stopped || !this.settings().enabled) return Promise.resolve(null);
+    if (this.stopped || !(this.settings().enabled || opts.force)) return Promise.resolve(null);
     if (this.running) {
       const p = this.pending;
       if (!p) {
-        this.pending = newRequest(trigger, detail, opts.topic);
+        this.pending = newRequest(trigger, detail, opts.topic, opts.force);
       } else {
         if (RANK[trigger] > RANK[p.trigger]) p.trigger = trigger;
         if (detail) p.details.push(detail);
         if (p.topic !== opts.topic) p.topic = undefined;
+        if (opts.force) p.force = true;
       }
       return (this.pending as WakeRequest).promise;
     }
-    const req = newRequest(trigger, detail, opts.topic);
+    const req = newRequest(trigger, detail, opts.topic, opts.force);
     this.launch(req);
     return req.promise;
   }
@@ -294,7 +299,7 @@ export class Steward {
         this.running = false;
         const next = this.pending;
         this.pending = null;
-        if (next && !this.stopped && this.settings().enabled) this.launch(next);
+        if (next && !this.stopped && (this.settings().enabled || next.force)) this.launch(next);
         else next?.resolve(null);
       });
   }

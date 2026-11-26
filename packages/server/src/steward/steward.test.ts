@@ -97,6 +97,16 @@ describe("the timer wake", () => {
     expect(ax.listStewardWakes()).toEqual([]);
   });
 
+  it("runs a forced owner wake (Run now) even while Steward is off", async () => {
+    const { claude, s } = setup();
+    expect(ax.getStewardSettings().enabled).toBe(false);
+    const wake = await s.requestWake("owner", "run now from the settings", { force: true });
+    await s.settle();
+    expect(wake).toMatchObject({ trigger: "owner" });
+    expect(claude.runs()).toBeGreaterThan(0);
+    expect(await s.requestWake("owner", "not forced")).toBeNull();
+  });
+
   it("wakes in working hours only, then every wakeIntervalMin", async () => {
     enable();
     const { claude, s } = setup();

@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import type { Effort, StewardSettings, StewardStageModel, StewardView } from "../../api";
 import { ApiError } from "../../api";
 import { Modal } from "../Modal";
@@ -23,13 +23,91 @@ const SIGNALS: [string, string][] = [
   ["ready to merge", "Approved and ready to merge"],
 ];
 const COMPLEXITIES = ["simple", "medium", "hard"] as const;
+const NONE = "\u0000none";
+
+/** What each model choice does, shown in the pickers' tooltips. */
+const MODEL_INFO: Record<string, string> = {
+  haiku: "Fastest and cheapest. Good at reading and summarising a lot of text; weakest judgement.",
+  sonnet: "Balanced. Good judgement at a moderate cost.",
+  opus: "Strongest reasoning; slowest and most expensive. Worth it for hard fixes.",
+  [NONE]:
+    "Steward describes the task in a finding and does not start it. No tokens beyond deciding.",
+};
+/** What each effort does. */
+const EFFORT_INFO: Record<Effort, string> = {
+  low: "Answers with little thinking first. Fastest, fewest tokens.",
+  medium: "Thinks a little before answering.",
+  high: "Thinks longer. Better on tricky problems; more tokens and time.",
+  xhigh: "Thinks longer still. Slower and costlier than high.",
+  max: "The most thinking the model allows. Slowest, most tokens.",
+};
+/** What each row is for. */
+const ROW_INFO: Record<string, string> = {
+  Gather:
+    "Stage 1, on every wake: reads what changed since the last check (topics, pull requests, connectors) and summarises it. It runs most often, so a cheap model fits.",
+  Decide:
+    "Stage 2, on every wake: reads the summary and decides what to tell you, how loudly, what to ask and what to promote. It needs good judgement.",
+  Simple:
+    "Promoted tasks Decide rates simple, such as updating a snapshot or a one-line fix: the model that prepares the fix.",
+  Medium:
+    "Promoted tasks Decide rates medium, such as a real bug fix across a few files: the model that prepares the fix.",
+  Hard: "Promoted tasks Decide rates hard, such as a design change: the model that prepares the fix, or Report only.",
+};
+const label = (s: string) =>
+  s === NONE
+    ? "Report only"
+    : s === "xhigh"
+      ? "Extra high"
+      : s.charAt(0).toUpperCase() + s.slice(1);
 const CAP_FAMILIES = ["haiku", "sonnet", "opus"];
 
 interface Props {
   settings: StewardSettings;
   sources: StewardView["sources"] | undefined;
   onSave: (s: StewardSettings) => Promise<string | null>;
+  /** Whether a wake is running now (Run now waits for it). */
+  running?: boolean;
+  /** Starts a wake now; resolves true when it was started. */
+  onRunNow?: () => Promise<boolean>;
   onClose: () => void;
+}
+
+/**
+ * A control with a tooltip shown while it is hovered or focused (the tooltip is also its
+ * accessible description).
+ */
+function Tip({ tip, children }: { tip: ReactNode; children: (tipId: string) => ReactNode }) {
+  const id = useId();
+  return (
+    <span className="st-tipwrap">
+      {children(id)}
+      <span role="tooltip" id={id} className="st-tip">
+        {tip}
+      </span>
+    </span>
+  );
+}
+
+/** A tooltip listing every option of a picker and what it does, the current one marked. */
+function OptionsTip({
+  options,
+  current,
+  info,
+}: {
+  options: string[];
+  current: string;
+  info: Record<string, string>;
+}) {
+  return (
+    <ul className="st-tip-list">
+      {options.map((o) => (
+        <li key={o} className={o === current ? "current" : undefined}>
+          <b>{label(o)}</b>
+          {o === current ? <span className="st-tip-now"> (selected)</span> : null}: {info[o] ?? ""}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 function ModelPick({
@@ -46,41 +124,72 @@ function ModelPick({
 }) {
   const id = useId();
   const models = value && !MODELS.includes(value.model) ? [...MODELS, value.model] : MODELS;
+  const modelChoices = none ? [NONE, ...models] : models;
+  const model = value ? value.model : NONE;
+  const effort = value?.effort ?? "medium";
   return (
     <div className="st-set-row">
-      <span className="st-set-label" id={`${id}-l`}>
-        {label}
-      </span>
-      <select
-        aria-label={`${label}: model`}
-        value={value ? value.model : "\u0000none"}
-        onChange={(e) =>
-          onChange(
-            e.target.value === "\u0000none"
-              ? null
-              : { model: e.target.value, effort: value?.effort ?? "medium" },
+      <Tip tip={ROW_INFO[label] ?? label}>
+        {(tipId) => (
+          // A button so keyboard users can reach it and read its tooltip; it does nothing else.
+          <button
+            type="button"
+            className="st-set-label st-tip-target"
+            id={`${id}-l`}
+            aria-describedby={tipId}
+          >
+            {label}
+          </button>
+        )}
+      </Tip>
+      <Tip tip={<OptionsTip options={modelChoices} current={model} info={MODEL_INFO} />}>
+        {(tipId) => (
+          <select
+            aria-label={`${label}: model`}
+            aria-describedby={tipId}
+            value={model}
+            onChange={(e) =>
+              onChange(
+                e.target.value === NONE
+                  ? null
+                  : { model: e.target.value, effort: value?.effort ?? "medium" },
+              )
+            }
+          >
+            {none ? <option value={NONE}>{none}</option> : null}
+            {models.map((m) => (
+              <option key={m} value={m}>
+                {m}
+              </option>
+            ))}
+          </select>
+        )}
+      </Tip>
+      <Tip
+        tip={
+          value ? (
+            <OptionsTip options={EFFORTS} current={effort} info={EFFORT_INFO} />
+          ) : (
+            "No effort: Report only starts nothing."
           )
         }
       >
-        {none ? <option value={"\u0000none"}>{none}</option> : null}
-        {models.map((m) => (
-          <option key={m} value={m}>
-            {m}
-          </option>
-        ))}
-      </select>
-      <select
-        aria-label={`${label}: effort`}
-        value={value?.effort ?? "medium"}
-        disabled={!value}
-        onChange={(e) => value && onChange({ ...value, effort: e.target.value as Effort })}
-      >
-        {EFFORTS.map((x) => (
-          <option key={x} value={x}>
-            {x}
-          </option>
-        ))}
-      </select>
+        {(tipId) => (
+          <select
+            aria-label={`${label}: effort`}
+            aria-describedby={tipId}
+            value={effort}
+            disabled={!value}
+            onChange={(e) => value && onChange({ ...value, effort: e.target.value as Effort })}
+          >
+            {EFFORTS.map((x) => (
+              <option key={x} value={x}>
+                {x}
+              </option>
+            ))}
+          </select>
+        )}
+      </Tip>
     </div>
   );
 }
@@ -91,7 +200,28 @@ function sourceNote(s: { on: boolean; ok: boolean | null; reason: string | null 
   return s.ok ? "Reachable at the last wake" : (s.reason ?? "Unreachable at the last wake");
 }
 
-export function StewardSettingsDialog({ settings, sources, onSave, onClose }: Props) {
+export function StewardSettingsDialog({
+  settings,
+  sources,
+  onSave,
+  running = false,
+  onRunNow,
+  onClose,
+}: Props) {
+  const [runNote, setRunNote] = useState("");
+  const [starting, setStarting] = useState(false);
+  const runNow = async () => {
+    if (!onRunNow) return;
+    setStarting(true);
+    try {
+      const ok = await onRunNow();
+      setRunNote(
+        ok ? "Started. Its results appear on the Steward page." : "Could not start a wake.",
+      );
+    } finally {
+      setStarting(false);
+    }
+  };
   const [d, setD] = useState<StewardSettings>(settings);
   const [caps, setCaps] = useState<Record<string, string>>(() =>
     Object.fromEntries(CAP_FAMILIES.map((f) => [f, String(settings.dailyCaps[f] ?? "")])),
@@ -248,6 +378,24 @@ export function StewardSettingsDialog({ settings, sources, onSave, onClose }: Pr
               </label>
             ))}
           </fieldset>
+          {onRunNow ? (
+            <div className="st-set-run">
+              <button
+                type="button"
+                className="btn"
+                onClick={() => void runNow()}
+                disabled={running || starting}
+              >
+                {running ? "Running…" : "Run now"}
+              </button>
+              <span className="st-set-hint">
+                A full wake right away, outside working hours and even while Steward is off.
+              </span>
+              <span className="st-set-hint" aria-live="polite">
+                {runNote}
+              </span>
+            </div>
+          ) : null}
         </fieldset>
 
         <fieldset>

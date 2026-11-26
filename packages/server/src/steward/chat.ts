@@ -188,7 +188,7 @@ export interface ChatApplied {
 export type RequestWake = (
   trigger: StewardWakeTrigger,
   detail: string | undefined,
-  opts: { topic?: string },
+  opts: { topic?: string; force?: boolean },
 ) => Promise<StewardWake | null>;
 
 /** Writes the notes and starts the actions of a reply as Steward (autonomy rule, in code). */

@@ -852,6 +852,14 @@ export function createApp(ctx: AppContext): Hono {
     write(() => ax.deleteStewardMemory(id, owner));
     return c.json({ ok: true });
   });
+  // Run now (the owner's button in Steward's settings): a full wake at once, outside working hours
+  // and even while Steward is off. Answers at once; the wake's results arrive as SSE changes.
+  app.post("/api/steward/wake", (c) => {
+    if (!ctx.stewardRequestWake) throw bad("Steward is not running");
+    const started = ctx.stewardRequestWake("owner", "run now from the settings", { force: true });
+    void started.catch((e) => console.error("Steward run now failed:", e));
+    return c.json({ ok: true }, 202);
+  });
   app.post("/api/steward/memory/tidy-up", async (c) => {
     if (!ctx.stewardTidyUp) throw bad("Steward is not running");
     let wake: StewardWake;
