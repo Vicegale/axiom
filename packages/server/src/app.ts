@@ -40,6 +40,7 @@ import type { T3Provider } from "./providers/t3/provider.js";
 import { livePendingApprovals, registerRequestRoutes } from "./requests.js";
 import { registerSendRoutes } from "./sending.js";
 import { serveWeb } from "./static.js";
+import { adoptFix, discardFix, fixDiff } from "./steward/fixes.js";
 import { buildMemoryView, resolveAttachedKey } from "./steward/memory.js";
 import { buildStewardView, stewardCount } from "./steward/view.js";
 
@@ -745,9 +746,28 @@ export function createApp(ctx: AppContext): Hono {
     return c.json(write(() => ax.answerStewardQuestion(id, body.text, owner)));
   });
 
-  app.post("/api/steward/items/:id/dismiss", (c) => {
+  app.post("/api/steward/items/:id/dismiss", async (c) => {
     const id = intParam(c.req.param("id"), "item id");
+    // A finding's prepared fix goes with it: Steward's branch and worktree are not left behind.
+    for (const fix of ax.listStewardItems({ state: "open" })) {
+      if (fix.kind === "suggestion" && fix.parentItemId === id) await discardFix(ax, fix.id);
+    }
     return c.json(write(() => ax.dismissStewardItem(id, owner)));
+  });
+
+  // Prepared fixes (ST6): the owner's Diff, Adopt and Discard. Axiom does the git work.
+  app.get("/api/steward/items/:id/diff", async (c) =>
+    c.json(await fixDiff(ax, intParam(c.req.param("id"), "item id"))),
+  );
+  app.post("/api/steward/items/:id/adopt", async (c) => {
+    const result = await adoptFix(ax, intParam(c.req.param("id"), "item id"));
+    bus.emit();
+    return c.json(result);
+  });
+  app.post("/api/steward/items/:id/discard", async (c) => {
+    const item = await discardFix(ax, intParam(c.req.param("id"), "item id"));
+    bus.emit();
+    return c.json(item);
   });
 
   // Steward's memory (ST5): the owner's view, edits, additions, retiring and deleting, and the

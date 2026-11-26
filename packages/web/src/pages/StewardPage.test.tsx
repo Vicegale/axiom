@@ -199,6 +199,154 @@ describe("the Steward page", () => {
     await waitFor(() => expect(screen.queryByText("Moved Alpha to done")).toBeNull());
   });
 
+  describe("a prepared fix", () => {
+    const fix = {
+      itemId: 30,
+      title: "sum adds",
+      branch: "axiom/fix/feature",
+      kind: "fix" as const,
+      complexity: "simple" as const,
+      diffstat: "+1 −1 · 1 file",
+      tests: "2/2 pass",
+      forRef: "widgets#7",
+      model: "claude-sonnet-5-5",
+      effort: "medium",
+    };
+    const withFix = () => {
+      fill();
+      server.steward.needs = [
+        stewardItem({
+          id: 10,
+          kind: "finding",
+          level: "attention",
+          title: "CI failed on widgets#7",
+          topicSlug: "alpha",
+          prepared: fix,
+        }),
+        stewardItem({
+          id: 11,
+          kind: "finding",
+          level: "attention",
+          title: "Slow query",
+          note: "promotion skipped: cap reached",
+        }),
+        stewardItem({
+          id: 12,
+          kind: "finding",
+          level: "attention",
+          title: "Odd shape",
+          note: "report only",
+        }),
+      ];
+      server.fixDiff = {
+        diff: "diff --git a/sum.js b/sum.js\n--- a/sum.js\n+++ b/sum.js\n@@ -1 +1 @@\n-a - b\n+a + b\n",
+        truncated: false,
+        branch: fix.branch,
+      };
+    };
+
+    it("sits inside its finding with the branch, one line about it, and Adopt, Diff, Discard", async () => {
+      withFix();
+      start();
+      const needs = await screen.findByRole("region", { name: "Needs you" });
+      expect(within(needs).getByText("axiom/fix/feature")).toBeTruthy();
+      expect(
+        within(needs).getByText(
+          "for widgets#7 · +1 −1 · 1 file · tests 2/2 pass · Sonnet 5.5 medium",
+        ),
+      ).toBeTruthy();
+      const adopt = within(needs).getByRole("button", { name: /^Adopt/ });
+      expect(adopt.getAttribute("title")).toBe(
+        "Applies it to your branch locally. Pushing stays yours.",
+      );
+      expect(within(needs).getByRole("button", { name: /^Discard/ })).toBeTruthy();
+      // Quiet notes from promotion show as meta text.
+      expect(within(needs).getByText("promotion skipped: cap reached")).toBeTruthy();
+      expect(within(needs).getByText("report only")).toBeTruthy();
+      // Nothing stands alone in Ready for you.
+      const ready = screen.getByRole("region", { name: "Ready for you" });
+      expect(within(ready).getByText(/Nothing is ready/)).toBeTruthy();
+    });
+
+    it("opens the diff inline and loads it once", async () => {
+      withFix();
+      start();
+      const diff = await screen.findByRole("button", { name: "Diff" });
+      expect(diff.getAttribute("aria-expanded")).toBe("false");
+      fireEvent.click(diff);
+      const pre = await screen.findByLabelText("The fix's diff");
+      await waitFor(() => expect(pre.textContent).toContain("+a + b"));
+      expect(diff.getAttribute("aria-expanded")).toBe("true");
+      expect(pre.querySelector(".d-add")?.textContent?.trim()).toBe("+a + b");
+      expect(pre.querySelector(".d-del")?.textContent?.trim()).toBe("-a - b");
+      fireEvent.click(diff);
+      expect(screen.queryByLabelText("The fix's diff")).toBeNull();
+      fireEvent.click(diff);
+      await screen.findByLabelText("The fix's diff");
+      expect(server.called("GET", "/api/steward/items/30/diff")).toHaveLength(1);
+    });
+
+    it("adopts, and shows the refusal's reason when Adopt is refused", async () => {
+      withFix();
+      server.adoptRefusal = "feature is checked out in /x with uncommitted changes";
+      start();
+      fireEvent.click(await screen.findByRole("button", { name: /^Adopt/ }));
+      expect(await screen.findByText(/uncommitted changes/)).toBeTruthy();
+      expect(screen.getByText("axiom/fix/feature")).toBeTruthy();
+      server.adoptRefusal = null;
+      fireEvent.click(screen.getByRole("button", { name: /^Adopt/ }));
+      await waitFor(() =>
+        expect(server.called("POST", "/api/steward/items/30/adopt")).toHaveLength(2),
+      );
+      await waitFor(() => expect(screen.queryByText("axiom/fix/feature")).toBeNull());
+    });
+
+    it("discards", async () => {
+      withFix();
+      start();
+      fireEvent.click(await screen.findByRole("button", { name: /^Discard/ }));
+      await waitFor(() =>
+        expect(server.called("POST", "/api/steward/items/30/discard")).toHaveLength(1),
+      );
+      await waitFor(() => expect(screen.queryByText("axiom/fix/feature")).toBeNull());
+    });
+
+    it("lists a standalone suggestion in Ready for you", async () => {
+      fill();
+      server.steward.ready = [
+        stewardItem({
+          id: 31,
+          kind: "suggestion",
+          title: "row-61 rebased onto main, as a copy",
+          fix: {
+            ...fix,
+            itemId: 31,
+            branch: "axiom/rebase/row-61",
+            kind: "rebase copy",
+            forRef: null,
+          },
+        }),
+      ];
+      start();
+      const ready = await screen.findByRole("region", { name: "Ready for you" });
+      expect(within(ready).getByText("row-61 rebased onto main, as a copy")).toBeTruthy();
+      expect(within(ready).getByText("axiom/rebase/row-61")).toBeTruthy();
+      expect(within(ready).getByRole("button", { name: /^Adopt/ })).toBeTruthy();
+      fireEvent.click(within(ready).getByRole("button", { name: /^Discard:/ }));
+      await waitFor(() =>
+        expect(server.called("POST", "/api/steward/items/31/discard")).toHaveLength(1),
+      );
+    });
+
+    it("is accessible with the diff open", async () => {
+      withFix();
+      start();
+      fireEvent.click(await screen.findByRole("button", { name: "Diff" }));
+      await screen.findByLabelText("The fix's diff");
+      await expectAccessible(document.body);
+    });
+  });
+
   it("has quiet empty states when Steward is off and nothing has happened", async () => {
     start();
     expect(await screen.findByText(/Steward is off\. Turn it on/)).toBeTruthy();

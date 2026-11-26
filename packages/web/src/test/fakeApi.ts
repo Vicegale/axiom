@@ -90,6 +90,9 @@ export function stewardItem(
     createdAt: T0,
     notified: false,
     action: null,
+    note: null,
+    fix: null,
+    prepared: null,
     ...over,
   };
 }
@@ -245,6 +248,9 @@ export class FakeServer {
   };
   /** The Steward page's data (GET /api/steward). */
   steward: StewardView = emptyStewardView();
+  /** The diff GET /api/steward/items/:id/diff returns, and a reason Adopt is refused with. */
+  fixDiff = { diff: "", truncated: false, branch: "axiom/fix/x" };
+  adoptRefusal: string | null = null;
   /** Steward's memory (GET /api/steward/memory). */
   memory: MemoryEntry[] = [];
   memoryKeys: MemoryView["keys"] = { topics: [], repos: [] };
@@ -521,6 +527,19 @@ export class FakeServer {
     if (method === "GET" && path === "/api/steward/count") {
       const v = this.steward;
       return this.json({ count: v.needs.length + v.questions.length + v.ready.length });
+    }
+    const stFixM = /^\/api\/steward\/items\/(\d+)\/(diff|adopt|discard)$/.exec(path);
+    if (stFixM) {
+      const id = Number(stFixM[1]);
+      if (stFixM[2] === "diff") return this.json(this.fixDiff);
+      if (stFixM[2] === "adopt" && this.adoptRefusal) {
+        return this.json({ error: { code: "conflict", message: this.adoptRefusal } }, 409);
+      }
+      this.steward.ready = this.steward.ready.filter((i) => i.id !== id);
+      for (const i of [...this.steward.needs, ...this.steward.info]) {
+        if (i.prepared?.itemId === id) i.prepared = null;
+      }
+      return this.json({ id });
     }
     const stItemM = /^\/api\/steward\/items\/(\d+)\/(answer|dismiss)$/.exec(path);
     if (stItemM && method === "POST") {

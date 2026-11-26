@@ -17,6 +17,7 @@ import { applyDecision, buildDecideInput, runDecide } from "./decide.js";
 import { buildGatherInput, runGather } from "./gather.js";
 import { estimateTokens, runTidyUpStage, type TidyResult } from "./memory.js";
 import { PrPoller } from "./pr.js";
+import { runPromotion } from "./promote.js";
 import { StageError } from "./runner.js";
 import { runTidy } from "./tidy.js";
 
@@ -455,6 +456,17 @@ export class Steward {
         input: buildDecideInput(ax, { wake: gathered, now, tidied, topic: req.topic }),
       });
       const applied = applyDecision(ax, gathered, reply, spots);
+      // Promotion (ST6): at most one prepared fix per wake. Its failures are notes on the finding.
+      try {
+        const findings = [...applied.created, ...applied.updated].filter(
+          (i) => i.kind === "finding" && i.promotion,
+        );
+        if (findings.length > 0) {
+          await runPromotion({ ctx, ghCli: this.o.ghCli, wake: gathered, findings });
+        }
+      } catch (e) {
+        console.error("steward promotion failed:", e);
+      }
       return end(
         "done",
         applied.problems.length

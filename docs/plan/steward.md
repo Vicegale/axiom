@@ -67,6 +67,7 @@ ST0 first (it protects the real database from development builds), then ST1 (don
 ## Open questions
 
 1. Adopt brings the fix onto the owner's branch locally. Cherry-pick the `axiom/fix/…` commits onto it (refusing when the owner's worktree is dirty), or fast-forward when possible and cherry-pick otherwise?
+   - Answered 2026-11-25 (ST6): fast-forward when the fix branch descends from the owner's branch tip, otherwise cherry-pick the fix's commits (the range from the commit it started from). Either way a checked-out branch must have no uncommitted changes to tracked files, or Adopt is refused with the reason. A branch checked out nowhere is updated in a temporary worktree that is removed afterwards. A cherry-pick that conflicts is aborted and refused, leaving the branch untouched. Nothing is pushed.
 2. Event wakes on "a thread stops": every stop, or only stops on topics in `monitoring` or `review`? Every stop could mean many wakes on a busy day.
    - Answered 2026-11-25: only stops on topics in `monitoring` or `review`.
 3. The connectors test (03 Q26) needs a machine with Slack or Google Drive connected to Claude Code. Which machine, and when?

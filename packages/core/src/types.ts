@@ -343,6 +343,8 @@ export interface StewardItem {
   parentItemId: number | null;
   /** The complexity stage 2 rated a task it asked to promote (ST6 acts on it). */
   promotion: StewardComplexity | null;
+  /** A quiet fact shown beside a finding ("report only", "promotion skipped: cap reached"). */
+  note: string | null;
   createdAt: string;
   resolvedAt: string | null;
   /** The topic's slug, for the views. */

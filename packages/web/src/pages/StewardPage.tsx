@@ -5,7 +5,7 @@ import { SkipLink } from "../components";
 import { Facet } from "../components/Icons";
 import { PageSwitch } from "../components/PageSwitch";
 import { MemoryMeter } from "../components/steward/MemoryMeter";
-import { FindingItem, QuestionItem } from "../components/steward/StewardItems";
+import { FindingItem, QuestionItem, SuggestionItem } from "../components/steward/StewardItems";
 import { StewardSettingsDialog } from "../components/steward/StewardSettingsDialog";
 import { useAxiom } from "../data/DataProvider";
 import { useActions } from "../data/useActions";
@@ -179,6 +179,16 @@ export function StewardPage() {
   const dismiss = async (id: number) => {
     if (await actions.dismissSteward(id)) afterAct();
   };
+  const adopt = async (id: number) => {
+    const ok = await actions.adoptSteward(id);
+    if (ok) afterAct();
+    return ok;
+  };
+  const discard = async (id: number) => {
+    const ok = await actions.discardSteward(id);
+    if (ok) afterAct();
+    return ok;
+  };
   const answer = async (id: number, text: string) => {
     const ok = await actions.answerSteward(id, text);
     return ok;
@@ -288,6 +298,8 @@ export function StewardPage() {
                         now={now}
                         titleOf={titleOf}
                         onDismiss={dismiss}
+                        onAdopt={adopt}
+                        onDiscard={discard}
                         onUndo={(a) => void actions.undoSteward(a)}
                       />
                     ))}
@@ -318,13 +330,13 @@ export function StewardPage() {
                   {view.ready.length ? (
                     <ul className="st-list">
                       {view.ready.map((i) => (
-                        <FindingItem
+                        <SuggestionItem
                           key={i.id}
                           item={i}
                           now={now}
                           titleOf={titleOf}
-                          onDismiss={dismiss}
-                          onUndo={(a) => void actions.undoSteward(a)}
+                          onAdopt={adopt}
+                          onDiscard={discard}
                         />
                       ))}
                     </ul>
@@ -346,6 +358,8 @@ export function StewardPage() {
                           now={now}
                           titleOf={titleOf}
                           onDismiss={dismiss}
+                          onAdopt={adopt}
+                          onDiscard={discard}
                           onUndo={(a) => void actions.undoSteward(a)}
                         />
                       ))}

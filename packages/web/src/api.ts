@@ -307,6 +307,21 @@ export interface StewardAction {
   undoneAt: string | null;
 }
 
+/** A prepared fix (a suggestion's branch) as the Steward page shows it. */
+export interface StewardFix {
+  /** The suggestion item: Adopt, Diff and Discard act on it. */
+  itemId: number;
+  title: string;
+  branch: string;
+  kind: "fix" | "rebase copy";
+  complexity: "simple" | "medium" | "hard" | null;
+  diffstat: string | null;
+  tests: string | null;
+  forRef: string | null;
+  model: string | null;
+  effort: string | null;
+}
+
 export interface StewardItem {
   id: number;
   wakeId: number | null;
@@ -323,6 +338,12 @@ export interface StewardItem {
   /** Urgent findings on a topic raised a desktop notification. */
   notified: boolean;
   action: StewardAction | null;
+  /** A quiet fact beside a finding: "report only", "promotion skipped: cap reached"... */
+  note: string | null;
+  /** On a suggestion: its branch. */
+  fix: StewardFix | null;
+  /** On a finding: the prepared fix inside it, while open. */
+  prepared: StewardFix | null;
 }
 
 export interface StewardStage {
@@ -639,6 +660,13 @@ export const api = {
   stewardCount: () => request<{ count: number }>("GET", "/api/steward/count"),
   answerStewardItem: (id: number, text: string) =>
     request<unknown>("POST", `/api/steward/items/${id}/answer`, { text }),
+  stewardDiff: (id: number) =>
+    request<{ diff: string; truncated: boolean; branch: string }>(
+      "GET",
+      `/api/steward/items/${id}/diff`,
+    ),
+  adoptStewardFix: (id: number) => request<unknown>("POST", `/api/steward/items/${id}/adopt`),
+  discardStewardFix: (id: number) => request<unknown>("POST", `/api/steward/items/${id}/discard`),
   dismissStewardItem: (id: number) => request<unknown>("POST", `/api/steward/items/${id}/dismiss`),
   undoStewardAction: (id: number) => request<unknown>("POST", `/api/steward/actions/${id}/undo`),
   stewardMemory: () => request<MemoryView>("GET", "/api/steward/memory"),

@@ -37,6 +37,8 @@ export function useActions() {
       deleteEntry: (id: number) => run(() => api.deleteEntry(id)),
       answerSteward: (id: number, text: string) => run(() => api.answerStewardItem(id, text)),
       dismissSteward: (id: number) => run(() => api.dismissStewardItem(id)),
+      adoptSteward: (id: number) => run(() => api.adoptStewardFix(id)),
+      discardSteward: (id: number) => run(() => api.discardStewardFix(id)),
       undoSteward: (id: number) => run(() => api.undoStewardAction(id)),
       addMemory: (body: NewMemoryBody) => run(() => api.addMemory(body)),
       editMemory: (id: number, text: string) => run(() => api.editMemory(id, text)),

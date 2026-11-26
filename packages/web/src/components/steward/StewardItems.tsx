@@ -1,7 +1,8 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "wouter";
-import type { StewardItem } from "../../api";
+import { api, type StewardFix, type StewardItem } from "../../api";
 import { hrefs } from "../../layouts/shared/routes";
+import { modelName } from "../../lib/desk";
 import { statusChange } from "../../lib/steward";
 import { stamp } from "../../lib/time";
 
@@ -10,6 +11,9 @@ interface Common {
   /** Topic title by slug. */
   titleOf: (slug: string) => string;
   onDismiss: (id: number) => void;
+  /** Adopt, Diff's sibling and Discard of a prepared fix (ST6); each returns whether it worked. */
+  onAdopt?: (id: number) => Promise<boolean>;
+  onDiscard?: (id: number) => Promise<boolean>;
 }
 
 function Dismiss({ item, onDismiss }: { item: StewardItem; onDismiss: (id: number) => void }) {
@@ -23,6 +27,258 @@ function Dismiss({ item, onDismiss }: { item: StewardItem; onDismiss: (id: numbe
     >
       <span aria-hidden="true">×</span>
     </button>
+  );
+}
+
+/** The fix's one line: what it is for, its size, the tests and the model that wrote it. */
+export function fixMeta(fix: StewardFix): string {
+  return [
+    fix.forRef ? `for ${fix.forRef}` : null,
+    fix.diffstat,
+    fix.tests ? `tests ${fix.tests}` : null,
+    fix.model ? `${modelName(fix.model)}${fix.effort ? ` ${fix.effort}` : ""}` : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/** A diff as lines, coloured by what they do. Rendered as text only. */
+function DiffText({ diff }: { diff: string }) {
+  // The file's name line stays; the index and ---/+++ lines only repeat it.
+  const lines = diff
+    .replace(/\n$/, "")
+    .split("\n")
+    .filter((l) => !/^(index |--- |\+\+\+ )/.test(l));
+  return (
+    <>
+      {lines.map((l, i) => {
+        const kind =
+          l.startsWith("+++") ||
+          l.startsWith("---") ||
+          l.startsWith("diff ") ||
+          l.startsWith("index ")
+            ? "ctx"
+            : l.startsWith("+")
+              ? "add"
+              : l.startsWith("-")
+                ? "del"
+                : "ctx";
+        return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: lines of a fixed text
+          <span key={i} className={`d-${kind}`}>
+            {l}
+            {i < lines.length - 1 ? "\n" : ""}
+          </span>
+        );
+      })}
+    </>
+  );
+}
+
+/** Diff, loaded when first opened. */
+function useDiff(id: number) {
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<
+    { diff: string; truncated: boolean } | { error: string } | null
+  >(null);
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && !state) {
+      api.stewardDiff(id).then(
+        (d) => setState({ diff: d.diff, truncated: d.truncated }),
+        (e) => setState({ error: e instanceof Error ? e.message : String(e) }),
+      );
+    }
+  };
+  return { open, state, toggle };
+}
+
+function DiffView({
+  id,
+  diff,
+  ready,
+}: {
+  id: string;
+  diff: ReturnType<typeof useDiff>;
+  ready: boolean;
+}) {
+  if (!diff.open) return null;
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: a scrollable <pre> must be a keyboard-reachable named region
+    <pre
+      className="diff"
+      id={id}
+      role="region"
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: so a keyboard user can scroll a long diff
+      tabIndex={0}
+      aria-label="The fix's diff"
+      aria-busy={!ready}
+    >
+      {diff.state === null ? (
+        "Loading."
+      ) : "error" in diff.state ? (
+        diff.state.error
+      ) : (
+        <>
+          <DiffText diff={diff.state.diff || "(no changes)"} />
+          {diff.state.truncated ? "\n… the diff is cut here; see the branch for the rest." : ""}
+        </>
+      )}
+    </pre>
+  );
+}
+
+/** Adopt, Diff and Discard for a fix; Adopt's refusal reason reaches the banner. */
+function FixActions({
+  fix,
+  diff,
+  diffId,
+  onAdopt,
+  onDiscard,
+  discardAs,
+}: {
+  fix: StewardFix;
+  diff: ReturnType<typeof useDiff>;
+  diffId: string;
+  onAdopt: (id: number) => Promise<boolean>;
+  onDiscard: (id: number) => Promise<boolean>;
+  discardAs: "button" | "icon";
+}) {
+  const [busy, setBusy] = useState(false);
+  const act = async (fn: (id: number) => Promise<boolean>) => {
+    if (busy) return;
+    setBusy(true);
+    await fn(fix.itemId);
+    setBusy(false);
+  };
+  return (
+    <>
+      <button
+        type="button"
+        className="btn sm st-primary"
+        title="Applies it to your branch locally. Pushing stays yours."
+        disabled={busy}
+        onClick={() => void act(onAdopt)}
+      >
+        Adopt<span className="sr-only"> the fix on {fix.branch}</span>
+      </button>
+      <button
+        type="button"
+        className="btn sm"
+        aria-expanded={diff.open}
+        aria-controls={diffId}
+        onClick={diff.toggle}
+      >
+        Diff
+      </button>
+      {discardAs === "button" ? (
+        <button
+          type="button"
+          className="btn sm ghost"
+          disabled={busy}
+          onClick={() => void act(onDiscard)}
+        >
+          Discard<span className="sr-only"> the fix on {fix.branch}</span>
+        </button>
+      ) : null}
+    </>
+  );
+}
+
+/** A prepared fix inside its finding (mockup B): branch, one line about it, Adopt, Diff, Discard. */
+export function FixBlock({
+  fix,
+  onAdopt,
+  onDiscard,
+}: {
+  fix: StewardFix;
+  onAdopt: (id: number) => Promise<boolean>;
+  onDiscard: (id: number) => Promise<boolean>;
+}) {
+  const diff = useDiff(fix.itemId);
+  const diffId = useId();
+  return (
+    <div className="st-fix">
+      <div className="st-fix-h">
+        <code className="st-br">{fix.branch}</code>
+        <span className="st-meta">{fixMeta(fix)}</span>
+      </div>
+      <DiffView id={diffId} diff={diff} ready={diff.state !== null} />
+      <div className="st-fix-acts">
+        <FixActions
+          fix={fix}
+          diff={diff}
+          diffId={diffId}
+          onAdopt={onAdopt}
+          onDiscard={onDiscard}
+          discardAs="button"
+        />
+      </div>
+    </div>
+  );
+}
+
+/** A suggestion that stands alone (Ready for you): its title, branch and Adopt, Diff; Discard on hover. */
+export function SuggestionItem({
+  item,
+  now,
+  titleOf,
+  onAdopt,
+  onDiscard,
+}: Pick<Common, "now" | "titleOf"> & {
+  item: StewardItem;
+  onAdopt: (id: number) => Promise<boolean>;
+  onDiscard: (id: number) => Promise<boolean>;
+}) {
+  const fix = item.fix;
+  const diff = useDiff(item.id);
+  const diffId = useId();
+  if (!fix) return null;
+  return (
+    <li className="st-item">
+      <div className="st-item-main">
+        <h3 className="st-item-title">{item.title}</h3>
+        <p className="st-meta-line">
+          <span className="st-meta-part">
+            <code className="st-br">{fix.branch}</code>
+          </span>
+          <span className="st-meta-part">{fixMeta(fix)}</span>
+          {item.topicSlug ? (
+            <span className="st-meta-part">
+              <Link href={hrefs.topic(item.topicSlug)} className="st-tlink">
+                {titleOf(item.topicSlug)}
+              </Link>
+            </span>
+          ) : null}
+          <span className="st-meta-part">
+            <time dateTime={item.createdAt}>{stamp(item.createdAt, now)}</time>
+          </span>
+        </p>
+        <DiffView id={diffId} diff={diff} ready={diff.state !== null} />
+        <div className="st-fix-acts">
+          <FixActions
+            fix={fix}
+            diff={diff}
+            diffId={diffId}
+            onAdopt={onAdopt}
+            onDiscard={onDiscard}
+            discardAs="icon"
+          />
+        </div>
+      </div>
+      <div className="st-item-acts">
+        <button
+          type="button"
+          className="icon-btn st-reveal"
+          aria-label={`Discard: ${item.title}`}
+          title="Discard"
+          onClick={() => void onDiscard(fix.itemId)}
+        >
+          <span aria-hidden="true">×</span>
+        </button>
+      </div>
+    </li>
   );
 }
 
@@ -44,6 +300,7 @@ function Meta({ item, now, titleOf }: Pick<Common, "now" | "titleOf"> & { item: 
     );
   }
   if (item.source) parts.push(<span key="src">{item.source}</span>);
+  if (item.note) parts.push(<span key="note">{item.note}</span>);
   parts.push(
     <time key="at" dateTime={item.createdAt}>
       {stamp(item.createdAt, now)}
@@ -68,6 +325,8 @@ export function FindingItem({
   now,
   titleOf,
   onDismiss,
+  onAdopt,
+  onDiscard,
   onUndo,
 }: Common & { item: StewardItem; onUndo: (actionId: number) => void }) {
   const change = statusChange(item);
@@ -79,7 +338,9 @@ export function FindingItem({
           {item.title}
         </h3>
         {item.body ? <p className="st-item-text dim">{item.body}</p> : null}
-        {/* A prepared fix (ST6) will sit here, inside its finding. */}
+        {item.prepared && onAdopt && onDiscard ? (
+          <FixBlock fix={item.prepared} onAdopt={onAdopt} onDiscard={onDiscard} />
+        ) : null}
         {change && item.action ? (
           <p className="st-did">
             <span className="st-status">{change.from ?? "none"}</span>

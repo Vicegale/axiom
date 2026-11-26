@@ -210,6 +210,7 @@ What Steward reads, decides and does. Findings and Steward's changes to topics a
 ## Decisions
 
 - 2026-11-25: Steward's tables, the `steward` author and the `steward urgent` notification kind added for 03 (owner OK). 05 stays settled.
+- 2026-11-25: `steward_item.note` added (migration 0013, ST6): a quiet fact beside a finding (`report only`, `promotion skipped: cap reached`, `no local repository`, `couldn't prepare a fix: …`, `fix adopted: …`). A prepared fix is a `suggestion` item whose `parent_item_id` is its finding and whose fingerprint is `fix:<finding fingerprint>`; its `steward_suggestion.base` is `<owner's branch>@<commit the fix started from>`.
 - 2026-11-25: `steward_item.promotion` added (migration 0012, ST3). A `status change` entry made by Steward has author `steward` and `by: "steward"` in its data.
 
 - 2026-11-25: SQLite ([ADR 0003](../adr/0003-sqlite-storage.md)), at `~/.local/share/axiom/axiom.db`, with migrations in the repo and a daily backup copy.

@@ -23,12 +23,17 @@ export function fakeClaude(
     sleepAfter?: boolean;
     decideOut?: string;
     tidyOut?: string;
+    /** The reply of the promoted stage (ST6) and a shell snippet it runs first, in its folder. */
+    promotedOut?: string;
+    promotedScript?: string;
   } = {},
 ) {
   const folder = join(dir, "fake-claude");
   mkdirSync(folder, { recursive: true });
   writeFileSync(join(folder, "out.gather"), stdout);
   writeFileSync(join(folder, "out.decide"), opts.decideOut ?? envelope(QUIET_DECISION));
+  writeFileSync(join(folder, "out.promoted"), opts.promotedOut ?? envelope({ summary: "x" }));
+  writeFileSync(join(folder, "promoted.sh"), opts.promotedScript ?? "");
   writeFileSync(
     join(folder, "out.tidy"),
     opts.tidyOut ?? envelope({ summary: "Nothing to tidy." }),
@@ -40,7 +45,7 @@ export function fakeClaude(
 DIR="${folder}"
 for a in "$@"; do printf '%s\\n' "$a"; done > "$DIR/argv.tmp"
 cat > "$DIR/stdin.tmp"
-if grep -q "stage 2 (decide)" "$DIR/stdin.tmp"; then S=decide; elif grep -q "Steward memory tidy-up" "$DIR/stdin.tmp"; then S=tidy; else S=gather; fi
+if grep -q "promoted stage of Steward" "$DIR/stdin.tmp"; then S=promoted; sh "$DIR/promoted.sh" > "$DIR/promoted.log" 2>&1; elif grep -q "stage 2 (decide)" "$DIR/stdin.tmp"; then S=decide; elif grep -q "Steward memory tidy-up" "$DIR/stdin.tmp"; then S=tidy; else S=gather; fi
 mv "$DIR/argv.tmp" "$DIR/argv.$S"
 mv "$DIR/stdin.tmp" "$DIR/stdin.$S"
 echo x >> "$DIR/runs.$S"
@@ -58,12 +63,16 @@ ${opts.exit ? `exit ${opts.exit}` : ""}
       return "";
     }
   };
-  type Stage = "gather" | "decide" | "tidy";
+  type Stage = "gather" | "decide" | "tidy" | "promoted";
   return {
     path,
     /** The reply of stage 1 (gather). */
     setOut: (s: string) => writeFileSync(join(folder, "out.gather"), s),
     setDecide: (s: string) => writeFileSync(join(folder, "out.decide"), s),
+    setPromoted: (out: string, script = "") => {
+      writeFileSync(join(folder, "out.promoted"), out);
+      writeFileSync(join(folder, "promoted.sh"), script);
+    },
     setTidy: (s: string) => writeFileSync(join(folder, "out.tidy"), s),
     argv: (stage: Stage = "gather") => read(`argv.${stage}`).trimEnd().split("\n"),
     stdin: (stage: Stage = "gather") => read(`stdin.${stage}`),

@@ -7,6 +7,7 @@ import {
   type StewardItem,
   type StewardMemory,
   type StewardRun,
+  type StewardSuggestion,
   type StewardWake,
 } from "@axiom/core";
 
@@ -29,6 +30,26 @@ export interface StewardViewItem extends StewardItem {
   notified: boolean;
   /** A status change Steward made for this item, with undo while it still holds. */
   action: StewardAction | null;
+  /** The branch of a suggestion (a prepared fix), and the model that made it. */
+  fix: StewardViewFix | null;
+  /** The prepared fix that sits inside this finding (ST6), while it is open. */
+  prepared: StewardViewFix | null;
+}
+
+export interface StewardViewFix {
+  /** The suggestion item's id: Adopt, Diff and Discard act on it. */
+  itemId: number;
+  title: string;
+  branch: string;
+  kind: StewardSuggestion["kind"];
+  complexity: StewardSuggestion["complexity"];
+  diffstat: string | null;
+  tests: string | null;
+  /** `repo#n` of the pull request the fix is for, when there is one. */
+  forRef: string | null;
+  /** The model and effort that wrote it, as run. */
+  model: string | null;
+  effort: StewardRun["effort"] | null;
 }
 
 export interface StewardViewStage {
@@ -93,7 +114,7 @@ export function stewardCount(ax: Axiom): number {
     .filter(
       (i) =>
         i.kind === "question" ||
-        i.kind === "suggestion" ||
+        (i.kind === "suggestion" && i.parentItemId === null) ||
         (i.kind === "finding" && (i.level === "urgent" || i.level === "attention")),
     ).length;
 }
@@ -140,13 +161,15 @@ function wakeView(ax: Axiom, w: StewardWake, items: StewardItem[]): StewardViewW
           : r.stage === "gather"
             ? plural(Array.isArray(gathered.activity) ? gathered.activity.length : 0, "item") +
               " read"
-            : r.stage === "tidy-up"
-              ? (tidyUp?.summary ?? "tidied the memory")
-              : r.stage === "decide"
-                ? parts.length
-                  ? parts.join(", ")
-                  : "nothing new"
-                : r.stage,
+            : r.stage === "promoted"
+              ? "prepared a fix"
+              : r.stage === "tidy-up"
+                ? (tidyUp?.summary ?? "tidied the memory")
+                : r.stage === "decide"
+                  ? parts.length
+                    ? parts.join(", ")
+                    : "nothing new"
+                  : r.stage,
   }));
   return {
     id: w.id,
@@ -167,11 +190,48 @@ export function buildStewardView(ax: Axiom, nextWakeAt: string | null): StewardV
   const all = ax.listStewardItems();
   const actions = ax.listStewardActions();
   const open = all.filter((i) => i.state === "open");
-  const decorate = (i: StewardItem): StewardViewItem => ({
-    ...i,
-    notified: i.level === "urgent" && i.topicId !== null,
-    action: actions.filter((a) => a.itemId === i.id).at(-1) ?? null,
-  });
+  const fixOf = (i: StewardItem): StewardViewFix | null => {
+    if (i.kind !== "suggestion") return null;
+    const sug = ax.listStewardSuggestions(i.id)[0];
+    if (!sug) return null;
+    const run = i.wakeId === null ? undefined : promotedRuns(i.wakeId);
+    const parent = i.parentItemId === null ? null : all.find((x) => x.id === i.parentItemId);
+    const pr = /^pr:([^#]+)#(\d+):/.exec(parent?.fingerprint ?? "");
+    return {
+      itemId: i.id,
+      title: i.title,
+      branch: sug.branch,
+      kind: sug.kind,
+      complexity: sug.complexity,
+      diffstat: sug.diffstat,
+      tests: sug.tests,
+      forRef: pr ? `${(pr[1] as string).split("/").pop()}#${pr[2]}` : null,
+      model: run?.model ?? null,
+      effort: run?.effort ?? null,
+    };
+  };
+  const runCache = new Map<number, StewardRun | undefined>();
+  const promotedRuns = (wakeId: number) => {
+    if (!runCache.has(wakeId)) {
+      runCache.set(
+        wakeId,
+        ax.listStewardRuns({ wakeId }).find((r) => r.stage === "promoted"),
+      );
+    }
+    return runCache.get(wakeId);
+  };
+  const openFixes = open.filter((i) => i.kind === "suggestion");
+  const decorate = (i: StewardItem): StewardViewItem => {
+    const child = i.kind === "finding" ? openFixes.find((x) => x.parentItemId === i.id) : undefined;
+    return {
+      ...i,
+      notified: i.level === "urgent" && i.topicId !== null,
+      action: actions.filter((a) => a.itemId === i.id).at(-1) ?? null,
+      fix: fixOf(i),
+      prepared: child ? fixOf(child) : null,
+    };
+  };
+  const openFindingIds = new Set(open.filter((i) => i.kind === "finding").map((i) => i.id));
   const newest = (a: StewardItem, b: StewardItem) => b.id - a.id;
   const findings = open.filter((i) => i.kind === "finding");
   const rank = (i: StewardItem) => (i.level === "urgent" ? 0 : 1);
@@ -238,7 +298,11 @@ export function buildStewardView(ax: Axiom, nextWakeAt: string | null): StewardV
       .sort(newest)
       .map(decorate),
     ready: open
-      .filter((i) => i.kind === "suggestion")
+      .filter(
+        (i) =>
+          i.kind === "suggestion" &&
+          (i.parentItemId === null || !openFindingIds.has(i.parentItemId)),
+      )
       .sort(newest)
       .map(decorate),
     info: findings

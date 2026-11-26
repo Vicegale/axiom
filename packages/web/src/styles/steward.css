@@ -73,9 +73,19 @@
 .st-status { font: 0.6875rem var(--font-mono); padding: 0 0.375rem; border-radius: 0.25rem; border: 1px solid var(--line-strong); }
 .st-link-btn { padding: 0.125rem 0.25rem; border: 0; background: none; color: var(--text-2); font-size: 0.78125rem; text-decoration: underline; cursor: pointer; border-radius: 0.1875rem; }
 .st-link-btn:hover { color: var(--text); }
-.st-primary { background: var(--text); color: var(--bg); border-color: var(--text); }
-.st-primary:hover { background: var(--text-2); border-color: var(--text-2); }
-.st-primary:disabled { opacity: 0.5; }
+.btn.st-primary { background: var(--text); color: var(--bg); border-color: var(--text); }
+.btn.st-primary:hover { background: var(--text-2); border-color: var(--text-2); }
+.btn.st-primary:disabled { opacity: 0.5; }
+/* a prepared fix inside its finding, and its diff (mockup B) */
+.st-fix { margin-top: 0.25rem; border: 1px solid var(--line); border-radius: 0.375rem; padding: 0.5rem 0.625rem; display: grid; gap: 0.375rem; background: var(--raised); min-width: 0; }
+.st-fix-h { display: flex; gap: 0.5rem; align-items: baseline; flex-wrap: wrap; }
+.st-fix-acts { display: flex; gap: 0.25rem; flex-wrap: wrap; margin-top: 0.125rem; }
+.st-br { color: var(--steward); font: 0.75rem var(--font-mono); overflow-wrap: anywhere; }
+.diff { margin: 0.125rem 0 0; padding: 0.5rem 0.625rem; border-radius: 0.375rem; background: var(--bg); border: 1px solid var(--line); font: 0.75rem/1.5 var(--font-mono); overflow: auto; max-height: 24rem; white-space: pre; }
+.diff:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.d-add { color: var(--st-done); }
+.d-del { color: var(--st-error); }
+.d-ctx { color: var(--text-3, var(--meta)); }
 .st-answer { display: flex; gap: 0.375rem; margin-top: 0.25rem; }
 .st-answer input { flex: 1; min-width: 0; height: 1.75rem; padding: 0 0.625rem; border-radius: 0.375rem; border: 1px solid var(--focus); background: var(--bg); color: var(--text); }
 .st-answer input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }

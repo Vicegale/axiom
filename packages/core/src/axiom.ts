@@ -2762,6 +2762,123 @@ export class Axiom {
     });
   }
 
+  /** Sets or clears the quiet note beside an item. */
+  setStewardItemNote(id: number, note: string | null, actor: Actor): StewardItem {
+    this.stewardWriter(actor, "change a Steward item");
+    return this.tx(() => {
+      this.itemRow(id);
+      this.run("UPDATE steward_item SET note = ? WHERE id = ?", note?.trim() || null, id);
+      return this.itemRow(id);
+    });
+  }
+
+  /**
+   * A prepared fix (ST6): a suggestion item inside its finding, its branch row and a history
+   * entry on the finding's topic saying a fix is ready.
+   */
+  addStewardFix(
+    findingId: number,
+    input: {
+      title: string;
+      repository: string;
+      branch: string;
+      base: string;
+      worktree: string;
+      complexity: StewardComplexity;
+      diffstat: string;
+      tests: string;
+      wakeId?: number;
+    },
+    actor: Actor,
+  ): { item: StewardItem; suggestion: StewardSuggestion } {
+    this.stewardWriter(actor, "add a fix");
+    return this.tx(() => {
+      const finding = this.itemRow(findingId);
+      if (finding.kind !== "finding") {
+        throw new AxiomError("validation", "a fix belongs to a finding");
+      }
+      const item = this.addStewardItem(
+        {
+          kind: "suggestion",
+          title: input.title,
+          parentItemId: findingId,
+          ...(finding.topicSlug ? { topic: finding.topicSlug } : {}),
+          ...(input.wakeId !== undefined ? { wakeId: input.wakeId } : {}),
+          fingerprint: finding.fingerprint ? `fix:${finding.fingerprint}` : undefined,
+        },
+        actor,
+      );
+      const suggestion = this.addStewardSuggestion(
+        item.id,
+        {
+          kind: "fix",
+          repository: input.repository,
+          branch: input.branch,
+          base: input.base,
+          worktree: input.worktree,
+          complexity: input.complexity,
+          diffstat: input.diffstat,
+          tests: input.tests,
+        },
+        actor,
+      );
+      if (finding.topicId !== null) {
+        const entryId = this.insertEntry({
+          topicId: finding.topicId,
+          author: "steward",
+          kind: "finding",
+          body: `A fix is ready on ${input.branch} (${input.diffstat}, tests ${input.tests}): ${finding.title}`,
+          data: { subtype: "fix ready" },
+        });
+        this.run("UPDATE steward_item SET entry_id = ? WHERE id = ?", entryId, item.id);
+      }
+      return { item: this.itemRow(item.id), suggestion };
+    });
+  }
+
+  /**
+   * The owner adopted or discarded a prepared fix (Axiom already did the git work): the item
+   * is resolved, the topic's history says so, and the finding keeps a quiet note.
+   */
+  resolveStewardFix(
+    itemId: number,
+    state: "adopted" | "discarded",
+    detail: string,
+    actor: Actor,
+  ): StewardItem {
+    ownerOnly(actor, `${state === "adopted" ? "adopt" : "discard"} a Steward fix`);
+    return this.tx(() => {
+      const before = this.itemRow(itemId);
+      if (before.kind !== "suggestion") {
+        throw new AxiomError("validation", "only a suggestion can be adopted or discarded");
+      }
+      const item = this.updateStewardItem(itemId, { state }, actor);
+      if (item.topicId !== null) {
+        this.insertEntry({
+          topicId: item.topicId,
+          author: "owner",
+          kind: "note",
+          body: `${state === "adopted" ? "Adopted" : "Discarded"} Steward's fix: ${item.title}. ${detail}`,
+        });
+      }
+      if (item.parentItemId !== null) {
+        this.run(
+          "UPDATE steward_item SET note = ? WHERE id = ?",
+          `fix ${state}: ${detail}`,
+          item.parentItemId,
+        );
+      }
+      return item;
+    });
+  }
+
+  /** The suggestion row of a suggestion item. */
+  getStewardSuggestion(itemId: number): StewardSuggestion {
+    const s = this.listStewardSuggestions(itemId)[0];
+    if (!s) throw new AxiomError("not-found", `no suggestion branch for item ${itemId}`);
+    return s;
+  }
+
   listStewardSuggestions(itemId: number): StewardSuggestion[] {
     return this.all<Row>(
       "SELECT * FROM steward_suggestion WHERE item_id = ? ORDER BY id",

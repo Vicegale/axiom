@@ -589,3 +589,45 @@ describe("chat", () => {
     );
   });
 });
+
+describe("prepared fixes", () => {
+  const fixInput = {
+    title: "Fix the sum",
+    repository: "/r",
+    branch: "axiom/fix/x",
+    base: "feature@abc",
+    worktree: "/w",
+    complexity: "simple" as const,
+    diffstat: "+1 −1 · 1 file",
+    tests: "2/2 pass",
+  };
+
+  it("adds a suggestion inside its finding with a history entry, and the owner resolves it", () => {
+    const { ax } = makeAxiom();
+    ax.createTopic({ slug: "t", title: "T" }, owner);
+    const f = ax.recordStewardFinding(
+      {
+        topic: "t",
+        level: "attention",
+        title: "CI failed",
+        fingerprint: "fp",
+        promotion: "simple",
+      },
+      steward,
+    );
+    ax.setStewardItemNote(f.id, "report only", steward);
+    expect(ax.getStewardItem(f.id).note).toBe("report only");
+    const { item, suggestion } = ax.addStewardFix(f.id, fixInput, steward);
+    expect(item).toMatchObject({ kind: "suggestion", parentItemId: f.id, fingerprint: "fix:fp" });
+    expect(suggestion).toMatchObject({ kind: "fix", branch: "axiom/fix/x", tests: "2/2 pass" });
+    expect(ax.getStewardSuggestion(item.id).id).toBe(suggestion.id);
+    expect(ax.listEntries("t").at(-1)).toMatchObject({ author: "steward" });
+    expect(() => ax.addStewardFix(item.id, fixInput, steward)).toThrow(/belongs to a finding/);
+    expect(() => ax.resolveStewardFix(item.id, "adopted", "x", steward)).toThrow(/owner/);
+    expect(() => ax.resolveStewardFix(f.id, "adopted", "x", owner)).toThrow(/only a suggestion/);
+    const done = ax.resolveStewardFix(item.id, "adopted", "Fast-forwarded.", owner);
+    expect(done.state).toBe("adopted");
+    expect(ax.getStewardItem(f.id).note).toBe("fix adopted: Fast-forwarded.");
+    expect(ax.listEntries("t").at(-1)).toMatchObject({ author: "owner" });
+  });
+});
