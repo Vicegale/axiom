@@ -300,7 +300,7 @@ export interface StewardSettings {
   stageTimeoutMin: number;
   memoryCoreTokens: number;
   prSignals: string[];
-  sources: { github: boolean; slack: boolean; googleDrive: boolean };
+  sources: { github: boolean; slack: boolean; googleDrive: boolean; otherConnectors: boolean };
 }
 
 export interface Settings {
@@ -453,7 +453,12 @@ export interface StewardView {
   count: number;
   brief: { text: string; at: string; wake: StewardWake } | null;
   blindSpots: StewardBlindSpot[];
-  sources: { github: StewardSource; slack: StewardSource; googleDrive: StewardSource };
+  sources: {
+    github: StewardSource;
+    slack: StewardSource;
+    googleDrive: StewardSource;
+    otherConnectors: StewardSource;
+  };
   needs: StewardItem[];
   questions: StewardItem[];
   ready: StewardItem[];
@@ -603,8 +608,10 @@ export interface ChatNote {
 }
 
 export interface ChatAction {
-  kind: "check topic";
+  kind: "check topic" | "update item" | "resolve item" | "answer question" | "set status";
   topic: string;
+  item?: number;
+  summary?: string;
   started: boolean;
   detail?: string;
 }

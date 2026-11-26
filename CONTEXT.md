@@ -27,6 +27,8 @@ Working definitions. They change as the spec settles; `docs/spec/` wins where th
 | Memory core | The short part of the Steward memory loaded into every stage-2 run and chat without searching: must-know facts plus an index of the rest. |
 | Wake | One run of Steward: a blind-spot check, then gather (a cheap model summarises what changed), tidy, decide (a stronger model judges it), and sometimes promoted work. Started by the timer, an event, Run now or a check request. |
 | Finding | Something Steward tells the owner, with a level: `urgent` (also a desktop notification), `attention` or `info`. Written to the topic's history by `steward`. |
+| Resolved | A Steward item Steward closed itself, with the reason: no longer true, or the owner said it is handled. Separate from *dismissed*, which only the owner does. |
+| Research stages | Gather and the chat: the Steward calls that may look things up (linked folders, read-only git and `gh`, connectors' read tools), as opposed to decide and tidy-up, which read only their prompt. |
 | Promotion | Handing a finding to a stronger model to prepare a fix, chosen by how complex Steward rates it; the fix is offered only after Axiom's own test run passes. |
 | Release copy | The detached git worktree at `~/.local/share/axiom/app` that the live service, hooks and CLI run from, so development in the checkout never reaches the real database. Updated by `scripts/install.sh`. |
 | Provider | A source of threads Axiom watches: Claude Code directly or the T3 service (Codex later). See `docs/spec/04-agent-connectors.md`. |

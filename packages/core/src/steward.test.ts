@@ -476,6 +476,68 @@ describe("items", () => {
   });
 });
 
+describe("Steward edits its items (SF1)", () => {
+  it("revises an open finding's text and level, and a question's text", () => {
+    const { ax } = makeAxiom();
+    ax.createTopic({ slug: "t", title: "T" }, owner);
+    const f = ax.recordStewardFinding(
+      { topic: "t", level: "info", title: "Old", body: "old body", fingerprint: "fp" },
+      steward,
+    );
+    const r = ax.stewardReviseItem(f.id, { title: "New", level: "attention" }, steward);
+    expect(r).toMatchObject({ title: "New", body: "old body", level: "attention", state: "open" });
+    expect(ax.listEntries("t").some((e) => /from info to attention/.test(e.body ?? ""))).toBe(true);
+    const q = ax.addStewardItem({ kind: "question", title: "Is it done?", topic: "t" }, steward);
+    expect(ax.stewardReviseItem(q.id, { title: "Is ST10 done?" }, steward).title).toBe(
+      "Is ST10 done?",
+    );
+    expect(() => ax.stewardReviseItem(q.id, { level: "info" }, steward)).toThrow(/no level/);
+    expect(() => ax.stewardReviseItem(f.id, { title: "x" }, agent)).toThrow(/agent/);
+    ax.dismissStewardItem(f.id, owner);
+    expect(() => ax.stewardReviseItem(f.id, { title: "x" }, steward)).toThrow(/dismissed/);
+  });
+
+  it("resolves an open item with a reason and a history note; the subject is not raised again", () => {
+    const { ax } = makeAxiom();
+    ax.createTopic({ slug: "t", title: "T" }, owner);
+    const f = ax.recordStewardFinding(
+      { topic: "t", level: "attention", title: "Scope needs a decision", fingerprint: "fp" },
+      steward,
+    );
+    expect(() => ax.updateStewardItem(f.id, { state: "resolved" }, steward)).toThrow(
+      /needs the reason/,
+    );
+    const r = ax.stewardResolveItem(f.id, "the owner said ST10 is built", steward);
+    expect(r).toMatchObject({ state: "resolved", resolution: "the owner said ST10 is built" });
+    expect(r.resolvedAt).not.toBeNull();
+    expect(ax.listStewardItems({ state: "open" })).toEqual([]);
+    expect(ax.findStewardItemByFingerprint("fp")?.state).toBe("resolved");
+    const last = ax.listEntries("t").at(-1);
+    expect(last).toMatchObject({ author: "steward", kind: "note" });
+    expect(last?.body).toMatch(/closed its finding: Scope needs a decision. Why: the owner said/);
+    expect(() => ax.stewardResolveItem(f.id, "again", steward)).toThrow(/cannot become/);
+    expect(() =>
+      ax.updateStewardItem(
+        ax.addStewardItem({ kind: "finding", title: "y" }, steward).id,
+        { state: "dismissed", resolution: "x" },
+        owner,
+      ),
+    ).toThrow(/only a resolved/);
+  });
+
+  it("records the owner's words as a question's answer", () => {
+    const { ax } = makeAxiom();
+    const q = ax.addStewardItem({ kind: "question", title: "Goal?" }, steward);
+    expect(ax.stewardRecordAnswer(q.id, "Ship it", steward)).toMatchObject({
+      state: "answered",
+      answer: "Ship it",
+    });
+    const f = ax.addStewardItem({ kind: "finding", title: "x" }, steward);
+    expect(() => ax.stewardRecordAnswer(f.id, "y", steward)).toThrow(/only a question/);
+    expect(() => ax.stewardRecordAnswer(q.id, "y", agent)).toThrow(/agent/);
+  });
+});
+
 describe("memory", () => {
   it("adds, updates, retires and deletes, by the owner or Steward", () => {
     const { ax } = makeAxiom();

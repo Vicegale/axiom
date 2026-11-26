@@ -282,19 +282,43 @@ describe("stageArgs", () => {
     return i >= 0 && (value === undefined || args[i + 1] === value);
   };
 
-  it("gives gather read-only tools and keeps the user's connectors", () => {
-    const a = stageArgs("gather", "haiku", "low", {
-      mcpServers: ["claude_ai_Slack"],
-      addDirs: ["/repo"],
-    });
-    expect(has(a, "--tools", "Read,Grep,Glob")).toBe(true);
-    expect(has(a, "--allowedTools", "Read,Grep,Glob,mcp__claude_ai_Slack")).toBe(true);
-    expect(has(a, "--add-dir", "/repo")).toBe(true);
-    expect(has(a, "--strict-mcp-config")).toBe(false);
-    // The user's settings, so the claude.ai connectors load.
-    expect(has(a, "--setting-sources", "user")).toBe(true);
-    expect(has(a, "--setting-sources", "")).toBe(false);
-    expect(has(a, "--disable-slash-commands")).toBe(true);
+  it("gives gather and chat read-only tools, read-only shell and the user's connectors", () => {
+    for (const stage of ["gather", "chat"] as const) {
+      const a = stageArgs(stage, "haiku", "low", {
+        mcpServers: ["claude_ai_Slack"],
+        mcpTools: ["mcp__claude_ai_Atlassian__getJiraIssue"],
+        mcpDenied: ["mcp__claude_ai_Atlassian__createJiraIssue"],
+        addDirs: ["/repo"],
+        shell: { gh: true },
+      });
+      expect(has(a, "--tools", "Read,Grep,Glob,Bash")).toBe(true);
+      const allowed = a[a.indexOf("--allowedTools") + 1] ?? "";
+      expect(allowed.startsWith("Read,Grep,Glob,Bash(node ")).toBe(true);
+      expect(allowed).toMatch(/read-git\.(ts|js) \*\)/);
+      expect(allowed).toContain("Bash(gh pr view *)");
+      expect(allowed).toContain("mcp__claude_ai_Slack");
+      expect(allowed).toContain("mcp__claude_ai_Atlassian__getJiraIssue");
+      expect(allowed).not.toContain("gh api");
+      const denied = a[a.indexOf("--disallowedTools") + 1] ?? "";
+      expect(denied).toContain("Bash(git push *)");
+      expect(denied).toContain("Bash(gh api *)");
+      expect(denied).toContain("mcp__claude_ai_Atlassian__createJiraIssue");
+      expect(has(a, "--add-dir", "/repo")).toBe(true);
+      expect(has(a, "--strict-mcp-config")).toBe(false);
+      // The user's settings, so the claude.ai connectors load; dontAsk refuses anything else.
+      expect(has(a, "--setting-sources", "user")).toBe(true);
+      expect(has(a, "--setting-sources", "")).toBe(false);
+      expect(has(a, "--permission-mode", "dontAsk")).toBe(true);
+      expect(has(a, "--disable-slash-commands")).toBe(true);
+    }
+  });
+
+  it("leaves gh out when GitHub is off, and Bash out without shell", () => {
+    const a = stageArgs("chat", "sonnet", "medium", { shell: { gh: false } });
+    expect(a[a.indexOf("--allowedTools") + 1]).not.toContain("Bash(gh ");
+    const b = stageArgs("gather", "haiku", "low");
+    expect(has(b, "--tools", "Read,Grep,Glob")).toBe(true);
+    expect(has(b, "--disallowedTools")).toBe(false);
   });
 
   it("gives decide and tidy-up no tools and no connectors", () => {
@@ -313,12 +337,5 @@ describe("stageArgs", () => {
     expect(has(a, "--disallowedTools", "Bash(git push *),Bash(gh *)")).toBe(true);
     expect(has(a, "--strict-mcp-config")).toBe(true);
     expect(has(a, "--system-prompt")).toBe(false);
-  });
-
-  it("gives chat read-only tools and no connectors for now", () => {
-    const a = stageArgs("chat", "sonnet", "medium");
-    expect(has(a, "--tools", "Read,Grep,Glob")).toBe(true);
-    expect(has(a, "--strict-mcp-config")).toBe(true);
-    expect(has(a, "--effort", "medium")).toBe(true);
   });
 });

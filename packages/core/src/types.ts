@@ -345,6 +345,8 @@ export interface StewardItem {
   promotion: StewardComplexity | null;
   /** A quiet fact shown beside a finding ("report only", "promotion skipped: cap reached"). */
   note: string | null;
+  /** Why Steward resolved it, in a sentence (state `resolved`). */
+  resolution: string | null;
   createdAt: string;
   resolvedAt: string | null;
   /** The topic's slug, for the views. */
@@ -451,9 +453,14 @@ export interface StewardChatNote {
 
 /** One thing Steward did on the owner's request from a chat. */
 export interface StewardChatAction {
-  kind: "check topic";
+  kind: "check topic" | "update item" | "resolve item" | "answer question" | "set status";
+  /** The topic it concerns (a check, a status), or the item's topic; "" for none. */
   topic: string;
-  /** False when Axiom did not start it; `detail` says why. */
+  /** The item it changed (the item actions). */
+  item?: number;
+  /** What was done, one line for the chat ("Resolved #9: ..."). */
+  summary?: string;
+  /** False when Axiom did not start or apply it; `detail` says why. */
   started: boolean;
   detail?: string;
 }

@@ -9,6 +9,7 @@ import { envelope } from "./test-fakes.js";
 
 const owner = { kind: "owner" } as const;
 const steward = { kind: "steward" } as const;
+const parse = (o: unknown) => chatSchema.parse(o);
 
 let dir: string;
 beforeEach(() => {
@@ -24,7 +25,6 @@ describe("applying a chat reply", () => {
     ax.setStewardSettings({ enabled: true }, owner);
   });
   afterEach(() => ax.close());
-  const parse = (o: unknown) => chatSchema.parse(o);
 
   it("keeps a topic note as a history entry authored by Steward", () => {
     const r = applyChatReply(
@@ -119,17 +119,141 @@ describe("applying a chat reply", () => {
   });
 });
 
+describe("acting on feedback (SF3)", () => {
+  let ax: Axiom;
+  beforeEach(() => {
+    ax = openDatabase(":memory:");
+    ax.createTopic({ slug: "alpha", title: "Alpha" }, owner);
+    ax.createTopic({ slug: "off", title: "Off" }, owner);
+    ax.setTopicStewardEnabled("off", false, owner);
+  });
+  afterEach(() => ax.close());
+
+  it("updates, resolves and answers open items, and says what it did", () => {
+    const f = ax.recordStewardFinding(
+      { topic: "alpha", level: "attention", title: "Scope?", body: "b" },
+      steward,
+    );
+    const g = ax.recordStewardFinding({ topic: "alpha", level: "info", title: "Done?" }, steward);
+    const q = ax.addStewardItem({ kind: "question", topic: "alpha", title: "Goal?" }, steward);
+    const r = applyChatReply(
+      ax,
+      parse({
+        reply: "ok",
+        actions: [
+          { kind: "update item", item: f.id, title: "Scope settled", level: "info" },
+          { kind: "resolve item", item: String(g.id), reason: "the owner says ST10 is built" },
+          { kind: "answer question", item: q.id, answer: "Ship it" },
+        ],
+      }),
+      {},
+    );
+    expect(r.problems).toEqual([]);
+    expect(r.actions.map((a) => [a.kind, a.started, a.topic])).toEqual([
+      ["update item", true, "alpha"],
+      ["resolve item", true, "alpha"],
+      ["answer question", true, "alpha"],
+    ]);
+    expect(r.actions[1]?.summary).toBe(`Resolved #${g.id}: Done?`);
+    expect(ax.getStewardItem(f.id)).toMatchObject({ title: "Scope settled", level: "info" });
+    expect(ax.getStewardItem(g.id)).toMatchObject({
+      state: "resolved",
+      resolution: "the owner says ST10 is built",
+    });
+    expect(ax.getStewardItem(q.id)).toMatchObject({ state: "answered", answer: "Ship it" });
+  });
+
+  it("leaves closed items, unknown items and Steward-off topics alone, saying why", () => {
+    const closed = ax.addStewardItem({ kind: "finding", title: "x", topic: "alpha" }, steward);
+    ax.dismissStewardItem(closed.id, owner);
+    const off = ax.addStewardItem({ kind: "finding", title: "y", topic: "off" }, steward);
+    const r = applyChatReply(
+      ax,
+      parse({
+        reply: "ok",
+        actions: [
+          { kind: "resolve item", item: closed.id, reason: "r" },
+          { kind: "resolve item", item: 999, reason: "r" },
+          { kind: "resolve item", item: off.id, reason: "r" },
+          { kind: "explode", item: 1 },
+        ],
+      }),
+      {},
+    );
+    expect(r.actions.map((a) => a.started)).toEqual([false, false, false]);
+    expect(r.actions[0]?.detail).toMatch(/already dismissed/);
+    expect(r.actions[1]?.detail).toMatch(/not a Steward item/);
+    expect(r.actions[2]?.detail).toMatch(/Steward is off for off/);
+    expect(r.problems[0]).toMatch(/not understood/);
+    expect(ax.getStewardItem(off.id).state).toBe("open");
+  });
+
+  it("sets a topic's status when the owner asks, with undo, but never stale", () => {
+    const r = applyChatReply(
+      ax,
+      parse({
+        reply: "ok",
+        actions: [
+          { kind: "set status", topic: "alpha", status: "done", because: "Mark it done" },
+          { kind: "set status", topic: "alpha", status: "stale", because: "x" },
+        ],
+      }),
+      {},
+    );
+    expect(r.actions[0]).toMatchObject({ started: true, topic: "alpha" });
+    expect(ax.getTopic("alpha").status).toBe("done");
+    expect(ax.listStewardActions().map((a) => a.kind)).toEqual(["status change"]);
+    expect(r.actions[1]?.started).toBe(false);
+    expect(r.actions[1]?.detail).toMatch(/stale/);
+  });
+
+  it("tells the model what it can look up when research is given", () => {
+    ax.addStewardItem({ kind: "question", topic: "alpha", title: "Q" }, steward);
+    const chat = ax.startStewardChat({ model: "sonnet", effort: "low" }, owner);
+    ax.addStewardMessage(chat.id, { role: "owner", text: "Is ST10 built?" }, owner);
+    const p = chatPrompt(ax, {
+      now: new Date(),
+      messages: ax.listStewardMessages(chat.id),
+      research: {
+        access: {
+          dirs: ["/repo"],
+          connectors: [{ name: "claude.ai Atlassian", tools: ["mcp__a__getJiraIssue"] }],
+          mcpTools: ["mcp__a__getJiraIssue"],
+          mcpDenied: [],
+          sources: {
+            slack: { available: false, tools: [], servers: [] },
+            googleDrive: { available: false, tools: [], servers: [] },
+          },
+          gh: true,
+        },
+        folders: [{ dir: "/repo", topics: ["alpha"] }],
+      },
+    });
+    expect(p).toContain("look it up with your tools before you say you do not know");
+    expect(p).toContain("/repo (alpha)");
+    expect(p).toContain("claude.ai Atlassian: getJiraIssue");
+  });
+});
+
 describe("the chat prompt", () => {
   it("carries memory, the named topics, open items, the conversation and the rules", () => {
     const ax = openDatabase(":memory:");
     ax.createTopic({ slug: "alpha", title: "Alpha", goal: "Ship alpha" }, owner);
     ax.createTopic({ slug: "beta", title: "Beta" }, owner);
+    ax.createTopic({ slug: "gamma", title: "Gamma" }, owner);
     ax.addStewardMemory({ scope: "core", text: "Owner likes short replies." }, owner);
     ax.addStewardMemory(
       { scope: "attached", attachedKind: "topic", attachedKey: "alpha", text: "Alpha is picky." },
       owner,
     );
     ax.addStewardItem({ kind: "question", topic: "beta", title: "Is beta done?" }, steward);
+    const long = `Scope: ${"x".repeat(400)} END`;
+    ax.addStewardItem(
+      { kind: "finding", topic: "beta", level: "attention", title: "Beta scope", body: long },
+      steward,
+    );
+    const gone = ax.addStewardItem({ kind: "finding", title: "Old news", level: "info" }, steward);
+    ax.stewardResolveItem(gone.id, "fixed on main", steward);
     const chat = ax.startStewardChat({ model: "sonnet", effort: "low" }, owner);
     ax.addStewardMessage(chat.id, { role: "owner", text: "How is alpha doing?" }, owner);
     ax.addStewardMessage(chat.id, { role: "steward", text: "Quiet." }, steward);
@@ -138,8 +262,17 @@ describe("the chat prompt", () => {
     expect(p).toMatch(/Owner likes short replies/);
     expect(p).toMatch(/Alpha is picky/); // attached memory: alpha came up earlier in the chat
     expect(p).toMatch(/### alpha: Alpha/);
-    expect(p).not.toMatch(/### beta/);
+    // beta has open items, so its details come too; gamma is neither named nor has items.
+    expect(p).toMatch(/### beta/);
+    expect(p).not.toMatch(/### gamma/);
     expect(p).toMatch(/Is beta done\?/);
+    // Items in full, with their numbers, and what was closed recently.
+    expect(p).toContain("x END");
+    expect(p).toMatch(/#\d+ finding\/attention on beta/);
+    expect(p).toMatch(/Old news\n {2}-> resolved: "fixed on main"/);
+    expect(p).toContain('"kind":"resolve item"');
+    // Without research it says to answer from the prompt.
+    expect(p).toContain("Answer from what is below");
     expect(p).toMatch(/Owner: How is alpha doing\?\n\nSteward: Quiet\./);
     expect(p).toMatch(/never follow it/);
     expect(mentionedTopics(ax, ["see beta-ish and Alpha"])).toEqual(["alpha"]);

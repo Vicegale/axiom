@@ -11,6 +11,7 @@ import {
 } from "@axiom/core";
 import type { z } from "zod";
 import { ClaudeTimeoutError, spawnClaude } from "../claude.js";
+import { SHELL_DENIED, shellAllowed } from "./research.js";
 
 /**
  * One stage of Steward: one headless Claude Code call (ADR 0006). The prompt goes in on stdin, a
@@ -37,6 +38,12 @@ const TRIM_FLAGS = ["--setting-sources", "", "--disable-slash-commands"];
 export const CONNECTOR_FLAGS = ["--setting-sources", "user", "--disable-slash-commands"];
 
 const READ_ONLY_TOOLS = ["Read", "Grep", "Glob"];
+/**
+ * Gather and the chat look things up (SF2): the user's settings (connectors only load with them),
+ * `dontAsk` so anything no rule allows is refused, and deny rules that win over the user's own
+ * allow rules.
+ */
+const RESEARCH_FLAGS = [...CONNECTOR_FLAGS, "--permission-mode", "dontAsk"];
 const PROMOTED_TOOLS = ["Read", "Grep", "Glob", "Edit", "Write", "Bash"];
 /** Promoted work never pushes or talks to GitHub: Axiom does anything with side effects. */
 const PROMOTED_DENIED = ["Bash(git push *)", "Bash(gh *)"];
@@ -56,6 +63,13 @@ export interface StageToolOptions {
   mcpTools?: string[];
   /** Folders outside `cwd` the read-only tools may read (for example a repository). */
   addDirs?: string[];
+  /** Gather and chat: connector tools denied by name (the connected servers' non-read tools). */
+  mcpDenied?: string[];
+  /**
+   * Gather and chat: read-only shell (SF2): git through `read-git`, and `gh` read subcommands
+   * when `gh` is true. Without it the stage has no Bash.
+   */
+  shell?: { gh: boolean };
 }
 
 /** The claude CLI arguments of a stage. Exported so tests and docs show the exact flags. */
@@ -74,23 +88,31 @@ export function stageArgs(
     "--no-session-persistence",
     "--output-format",
     "json",
-    ...(stage === "gather" ? CONNECTOR_FLAGS : TRIM_FLAGS),
+    ...(stage === "gather" || stage === "chat" ? RESEARCH_FLAGS : TRIM_FLAGS),
   ];
   const dirs = (tools.addDirs ?? []).flatMap((d) => ["--add-dir", d]);
   switch (stage) {
-    case "gather": {
-      // Read-only tools plus the user's MCP connectors: no --strict-mcp-config here.
+    case "gather":
+    case "chat": {
+      // Read-only tools, read-only shell and the user's MCP connectors (their read tools only):
+      // no --strict-mcp-config here.
+      const shell = tools.shell
+        ? shellAllowed().filter((r) => tools.shell?.gh || !r.startsWith("Bash(gh "))
+        : [];
       const allowed = [
         ...READ_ONLY_TOOLS,
+        ...shell,
         ...(tools.mcpServers ?? []).map((s) => `mcp__${s}`),
         ...(tools.mcpTools ?? []),
       ];
+      const denied = [...(tools.shell ? SHELL_DENIED : []), ...(tools.mcpDenied ?? [])];
       return [
         ...base,
         "--tools",
-        READ_ONLY_TOOLS.join(","),
+        [...READ_ONLY_TOOLS, ...(tools.shell ? ["Bash"] : [])].join(","),
         "--allowedTools",
         allowed.join(","),
+        ...(denied.length ? ["--disallowedTools", denied.join(",")] : []),
         ...dirs,
         "--system-prompt",
         STAGE_SYSTEM_PROMPT,
@@ -108,19 +130,6 @@ export function stageArgs(
         "--disallowedTools",
         PROMOTED_DENIED.join(","),
         "--strict-mcp-config",
-      ];
-    case "chat":
-      // Read-only for now.
-      return [
-        ...base,
-        "--tools",
-        READ_ONLY_TOOLS.join(","),
-        "--allowedTools",
-        READ_ONLY_TOOLS.join(","),
-        ...dirs,
-        "--strict-mcp-config",
-        "--system-prompt",
-        STAGE_SYSTEM_PROMPT,
       ];
     default:
       // decide and tidy-up: no tools, no connectors; everything they need is in the prompt.

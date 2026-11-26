@@ -197,7 +197,8 @@ function ModelPick({
 function sourceNote(s: { on: boolean; ok: boolean | null; reason: string | null } | undefined) {
   if (!s?.on) return "Off";
   if (s.ok === null) return "Not checked yet";
-  return s.ok ? "Reachable at the last wake" : (s.reason ?? "Unreachable at the last wake");
+  if (s.ok) return s.reason ?? "Reachable at the last wake";
+  return s.reason ?? "Unreachable at the last wake";
 }
 
 export function StewardSettingsDialog({
@@ -424,6 +425,7 @@ export function StewardSettingsDialog({
                 ["github", "GitHub"],
                 ["slack", "Slack"],
                 ["googleDrive", "Google Drive"],
+                ["otherConnectors", "Other connectors"],
               ] as const
             ).map(([key, label]) => (
               <label key={key} className="check st-source">

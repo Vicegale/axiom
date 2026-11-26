@@ -397,7 +397,7 @@ const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…`
 
 function Message({ m, theme }: { m: ChatMessage; theme: "dark" | "light" }) {
   const noted = m.meta?.noted ?? [];
-  const started = (m.meta?.actions ?? []).filter((a) => a.started);
+  const done = (m.meta?.actions ?? []).filter((a) => a.started);
   return (
     <div className={`st-msg st-msg-${m.role}`}>
       <div className="st-msg-b">
@@ -423,10 +423,10 @@ function Message({ m, theme }: { m: ChatMessage; theme: "dark" | "light" }) {
           </span>
         </p>
       ))}
-      {started.map((a) => (
-        <p className="st-acting" key={`${a.kind}-${a.topic}`}>
+      {done.map((a) => (
+        <p className="st-acting" key={`${a.kind}-${a.item ?? a.topic}`}>
           <span className="st-dot" aria-hidden="true" />
-          Started a check of {a.topic}
+          {a.kind === "check topic" ? `Started a check of ${a.topic}` : (a.summary ?? a.kind)}
         </p>
       ))}
     </div>

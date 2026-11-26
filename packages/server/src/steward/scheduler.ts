@@ -7,18 +7,14 @@ import type {
 } from "@axiom/core";
 import type { ChangeBus } from "../events.js";
 import { runChecklist } from "./checklist.js";
-import {
-  ConnectorProbe,
-  type ConnectorSource,
-  classifyConnectors,
-  type SourceAvailability,
-} from "./connectors.js";
+import { ConnectorProbe } from "./connectors.js";
 import { applyDecision, buildDecideInput, runDecide } from "./decide.js";
 import { runFreshen } from "./freshen.js";
 import { buildGatherInput, runGather } from "./gather.js";
 import { estimateTokens, runTidyUpStage, type TidyResult } from "./memory.js";
 import { PrPoller } from "./pr.js";
 import { runPromotion } from "./promote.js";
+import { linkedFolders, type ResearchAccess, recentCommits, researchAccess } from "./research.js";
 import { StageError } from "./runner.js";
 import { runTidy } from "./tidy.js";
 
@@ -392,22 +388,24 @@ export class Steward {
     return new Date(last.startedAt);
   }
 
-  private async sources(s: StewardSettings): Promise<Record<ConnectorSource, SourceAvailability>> {
-    const none = (reason: string): SourceAvailability => ({
-      available: false,
-      reason,
-      tools: [],
-      servers: [],
-    });
-    const wanted = (["slack", "googleDrive"] as const).filter((k) => s.sources[k]);
-    if (wanted.length === 0) {
-      return { slack: none("off in settings"), googleDrive: none("off in settings") };
+  /**
+   * What gather may look at (SF2): the connectors from the probe (only when some connector source
+   * is on), the folders the topics in scope link, and `gh` when GitHub is on.
+   */
+  async research(s: StewardSettings, topic?: string): Promise<ResearchAccess> {
+    const wantConnectors = s.sources.slack || s.sources.googleDrive || s.sources.otherConnectors;
+    const probe = wantConnectors ? await this.connectors.get() : null;
+    const folders = linkedFolders(this.o.ax, topic ? { topics: [topic] } : {});
+    const access = researchAccess(
+      probe,
+      s,
+      folders.map((f) => f.dir),
+    );
+    if (!wantConnectors) {
+      const off = { available: false, reason: "off in settings", tools: [], servers: [] };
+      access.sources = { slack: off, googleDrive: off };
     }
-    const c = classifyConnectors(await this.connectors.get());
-    return {
-      slack: s.sources.slack ? c.slack : none("off in settings"),
-      googleDrive: s.sources.googleDrive ? c.googleDrive : none("off in settings"),
-    };
+    return access;
   }
 
   /**
@@ -498,17 +496,14 @@ export class Steward {
     };
     try {
       let spots: StewardBlindSpot[] = [];
-      let sources: Record<ConnectorSource, SourceAvailability> = {
-        slack: { available: false, tools: [], servers: [] },
-        googleDrive: { available: false, tools: [], servers: [] },
-      };
+      let access: ResearchAccess | undefined;
       try {
-        sources = await this.sources(s);
+        access = await this.research(s, req.topic);
         const c = await runChecklist({
           ax,
           gh: this.o.ghCli,
           env: this.o.env,
-          connectors: sources,
+          connectors: access.sources,
           prErrors: this.poller.lastErrors,
         });
         spots = c.spots;
@@ -517,13 +512,20 @@ export class Steward {
       }
       ax.setStewardWakeBlindSpots(wake.id, spots, actor);
 
+      const folders = await Promise.all(
+        linkedFolders(ax, req.topic ? { topics: [req.topic] } : {}).map(async (f) => ({
+          ...f,
+          commits: await recentCommits(f.dir, lookBackFrom.toISOString(), { env: this.o.env }),
+        })),
+      );
       const input = buildGatherInput(ax, {
         since: lookBackFrom,
         until: now,
         trigger,
         triggerDetail: triggerDetail ?? null,
         topic: req.topic,
-        sources,
+        ...(access ? { access } : {}),
+        folders,
         blindSpots: spots,
       });
       const ctx = { ax, cli: this.cli(), env: this.o.env };

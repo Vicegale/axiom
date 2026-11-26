@@ -11,6 +11,7 @@ import { T3Provider } from "./providers/t3/provider.js";
 import { t3Dir } from "./providers/t3/reader.js";
 import { defaultT3Cli, T3ReplyFetcher } from "./providers/t3/replies.js";
 import { findGh } from "./steward/gh.js";
+import { linkedFolders } from "./steward/research.js";
 import { Steward, type StewardOptions } from "./steward/scheduler.js";
 import { findClaude, SummaryWorker } from "./summaries.js";
 
@@ -145,6 +146,10 @@ export async function startServer(options: StartServerOptions = {}): Promise<Run
   ctx.stewardNextWake = () => steward.nextWakeAt();
   ctx.stewardTidyUp = () => steward.tidyUpNow();
   ctx.stewardRequestWake = (trigger, detail, opts) => steward.requestWake(trigger, detail, opts);
+  ctx.stewardResearch = async () => ({
+    access: await steward.research(ax.getStewardSettings()),
+    folders: linkedFolders(ax),
+  });
   steward.start();
   const timer = setInterval(maintain, options.maintenanceMs ?? HOUR_MS);
 

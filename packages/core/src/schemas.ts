@@ -130,7 +130,13 @@ export const stewardSettingsSchema = z.strictObject({
   memoryCoreTokens: z.number().int().positive(),
   prSignals: z.array(z.enum(PR_SIGNALS)),
   /** Sources to read: GitHub through `gh`, and the connectors of the machine's Claude Code. */
-  sources: z.strictObject({ github: z.boolean(), slack: z.boolean(), googleDrive: z.boolean() }),
+  sources: z.strictObject({
+    github: z.boolean(),
+    slack: z.boolean(),
+    googleDrive: z.boolean(),
+    /** The read tools of every other connected connector (Jira, Confluence, Gmail...; SF2). */
+    otherConnectors: z.boolean(),
+  }),
 });
 export type StewardSettings = z.infer<typeof stewardSettingsSchema>;
 
@@ -153,7 +159,7 @@ export const DEFAULT_STEWARD_SETTINGS: StewardSettings = {
   stageTimeoutMin: 10,
   memoryCoreTokens: 2000,
   prSignals: [...PR_SIGNALS],
-  sources: { github: true, slack: true, googleDrive: true },
+  sources: { github: true, slack: true, googleDrive: true, otherConnectors: true },
 };
 
 export const settingSchemas = {

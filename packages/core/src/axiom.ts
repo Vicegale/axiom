@@ -2876,7 +2876,7 @@ export class Axiom {
    */
   updateStewardItem(
     id: number,
-    change: { state: Exclude<StewardItemState, "open">; answer?: string },
+    change: { state: Exclude<StewardItemState, "open">; answer?: string; resolution?: string },
     actor: Actor,
   ): StewardItem {
     this.stewardWriter(actor, "change a Steward item");
@@ -2895,10 +2895,18 @@ export class Axiom {
       if (change.answer !== undefined && change.state !== "answered") {
         throw new AxiomError("validation", "only an answered item carries an answer");
       }
+      if (change.state === "resolved" && !change.resolution?.trim()) {
+        throw new AxiomError("validation", "a resolved item needs the reason");
+      }
+      if (change.resolution !== undefined && change.state !== "resolved") {
+        throw new AxiomError("validation", "only a resolved item carries a resolution");
+      }
       this.run(
-        "UPDATE steward_item SET state = ?, answer = COALESCE(?, answer), resolved_at = ? WHERE id = ?",
+        `UPDATE steward_item SET state = ?, answer = COALESCE(?, answer),
+           resolution = COALESCE(?, resolution), resolved_at = ? WHERE id = ?`,
         change.state,
         change.answer?.trim() ?? null,
+        change.resolution?.trim() ?? null,
         this.iso(),
         id,
       );
@@ -3506,6 +3514,79 @@ export class Axiom {
         actor,
       );
     });
+  }
+
+  /**
+   * Steward rewrites one of its open items after feedback (SF1): a finding's title, body and
+   * level (a level change goes through `refreshStewardFinding`, with its history line and
+   * notification), a question's text. Nothing to change returns the item as it is.
+   */
+  stewardReviseItem(
+    id: number,
+    change: { title?: string; body?: string; level?: StewardLevel },
+    actor: Actor,
+  ): StewardItem {
+    this.stewardWriter(actor, "revise a Steward item");
+    if (change.level !== undefined) parseWith(stewardLevelSchema, change.level, "item level");
+    return this.tx(() => {
+      const item = this.itemRow(id);
+      if (item.state !== "open") {
+        throw new AxiomError("conflict", `#${id} is ${item.state}, so it cannot be revised`);
+      }
+      const title = change.title?.trim() || item.title;
+      const body = change.body !== undefined ? change.body.trim() || null : item.body;
+      if (item.kind === "finding") {
+        return this.refreshStewardFinding(
+          id,
+          {
+            level: change.level ?? item.level ?? "info",
+            title,
+            ...(body !== null ? { body } : {}),
+          },
+          actor,
+        );
+      }
+      if (change.level !== undefined && item.kind === "question") {
+        throw new AxiomError("validation", "a question has no level");
+      }
+      this.run("UPDATE steward_item SET title = ?, body = ? WHERE id = ?", title, body, id);
+      return this.itemRow(id);
+    });
+  }
+
+  /**
+   * Steward closes one of its open items (SF1): it is no longer true, or the owner said it is
+   * handled. Unlike the owner's dismissal it says why; like it, the same subject is not raised
+   * again unless it changes. A finding that wrote a history entry gets a note there too.
+   */
+  stewardResolveItem(id: number, reason: string, actor: Actor): StewardItem {
+    this.stewardWriter(actor, "resolve a Steward item");
+    return this.tx(() => {
+      const item = this.updateStewardItem(id, { state: "resolved", resolution: reason }, actor);
+      if (item.topicId !== null && item.kind !== "suggestion") {
+        this.insertEntry({
+          topicId: item.topicId,
+          author: "steward",
+          kind: "note",
+          body: `Steward closed its ${item.kind}: ${item.title}. Why: ${reason.trim()}`,
+        });
+      }
+      return item;
+    });
+  }
+
+  /**
+   * The owner answered a question somewhere else (in the chat, or in an answer to another item)
+   * and Steward records it on the question (SF1): the item becomes `answered`, keeping the
+   * owner's words.
+   */
+  stewardRecordAnswer(id: number, ownerWords: string, actor: Actor): StewardItem {
+    this.stewardWriter(actor, "record an answer");
+    const item = this.itemRow(id);
+    if (item.kind !== "question") {
+      throw new AxiomError("validation", "only a question can be answered");
+    }
+    return this.updateStewardItem(id, { state: "answered", answer: ownerWords }, actor);
   }
 
   /** The owner answers a question: the item becomes `answered` and keeps the answer. */

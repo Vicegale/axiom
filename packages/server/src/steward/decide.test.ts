@@ -665,6 +665,112 @@ describe("the prompt", () => {
   });
 });
 
+describe("acting on feedback (SF4)", () => {
+  const run = (out: unknown) => {
+    const w = ax.startStewardWake({ trigger: "owner" }, steward);
+    return applyDecision(ax, w, parse(out), []);
+  };
+
+  it("updates and resolves open items and sets a status the owner asked for", () => {
+    const a = ax.recordStewardFinding(
+      { topic: "alpha", level: "attention", title: "Scope?", fingerprint: "a" },
+      steward,
+    );
+    const b = ax.recordStewardFinding(
+      { topic: "alpha", level: "info", title: "Push?", fingerprint: "b" },
+      steward,
+    );
+    const q = ax.addStewardItem({ kind: "question", topic: "alpha", title: "Goal?" }, steward);
+    const r = run({
+      brief: "x",
+      itemUpdates: [
+        { action: "update", item: a.id, title: "Scope accepted", level: "info", reason: "answer" },
+        { action: "resolve", item: b.id, reason: "the owner pushed it" },
+        { action: "update", item: q.id, title: "What is alpha's goal now?" },
+        { action: "resolve", item: 999, reason: "x" },
+        { action: "explode", item: a.id },
+      ],
+      statusChanges: [
+        { topic: "alpha", status: "done", because: "Let's mark it done instead" },
+        { topic: "alpha", status: "stale", because: "x" },
+      ],
+    });
+    expect(ax.getStewardItem(a.id)).toMatchObject({ title: "Scope accepted", level: "info" });
+    expect(ax.getStewardItem(b.id)).toMatchObject({
+      state: "resolved",
+      resolution: "the owner pushed it",
+    });
+    expect(ax.getStewardItem(q.id).title).toBe("What is alpha's goal now?");
+    expect(ax.getTopic("alpha").status).toBe("done");
+    expect(r.actions.filter((x) => x.started)).toHaveLength(4);
+    expect(r.updated.map((i) => i.id).sort()).toEqual([a.id, q.id].sort());
+    expect(r.problems).toHaveLength(3);
+    expect(r.problems.join(" ")).toMatch(/not a Steward item/);
+    expect(r.problems.join(" ")).toMatch(/not understood/);
+    expect(r.problems.join(" ")).toMatch(/stale/);
+  });
+
+  it("shows the owner's chat messages since the look-back point and resolved items in the prompt", () => {
+    const chat = ax.startStewardChat({ model: "sonnet", effort: "low" }, owner);
+    ax.addStewardMessage(chat.id, { role: "owner", text: "ST10 is already built." }, owner);
+    ax.addStewardMessage(chat.id, { role: "steward", text: "Noted." }, steward);
+    const old = ax.recordStewardFinding({ topic: "alpha", level: "info", title: "Old" }, steward);
+    ax.stewardResolveItem(old.id, "fixed on main", steward);
+    t = at(11);
+    const w = ax.startStewardWake(
+      { trigger: "owner", lookBackFrom: new Date(at(9)).toISOString() },
+      steward,
+    );
+    const p = decidePrompt(buildDecideInput(ax, { wake: w, now: now(), tidied: [] }));
+    expect(p).toContain("What the owner said in the Steward chat");
+    expect(p).toContain("ST10 is already built.");
+    expect(p).not.toContain("- 2026-11-25 10:00: Noted.");
+    expect(p).toContain('Old -> Steward resolved it: "fixed on main"');
+    expect(p).toContain('"itemUpdates"');
+    expect(p).toContain("Never leave an item standing that the owner has contradicted");
+  });
+
+  it("starts a wake for the question's topic when the owner answers it", async () => {
+    const dbPath = join(dir, "axiom.db");
+    const seed = openDatabase(dbPath);
+    seed.createTopic({ slug: "alpha", title: "Alpha" }, owner);
+    seed.setStewardSettings({ enabled: true }, owner);
+    const q = seed.addStewardItem({ kind: "question", topic: "alpha", title: "Goal?" }, steward);
+    seed.close();
+    const claude = fakeClaude(dir, envelope(GATHER), { decideOut: envelope(QUIET_DECISION) });
+    const server = await startServer({
+      dbPath,
+      port: 0,
+      webDist: join(dir, "no-web"),
+      t3Dir: join(dir, "no-t3"),
+      claudeCli: claude.path,
+      ghCli: "/nonexistent/gh",
+      stewardTickMs: 0,
+      stewardConnectors: new ConnectorProbe({
+        cli: () => "claude",
+        probe: async () => ({ ok: true, servers: [], at: Date.now() }),
+      }),
+    });
+    try {
+      const res = await fetch(`${server.url}/api/steward/items/${q.id}/answer`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: "Ship it" }),
+      });
+      expect(res.status).toBe(200);
+      let wakes: { triggerDetail: string | null; status: string }[] = [];
+      for (let i = 0; i < 100; i++) {
+        wakes = (await (await fetch(`${server.url}/api/steward/wakes`)).json()) as typeof wakes;
+        if (wakes.some((w) => w.status !== "running")) break;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      expect(wakes.map((w) => w.triggerDetail)).toContain(`the owner answered #${q.id}`);
+    } finally {
+      await server.close();
+    }
+  });
+});
+
 describe("the owner's API", () => {
   it("lists open items with filters, answers, dismisses and undoes", async () => {
     const dbPath = join(dir, "axiom.db");

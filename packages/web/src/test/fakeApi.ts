@@ -49,7 +49,7 @@ export const STEWARD_DEFAULTS: StewardSettings = {
     "no reviewer",
     "ready to merge",
   ],
-  sources: { github: true, slack: true, googleDrive: true },
+  sources: { github: true, slack: true, googleDrive: true, otherConnectors: true },
 };
 
 export function emptyStewardView(): StewardView {
@@ -61,7 +61,7 @@ export function emptyStewardView(): StewardView {
     count: 0,
     brief: null,
     blindSpots: [],
-    sources: { github: off, slack: off, googleDrive: off },
+    sources: { github: off, slack: off, googleDrive: off, otherConnectors: off },
     needs: [],
     questions: [],
     ready: [],

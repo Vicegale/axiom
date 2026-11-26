@@ -583,7 +583,9 @@ describe("blind-spot checklist", () => {
   });
 
   it("stays quiet about sources the owner turned off", async () => {
-    enable({ sources: { github: false, slack: false, googleDrive: false } });
+    enable({
+      sources: { github: false, slack: false, googleDrive: false, otherConnectors: false },
+    });
     const { gh, s } = setup();
     await s.tick();
     await s.settle();
@@ -721,12 +723,17 @@ describe("stage 1 (gather)", () => {
     expect(prompt).toContain("needs: Review the diff");
     expect(prompt).toContain("PR acme/app#12");
     expect(prompt).toContain("checks: 0 failed, 0 pending, 1 passed");
-    expect(prompt).toContain("Slack (read-only tools only)");
-    expect(prompt).not.toContain("Google Drive (read-only tools only)");
+    expect(prompt).toContain("- Slack: find messages");
+    expect(prompt).not.toContain("- Google Drive: find");
+    expect(prompt).toContain("claude.ai Slack: slack_search_public");
 
     const argv = claude.argv();
-    const allowed = argv[argv.indexOf("--allowedTools") + 1];
-    expect(allowed).toBe("Read,Grep,Glob,mcp__claude_ai_Slack__slack_search_public");
+    const allowed = argv[argv.indexOf("--allowedTools") + 1] ?? "";
+    expect(allowed).toContain("mcp__claude_ai_Slack__slack_search_public");
+    expect(allowed).not.toContain("slack_send_message");
+    expect(argv[argv.indexOf("--disallowedTools") + 1]).toContain(
+      "mcp__claude_ai_Slack__slack_send_message",
+    );
     expect(argv).not.toContain("--strict-mcp-config");
     expect(argv[argv.indexOf("--model") + 1]).toBe("haiku");
 
@@ -736,7 +743,7 @@ describe("stage 1 (gather)", () => {
       summary: "Quiet morning.",
       activity: [{ topic: "alpha", source: "axiom", what: "A note was added." }],
       unreadable: [],
-      sources: ["slack"],
+      sources: ["claude.ai Slack"],
     });
     expect(w?.blindSpots.map((b) => b.ref)).toContain("googleDrive");
     const run = ax.listStewardRuns({ wakeId: w?.id })[0];
@@ -756,7 +763,6 @@ describe("stage 1 (gather)", () => {
       trigger: "timer",
       triggerDetail: null,
       topics: [],
-      sources: {},
       blindSpots: [],
     });
     expect(text).toContain("No connector is available");

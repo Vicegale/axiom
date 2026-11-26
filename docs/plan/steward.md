@@ -1,6 +1,6 @@
 # Build plan: Steward (spec 03)
 
-- Status: done (2026-11-26). Built ST0–ST10 and deployed to the live app; Steward stays off until the owner switches it on.
+- Status: done (2026-11-26). Built ST0–ST10 and deployed to the live app; Steward stays off until the owner switches it on. Follow-up SF1–SF4 (depth and feedback) below.
 - Created: 2026-11-25
 - Builds: 03 Faux-always-on agent (Steward), its data model additions in 05, and its parts of the UI (the Steward view, mockup B; the Desk additions). Runtime: [ADR 0006](../adr/0006-steward-headless-claude.md).
 - Out of scope: GitHub webhooks (03 Q37), per-kind urgency rules, meaning-based memory search and recall tests (03 Q36), other notification channels (03 Q6), the runtime as a setting.
@@ -69,6 +69,24 @@ ST0 first (it protects the real database from development builds), then ST1 (don
 
 - Steward's settings explain every model and effort option in tooltips, and Working hours has **Run now** (8abda27).
 - Not tested yet: Slack and Google Drive connectors (03 Q26), and a promoted fix for a real CI failure on one of the owner's repositories (fixes and rebases were exercised on throwaway repositories).
+
+## Follow-up: depth and feedback (2026-11-26)
+
+Owner, 2026-11-26: "Looks like the steward is consistently running into access problems. It never seems to know anything when I ask, rather than being able to simply go look it up elsewhere and find the answers. Currently, everything it does is very surface level. It also doesn't seem to react to what I tell it, in that it will not go back update existing "Needs you" or "Good to know" items according to my feedback."
+
+What was found:
+- **The chat was sealed off.** It ran in an empty temporary folder with no connectors (`--strict-mcp-config`), no repositories and no git. Its prompt said to answer only from what it was given, and item text reached it cut to 140–160 characters.
+- **Wakes saw only part of the sources.** Gather recognised only Slack and Google Drive, so calls to any other connected server (Jira, Confluence, Gmail, Calendar…) were denied. No stage could read a repository or its history. Decide had no tools and read 300-character clips of the summary.
+- **Only the owner could change an item.** The chat could add notes or start a check. Decide refreshed an open finding only when it repeated the same fingerprint; it never closed an item or touched an open question, and never saw the chat. An answer waited for the next timer wake. Nothing let Steward change a status from an answer, although the autonomy rule allows it (03: "update topic statuses and records in Axiom").
+
+Owner's choices, 2026-11-26: (1) the chat and gather may run read-only `git` and `gh` commands through an allowlist, with writes denied explicitly; (2) an answer starts a wake for that topic right away.
+
+| Slice | What | Done when |
+| --- | --- | --- |
+| SF1 | **Steward edits items.** A `resolved` item state (Steward closed it: no longer true, or the owner said it is handled), separate from the owner's `dismissed`; it comes back only if its subject changes. As Steward: revise an open item (title, body, level), resolve it with a reason, record the owner's words as a question's answer, and change a topic's status when the owner says so (the tidy path: history marked Steward's, undo; never `stale`). | Core tests. |
+| SF2 | **Research access.** Every connected connector's read tools (not only Slack and Drive; a setting can turn the others off); Read, Grep and Glob over the repositories and worktrees the topics link (`--add-dir`); an allowlist of read-only `git` and `gh` commands, with writes denied. Used by gather and the chat; both load the user's settings so connectors start. Gather also gets each linked repository's recent commits from Axiom. | Tests of the flags; a real chat that answers from a repository. |
+| SF3 | **The chat acts on feedback.** The prompt asks it to look things up before saying it does not know, and shows the open items in full. New actions: update an item, resolve it, answer a question with the owner's words, change a topic's status. | Tests; a real chat that resolves an item. |
+| SF4 | **Wakes act on feedback.** Decide sees what the owner said in chats since the look-back point and the items in full, and returns `itemUpdates` (revise or resolve an open item) and status changes the owner asked for. Answering a question starts a wake for its topic. | Tests over recorded replies. |
 
 ## Open questions
 

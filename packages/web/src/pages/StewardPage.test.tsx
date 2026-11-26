@@ -477,7 +477,7 @@ describe("Steward settings", () => {
     ]) {
       expect(within(dlg).getByText(name)).toBeTruthy();
     }
-    expect(within(dlg).getAllByText("Not checked yet")).toHaveLength(2);
+    expect(within(dlg).getAllByText("Not checked yet")).toHaveLength(3);
     expect(within(dlg).getByText(/Slack is unreachable/)).toBeTruthy();
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
@@ -507,7 +507,12 @@ describe("Steward settings", () => {
     expect(s.dailyCaps).toEqual({ sonnet: 1_500_000, opus: 250_000 });
     expect(s.workingHours.days).toEqual([1, 2, 3, 4, 5, 6]);
     expect(s.prSignals).not.toContain("ci failed");
-    expect(s.sources).toEqual({ github: true, slack: false, googleDrive: true });
+    expect(s.sources).toEqual({
+      github: true,
+      slack: false,
+      googleDrive: true,
+      otherConnectors: true,
+    });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 

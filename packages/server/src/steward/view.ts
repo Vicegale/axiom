@@ -90,6 +90,7 @@ export interface StewardView {
     github: StewardSourceState;
     slack: StewardSourceState;
     googleDrive: StewardSourceState;
+    otherConnectors: StewardSourceState;
   };
   needs: StewardViewItem[];
   questions: StewardViewItem[];
@@ -305,6 +306,20 @@ export function buildStewardView(ax: Axiom, nextWakeAt: string | null): StewardV
     const spot = spots.find((s) => s.kind === "source unreachable" && s.ref === key);
     return { on: true, ok: !spot, reason: spot?.text ?? null };
   };
+  // The other connectors gather read at the last wake that gathered (by name).
+  const otherConnectors = (): StewardSourceState => {
+    if (!settings.sources.otherConnectors) return { on: false, ok: null, reason: null };
+    const g = wakeRows.find((w) => w.trigger !== "tidy-up" && w.gathered)?.gathered as
+      | { sources?: unknown }
+      | undefined;
+    if (!g) return { on: true, ok: null, reason: null };
+    const names = (Array.isArray(g.sources) ? g.sources : []).filter(
+      (n): n is string => typeof n === "string" && !/slack|google[\s_-]*drive|gdrive/i.test(n),
+    );
+    return names.length
+      ? { on: true, ok: true, reason: `Read at the last wake: ${names.join(", ")}` }
+      : { on: true, ok: false, reason: "No other connector was connected at the last wake" };
+  };
 
   return {
     enabled: settings.enabled,
@@ -323,6 +338,7 @@ export function buildStewardView(ax: Axiom, nextWakeAt: string | null): StewardV
       github: source("github"),
       slack: source("slack"),
       googleDrive: source("googleDrive"),
+      otherConnectors: otherConnectors(),
     },
     needs: findings
       .filter((i) => i.level === "urgent" || i.level === "attention")

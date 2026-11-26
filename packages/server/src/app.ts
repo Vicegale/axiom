@@ -42,7 +42,7 @@ import type { T3Provider } from "./providers/t3/provider.js";
 import { livePendingApprovals, registerRequestRoutes } from "./requests.js";
 import { registerSendRoutes } from "./sending.js";
 import { serveWeb } from "./static.js";
-import { ChatTurns, type RequestWake, runChatTurn } from "./steward/chat.js";
+import { type ChatTurnOptions, ChatTurns, type RequestWake, runChatTurn } from "./steward/chat.js";
 import { adoptFix, discardFix, fixDiff } from "./steward/fixes.js";
 import { adoptRebase, isRebaseCopy, rebaseDiff, undoRebase } from "./steward/freshen.js";
 import { buildMemoryView, resolveAttachedKey } from "./steward/memory.js";
@@ -77,6 +77,8 @@ export interface AppContext {
   stewardRequestWake?: RequestWake;
   /** The chat's running turns, so tests can wait for them (created with the app). */
   chatTurns?: ChatTurns;
+  /** What the chat may look up (SF2); set once the scheduler exists. */
+  stewardResearch?: ChatTurnOptions["research"];
 }
 
 const STATUS_CODES = { "not-found": 404, permission: 403, validation: 400, conflict: 409 } as const;
@@ -765,7 +767,19 @@ export function createApp(ctx: AppContext): Hono {
   app.post("/api/steward/items/:id/answer", async (c) => {
     const body = parse(z.strictObject({ text: z.string().trim().min(1) }), await json(c));
     const id = intParam(c.req.param("id"), "item id");
-    return c.json(write(() => ax.answerStewardQuestion(id, body.text, owner)));
+    const item = write(() => ax.answerStewardQuestion(id, body.text, owner));
+    // Acting on the answer right away (SF4; owner, 2026-11-26): a wake for the question's topic,
+    // coalesced with any other waiting request. Nothing runs while Steward is off.
+    const topicOn = item.topicSlug ? ax.getTopic(item.topicSlug).stewardEnabled : true;
+    if (topicOn)
+      void ctx
+        .stewardRequestWake?.(
+          "owner",
+          `the owner answered #${id}`,
+          item.topicSlug ? { topic: item.topicSlug } : {},
+        )
+        .catch(() => {});
+    return c.json(item);
   });
 
   app.post("/api/steward/items/:id/dismiss", async (c) => {
@@ -901,6 +915,7 @@ export function createApp(ctx: AppContext): Hono {
           ctx: { ax, cli: typeof cli === "string" && cli ? cli : (ctx.claudeCli ?? "claude") },
           chat: ax.getStewardChat(id),
           requestWake: ctx.stewardRequestWake,
+          ...(ctx.stewardResearch ? { research: ctx.stewardResearch } : {}),
         }),
       () => bus.emit(),
     );

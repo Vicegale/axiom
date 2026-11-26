@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -55,7 +55,7 @@ describe("opening", () => {
     expect(pragma("journal_mode")).toBe("wal");
     expect(pragma("foreign_keys")).toBe(1);
     expect(pragma("busy_timeout")).toBe(5000);
-    expect(pragma("user_version")).toBe(15);
+    expect(pragma("user_version")).toBe(16);
     const names = (
       ax.db
         .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
@@ -76,7 +76,7 @@ describe("opening", () => {
     a.close();
     const b = openDatabase(path);
     expect(b.getTopic("keep").title).toBe("keep");
-    expect(Object.values(b.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(15);
+    expect(Object.values(b.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(16);
     b.close();
   });
 
@@ -108,7 +108,7 @@ describe("opening", () => {
     );
     raw.close();
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(15);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(16);
     const links = ax.getTopic("t").links;
     expect(links).toHaveLength(1);
     expect(links[0]).toMatchObject({ label: "A", description: null });
@@ -137,7 +137,7 @@ describe("opening", () => {
     );
     raw.close();
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(15);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(16);
     const t = ax.getTopic("t");
     expect(t).toMatchObject({ title: "T", favorite: false, deskHidden: false, deskOrder: null });
     expect(t.threads[0]).toMatchObject({
@@ -196,7 +196,7 @@ describe("opening", () => {
     raw.close();
 
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(15);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(16);
     expect(ax.db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
     const entries = ax.listEntries("t");
     expect(entries.map((e) => [e.id, e.author, e.body, e.threadId, e.correctsEntryId])).toEqual([
@@ -234,6 +234,57 @@ describe("opening", () => {
     ax.db.exec("DELETE FROM topic WHERE id = 1");
     expect(ax.db.prepare("SELECT COUNT(*) AS n FROM entry").get()).toEqual({ n: 0 });
     expect(ax.db.prepare("SELECT COUNT(*) AS n FROM notification").get()).toEqual({ n: 0 });
+    ax.close();
+  });
+
+  it("upgrades a version 15 database: Steward items keep their fixes, actions and parents, and accept resolved", () => {
+    const path = join(dir, "v15.db");
+    const raw = new DatabaseSync(path);
+    raw.exec("PRAGMA foreign_keys = ON");
+    const all = readdirSync(fileURLToPath(new URL("../migrations/", import.meta.url)))
+      .filter((f) => /^\d{4}_.*\.sql$/.test(f))
+      .sort()
+      .slice(0, 15);
+    migrate(
+      raw,
+      all.map((f, i) => ({
+        version: i + 1,
+        sql: readFileSync(fileURLToPath(new URL(`../migrations/${f}`, import.meta.url)), "utf8"),
+      })),
+    );
+    raw.exec(
+      "INSERT INTO topic (slug, title, created_at, last_worked_at) VALUES ('t', 'T', 'x', 'x')",
+    );
+    raw.exec(
+      `INSERT INTO steward_item (id, kind, topic_id, level, title, state, created_at, promotion, note)
+       VALUES (1, 'finding', 1, 'attention', 'CI failed', 'open', 'x', 'simple', 'n'),
+              (2, 'suggestion', 1, NULL, 'Prepared fix', 'open', 'x', NULL, NULL)`,
+    );
+    raw.exec("UPDATE steward_item SET parent_item_id = 1 WHERE id = 2");
+    raw.exec(
+      `INSERT INTO steward_suggestion (id, item_id, repository, branch, base, kind)
+       VALUES (4, 2, '/r', 'axiom/fix/a', 'main', 'fix')`,
+    );
+    raw.exec(
+      `INSERT INTO steward_action (id, item_id, kind, done_at) VALUES (6, 1, 'status change', 'x')`,
+    );
+    raw.close();
+
+    const ax = openDatabase(path);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(16);
+    expect(ax.db.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    expect(ax.getStewardItem(1)).toMatchObject({
+      promotion: "simple",
+      note: "n",
+      resolution: null,
+    });
+    expect(ax.getStewardItem(2).parentItemId).toBe(1);
+    expect(ax.listStewardSuggestions(2).map((x) => x.id)).toEqual([4]);
+    expect(ax.listStewardActions({ itemId: 1 }).map((x) => x.id)).toEqual([6]);
+    expect(ax.stewardResolveItem(1, "fixed on main", { kind: "steward" }).state).toBe("resolved");
+    // The item still cascades to its suggestion when deleted.
+    ax.db.exec("DELETE FROM steward_item WHERE id = 2");
+    expect(ax.db.prepare("SELECT COUNT(*) AS n FROM steward_suggestion").get()).toEqual({ n: 0 });
     ax.close();
   });
 
@@ -301,9 +352,9 @@ describe("opening", () => {
         );
       });
     const results = await Promise.all(Array.from({ length: 6 }, run));
-    expect(results).toEqual(Array(6).fill("15 wal"));
+    expect(results).toEqual(Array(6).fill("16 wal"));
     const ax = openDatabase(path);
-    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(15);
+    expect(Object.values(ax.db.prepare("PRAGMA user_version").get() as object)[0]).toBe(16);
     ax.close();
   }, 60_000);
 });

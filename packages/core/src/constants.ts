@@ -140,6 +140,8 @@ export const STEWARD_ITEM_STATES = [
   "adopted",
   "discarded",
   "undone",
+  /** Steward closed it: no longer true, or the owner said it is handled (SF1). */
+  "resolved",
 ] as const;
 export type StewardItemState = (typeof STEWARD_ITEM_STATES)[number];
 
