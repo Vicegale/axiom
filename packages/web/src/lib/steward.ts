@@ -35,3 +35,24 @@ export function statusChange(item: StewardItem): { from: string | null; to: stri
   const d = a.data as { from?: string | null; to?: string } | null;
   return d?.to ? { from: d.from ?? null, to: d.to } : null;
 }
+
+/** What an in-place rebase did (ST7), when the item's action is one and its data has the tips. */
+export function rebaseInfo(item: StewardItem): {
+  branch: string;
+  base: string;
+  oldTip: string;
+  newTip: string;
+  backupRef: string;
+} | null {
+  const a = item.action;
+  if (a?.kind !== "rebase in place" || a.undoneAt !== null) return null;
+  const d = a.data as Record<string, string> | null;
+  if (!d?.branch || !d.base || !d.oldTip || !d.newTip || !d.backupRef) return null;
+  return {
+    branch: d.branch,
+    base: d.base,
+    oldTip: d.oldTip,
+    newTip: d.newTip,
+    backupRef: d.backupRef,
+  };
+}

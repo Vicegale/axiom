@@ -3122,6 +3122,137 @@ export class Axiom {
   }
 
   /**
+   * Steward rebased the owner's branch in place (ST7; Axiom already did the git work): an info
+   * finding on the topic with a history entry by Steward, and a `rebase in place` action holding
+   * the tips and the backup ref, so the owner can undo it.
+   */
+  recordStewardRebase(
+    input: {
+      wakeId?: number;
+      topic: TopicRef;
+      title: string;
+      body?: string;
+      /** The history entry's text. */
+      entry: string;
+      fingerprint: string;
+      data: unknown;
+    },
+    actor: Actor,
+  ): { item: StewardItem; action: StewardAction } {
+    this.stewardWriter(actor, "record a rebase");
+    return this.tx(() => {
+      const t = this.topicRow(input.topic);
+      const entryId = this.insertEntry({
+        topicId: t.id,
+        author: "steward",
+        kind: "finding",
+        body: input.entry,
+        data: { subtype: "rebase in place" },
+      });
+      const item = this.addStewardItem(
+        {
+          kind: "finding",
+          topic: t.id,
+          level: "info",
+          signal: "rebase",
+          title: input.title,
+          ...(input.body ? { body: input.body } : {}),
+          entryId,
+          fingerprint: input.fingerprint,
+          ...(input.wakeId !== undefined ? { wakeId: input.wakeId } : {}),
+        },
+        actor,
+      );
+      const action = this.recordStewardAction(
+        { itemId: item.id, kind: "rebase in place", data: input.data },
+        actor,
+      );
+      return { item, action };
+    });
+  }
+
+  /**
+   * A rebased copy of the owner's branch (ST7): a standalone suggestion with its branch row and
+   * a history entry by Steward on the topic.
+   */
+  addStewardRebaseCopy(
+    input: {
+      wakeId?: number;
+      topic: TopicRef;
+      title: string;
+      fingerprint: string;
+      repository: string;
+      branch: string;
+      base: string;
+      worktree: string;
+      diffstat: string;
+    },
+    actor: Actor,
+  ): { item: StewardItem; suggestion: StewardSuggestion } {
+    this.stewardWriter(actor, "add a rebased copy");
+    return this.tx(() => {
+      const t = this.topicRow(input.topic);
+      const item = this.addStewardItem(
+        {
+          kind: "suggestion",
+          topic: t.id,
+          title: input.title,
+          fingerprint: input.fingerprint,
+          ...(input.wakeId !== undefined ? { wakeId: input.wakeId } : {}),
+        },
+        actor,
+      );
+      const suggestion = this.addStewardSuggestion(
+        item.id,
+        {
+          kind: "rebase copy",
+          repository: input.repository,
+          branch: input.branch,
+          base: input.base,
+          worktree: input.worktree,
+          diffstat: input.diffstat,
+        },
+        actor,
+      );
+      const entryId = this.insertEntry({
+        topicId: t.id,
+        author: "steward",
+        kind: "finding",
+        body: `A rebased copy is ready on ${input.branch} (${input.diffstat}): ${input.title}`,
+        data: { subtype: "rebase copy ready" },
+      });
+      this.run("UPDATE steward_item SET entry_id = ? WHERE id = ?", entryId, item.id);
+      return { item: this.itemRow(item.id), suggestion };
+    });
+  }
+
+  /**
+   * The owner undid an in-place rebase (Axiom already moved the branch back): the action is marked
+   * undone, its item `undone`, and the topic's history says so.
+   */
+  markStewardRebaseUndone(id: number, detail: string, actor: Actor): StewardAction {
+    ownerOnly(actor, "undo a Steward action");
+    return this.tx(() => {
+      const a = this.actionRow(id);
+      if (a.kind !== "rebase in place") {
+        throw new AxiomError("validation", `a "${a.kind}" action is not a rebase`);
+      }
+      const undone = this.markStewardActionUndone(id, actor);
+      const item = this.itemRow(a.itemId);
+      if (item.state === "open") this.updateStewardItem(item.id, { state: "undone" }, actor);
+      if (item.topicId !== null) {
+        this.insertEntry({
+          topicId: item.topicId,
+          author: "owner",
+          kind: "note",
+          body: `Undid Steward's rebase: ${item.title}. ${detail}`,
+        });
+      }
+      return undone;
+    });
+  }
+
+  /**
    * Steward changes a topic's goal or status note (from an answer or a clear fact). The change
    * goes through the normal update, with a `note` entry by Steward saying why, and an info item.
    * Returns null when nothing differs.

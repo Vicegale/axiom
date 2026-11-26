@@ -113,7 +113,7 @@ export function prOfFinding(ax: Axiom, item: StewardItem): { repo: string; numbe
  */
 export async function findRepository(
   ax: Axiom,
-  item: StewardItem,
+  item: Pick<StewardItem, "topicSlug">,
   pr: { repo: string } | null,
 ): Promise<FoundRepository | null> {
   if (!item.topicSlug) return null;
@@ -142,7 +142,7 @@ export async function findRepository(
 }
 
 /** A branch name free in `repo`: `base`, else `base-2`... */
-async function freeBranch(repo: string, base: string): Promise<string> {
+export async function freeBranch(repo: string, base: string): Promise<string> {
   for (let n = 1; ; n++) {
     const name = n === 1 ? base : `${base}-${n}`;
     try {
@@ -217,7 +217,7 @@ export async function prepareWorktree(o: {
 }
 
 /** Removes the empty folders above a removed worktree, up to (not including) the worktrees folder. */
-function pruneEmptyParents(path: string): void {
+export function pruneEmptyParents(path: string): void {
   const root = worktreesRoot();
   for (let p = dirname(path); p.startsWith(`${root}/`); p = dirname(p)) {
     try {
@@ -337,12 +337,16 @@ export function decodeBase(base: string): { target: string | null; sha: string }
 
 const refuse = (message: string) => new AxiomError("conflict", message);
 
-function openFix(ax: Axiom, itemId: number): { item: StewardItem; s: StewardSuggestion } {
+function openFix(
+  ax: Axiom,
+  itemId: number,
+  kinds: StewardSuggestion["kind"][] = ["fix"],
+): { item: StewardItem; s: StewardSuggestion } {
   const item = ax.getStewardItem(itemId);
   if (item.kind !== "suggestion") throw refuse("that is not a prepared fix");
   if (item.state !== "open") throw refuse(`that fix was already ${item.state}`);
   const s = ax.getStewardSuggestion(itemId);
-  if (s.kind !== "fix") throw refuse("only a fix can be adopted");
+  if (!kinds.includes(s.kind)) throw refuse("only a fix can be adopted");
   if (!s.branch.startsWith("axiom/")) throw refuse("not one of Steward's branches");
   return { item, s };
 }
@@ -370,7 +374,7 @@ export async function fixDiff(
 }
 
 /** Where `branch` is checked out among the repository's worktrees, or null. */
-async function checkedOutAt(repo: string, branch: string): Promise<string | null> {
+export async function checkedOutAt(repo: string, branch: string): Promise<string | null> {
   const list = await git(repo, ["worktree", "list", "--porcelain"]);
   let path: string | null = null;
   for (const line of list.split("\n")) {
@@ -380,7 +384,7 @@ async function checkedOutAt(repo: string, branch: string): Promise<string | null
   return null;
 }
 
-async function isAncestor(repo: string, a: string, b: string): Promise<boolean> {
+export async function isAncestor(repo: string, a: string, b: string): Promise<boolean> {
   try {
     await git(repo, ["merge-base", "--is-ancestor", a, b]);
     return true;
@@ -480,9 +484,12 @@ export async function adoptFix(ax: Axiom, itemId: number): Promise<AdoptResult> 
   return { item, method, branch: target, tip };
 }
 
-/** Discard (the owner's click): removes Steward's worktree and branch and marks the fix discarded. */
+/**
+ * Discard (the owner's click): removes Steward's worktree and branch and marks the fix (or the
+ * rebased copy of ST7) discarded.
+ */
 export async function discardFix(ax: Axiom, itemId: number): Promise<StewardItem> {
-  const { s } = openFix(ax, itemId);
+  const { s } = openFix(ax, itemId, ["fix", "rebase copy"]);
   await removeFix(s.repository, s.worktree, s.branch);
   return ax.resolveStewardFix(itemId, "discarded", `${s.branch} was deleted.`, owner);
 }

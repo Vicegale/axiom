@@ -41,6 +41,7 @@ import { livePendingApprovals, registerRequestRoutes } from "./requests.js";
 import { registerSendRoutes } from "./sending.js";
 import { serveWeb } from "./static.js";
 import { adoptFix, discardFix, fixDiff } from "./steward/fixes.js";
+import { adoptRebase, isRebaseCopy, rebaseDiff, undoRebase } from "./steward/freshen.js";
 import { buildMemoryView, resolveAttachedKey } from "./steward/memory.js";
 import { buildStewardView, stewardCount } from "./steward/view.js";
 
@@ -756,11 +757,14 @@ export function createApp(ctx: AppContext): Hono {
   });
 
   // Prepared fixes (ST6): the owner's Diff, Adopt and Discard. Axiom does the git work.
-  app.get("/api/steward/items/:id/diff", async (c) =>
-    c.json(await fixDiff(ax, intParam(c.req.param("id"), "item id"))),
-  );
+  // A rebased copy (ST7) is a suggestion of its own kind: same endpoints, its own git work.
+  app.get("/api/steward/items/:id/diff", async (c) => {
+    const id = intParam(c.req.param("id"), "item id");
+    return c.json(isRebaseCopy(ax, id) ? await rebaseDiff(ax, id) : await fixDiff(ax, id));
+  });
   app.post("/api/steward/items/:id/adopt", async (c) => {
-    const result = await adoptFix(ax, intParam(c.req.param("id"), "item id"));
+    const id = intParam(c.req.param("id"), "item id");
+    const result = isRebaseCopy(ax, id) ? await adoptRebase(ax, id) : await adoptFix(ax, id);
     bus.emit();
     return c.json(result);
   });
@@ -837,8 +841,14 @@ export function createApp(ctx: AppContext): Hono {
     return c.json({ wake, memory: buildMemoryView(ax) });
   });
 
-  app.post("/api/steward/actions/:id/undo", (c) => {
+  app.post("/api/steward/actions/:id/undo", async (c) => {
     const id = intParam(c.req.param("id"), "action id");
+    // An in-place rebase (ST7) is undone in git first; a status change is undone in the tracker.
+    if (ax.listStewardActions().find((x) => x.id === id)?.kind === "rebase in place") {
+      const undone = await undoRebase(ax, id);
+      bus.emit();
+      return c.json(undone);
+    }
     return c.json(write(() => ax.undoStewardAction(id, owner)));
   });
 

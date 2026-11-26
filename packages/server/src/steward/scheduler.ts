@@ -14,6 +14,7 @@ import {
   type SourceAvailability,
 } from "./connectors.js";
 import { applyDecision, buildDecideInput, runDecide } from "./decide.js";
+import { runFreshen } from "./freshen.js";
 import { buildGatherInput, runGather } from "./gather.js";
 import { estimateTokens, runTidyUpStage, type TidyResult } from "./memory.js";
 import { PrPoller } from "./pr.js";
@@ -466,6 +467,12 @@ export class Steward {
         }
       } catch (e) {
         console.error("steward promotion failed:", e);
+      }
+      // Freshening branches (ST7), no model: rebase in place or as a copy where it is due.
+      try {
+        await runFreshen({ ax, wakeId: wake.id, topic: req.topic, env: this.o.env, now });
+      } catch (e) {
+        console.error("steward freshen failed:", e);
       }
       return end(
         "done",

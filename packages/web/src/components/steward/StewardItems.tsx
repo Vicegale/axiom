@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { api, type StewardFix, type StewardItem } from "../../api";
 import { hrefs } from "../../layouts/shared/routes";
 import { modelName } from "../../lib/desk";
-import { statusChange } from "../../lib/steward";
+import { rebaseInfo, statusChange } from "../../lib/steward";
 import { stamp } from "../../lib/time";
 
 interface Common {
@@ -157,7 +157,11 @@ function FixActions({
       <button
         type="button"
         className="btn sm st-primary"
-        title="Applies it to your branch locally. Pushing stays yours."
+        title={
+          fix.kind === "rebase copy"
+            ? "Moves your branch to the rebased copy locally; the old tip is saved. Pushing stays yours."
+            : "Applies it to your branch locally. Pushing stays yours."
+        }
         disabled={busy}
         onClick={() => void act(onAdopt)}
       >
@@ -330,6 +334,7 @@ export function FindingItem({
   onUndo,
 }: Common & { item: StewardItem; onUndo: (actionId: number) => void }) {
   const change = statusChange(item);
+  const rebase = rebaseInfo(item);
   return (
     <li className={`st-item${item.level ? ` lv-${item.level}` : ""}`}>
       <div className="st-item-main">
@@ -356,6 +361,28 @@ export function FindingItem({
               Undo<span className="sr-only"> moving to {change.to}</span>
             </button>
           </p>
+        ) : null}
+        {rebase && item.action ? (
+          <div className="st-did">
+            <span>
+              Rebased <code className="st-br">{rebase.branch}</code> onto {rebase.base} locally
+              (clean). Pushing is yours.
+            </span>
+            <button
+              type="button"
+              className="st-link-btn"
+              onClick={() => onUndo(item.action?.id ?? 0)}
+            >
+              Undo<span className="sr-only"> the rebase of {rebase.branch}</span>
+            </button>
+            <details className="st-details">
+              <summary>Details</summary>
+              <code>
+                {rebase.oldTip.slice(0, 7)} → {rebase.newTip.slice(0, 7)} · old tip saved at{" "}
+                {rebase.backupRef}
+              </code>
+            </details>
+          </div>
         ) : null}
         <Meta item={item} now={now} titleOf={titleOf} />
       </div>

@@ -199,6 +199,45 @@ describe("the Steward page", () => {
     await waitFor(() => expect(screen.queryByText("Moved Alpha to done")).toBeNull());
   });
 
+  it("shows an in-place rebase as a did row with Undo and folded Details", async () => {
+    fill();
+    server.steward.info = [
+      stewardItem({
+        id: 31,
+        kind: "finding",
+        level: "info",
+        title: "row-60 was behind main (acme/widgets#7)",
+        topicSlug: "alpha",
+        action: {
+          id: 9,
+          itemId: 31,
+          kind: "rebase in place",
+          data: {
+            branch: "row-60",
+            base: "main",
+            oldTip: "a91c0de1111111",
+            newTip: "e47b2f92222222",
+            backupRef: "refs/axiom/backup/row-60/20261125-140000",
+          },
+          doneAt: "2026-11-25T14:00:00.000Z",
+          undoneAt: null,
+        },
+      }),
+    ];
+    start();
+    const good = await screen.findByRole("region", { name: "Good to know" });
+    expect(within(good).getByText(/Pushing is yours\./)).toBeTruthy();
+    const details = within(good).getByText("Details").closest("details");
+    expect(details?.open).toBe(false);
+    expect(
+      within(good).getByText(/a91c0de → e47b2f9 · old tip saved at refs\/axiom\/backup/),
+    ).toBeTruthy();
+    fireEvent.click(within(good).getByRole("button", { name: /^Undo/ }));
+    await waitFor(() =>
+      expect(server.called("POST", "/api/steward/actions/9/undo")).toHaveLength(1),
+    );
+  });
+
   describe("a prepared fix", () => {
     const fix = {
       itemId: 30,
