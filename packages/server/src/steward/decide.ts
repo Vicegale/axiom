@@ -147,6 +147,36 @@ const clip = (s: string | null | undefined, n: number) => {
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 };
 const DAY_MS = 86_400_000;
+/**
+ * What the topic's own threads already tell the owner on the Desk: the topic waiting on them, a
+ * thread waiting for an answer or approval, or a stopped thread's "next for you". Steward does
+ * not repeat these (spec 03: Steward is distinct from the topics' own alerts).
+ */
+export function alreadyOnDesk(ax: Axiom, slug: string): string[] {
+  let t: ReturnType<Axiom["getTopic"]>;
+  try {
+    t = ax.getTopic(slug);
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  if (t.status === "hitl") {
+    out.push(`the topic waits for the owner${t.statusNote ? ` (${clip(t.statusNote, 120)})` : ""}`);
+  }
+  for (const th of t.threads) {
+    const name = th.title ? `thread "${clip(th.title, 60)}"` : `thread #${th.id}`;
+    if (th.waitingOnOwner) out.push(`${name} waits for the owner's answer or approval`);
+    else if (
+      th.status !== "wip" &&
+      th.summaryNext &&
+      !/^nothing\.?$/i.test(th.summaryNext.trim())
+    ) {
+      out.push(`${name} finished; next for the owner: ${clip(th.summaryNext, 140)}`);
+    }
+  }
+  return out;
+}
+
 /** How far back answered and dismissed items are shown to the model. */
 export const RECENT_DAYS = 14;
 const RECENT_MAX = 25;
@@ -165,6 +195,8 @@ export interface DecideInput {
     statusNote: string | null;
     goal: string | null;
     lastWorkedAt: string;
+    /** What the Desk already tells the owner about this topic (see alreadyOnDesk). */
+    onDesk: string[];
     prs: {
       ref: string;
       title: string;
@@ -252,6 +284,7 @@ export function buildDecideInput(
       statusNote: t.statusNote,
       goal: t.goal,
       lastWorkedAt: t.lastWorkedAt,
+      onDesk: alreadyOnDesk(ax, t.slug),
       prs,
     });
   }
@@ -291,6 +324,9 @@ function renderTopic(t: DecideInput["topics"][number]): string {
     `status: ${t.status ?? "none (several threads)"}${t.statusNote ? ` (${clip(t.statusNote, 150)})` : ""}; last worked ${t.lastWorkedAt.slice(0, 10)}`,
     `goal: ${t.goal ? clip(t.goal, 250) : "(none)"}`,
   ];
+  if (t.onDesk.length > 0) {
+    out.push(`already on the Desk (the owner is alerted; do not repeat): ${t.onDesk.join("; ")}`);
+  }
   for (const p of t.prs) {
     out.push(
       `PR ${p.ref}${p.title ? ` "${clip(p.title, 90)}"` : ""}: ${p.state}${p.head ? `, head ${p.head}` : ""}`,
@@ -329,7 +365,8 @@ You work for the tracker's owner. Stage 1 (a cheaper model) summarised what chan
 6. Blind spots: the checklist below lists what Steward could not see, numbered [B1], [B2]... Ask the owner about those that matter (set \`spot\` to the number) and add any gap of your own. Use \`kind\` "blind spot" for missing information and "judgement" for a call you cannot make alone. Do not ask what an earlier answer below already settles.
 7. \`topicUpdates\` may change a topic's goal or status note, only when an owner's answer or a clear fact settles it; \`because\` says which. Leave it empty otherwise.
 8. \`promote\` on a finding asks for a stronger model to investigate or prepare a fix, rated simple, medium or hard. Use it rarely and only for a bounded code task, such as a failing check whose cause is likely a small change.
-9. ${MEMORY_RULES}`);
+9. ${MEMORY_RULES}
+10. You are not the topics' alarm. The Desk already tells the owner when an agent finished, stopped, asks something, waits for approval, or needs them to test or decide (the "already on the Desk" lines). Never raise a finding or a question whose point is that: the owner already knows. Raise only what they would not see there: PR signals, what other sources say, links between topics, memory, blind spots, or a risk the agent's own summary misses.`);
   p.push(`## Stage 1's summary
 
 <<<DATA
@@ -436,7 +473,15 @@ export function applyDecision(
         : f.fingerprint
           ? `model:${normaliseFingerprint(f.fingerprint)}`
           : `model:${where.slug ?? "-"}:${normaliseFingerprint(f.title)}`;
-      const level = f.level;
+      let level = f.level;
+      // Rule 10, in code: a model finding of level attention on a topic whose threads already
+      // alert the owner on the Desk stays out of Needs you (info, no notification, no card strip).
+      if (!rec && level === "attention" && where.slug && alreadyOnDesk(ax, where.slug).length > 0) {
+        level = "info";
+        res.problems.push(
+          `finding "${f.title}" shown as info: ${where.slug} already alerts the owner on the Desk`,
+        );
+      }
       const promotion = f.promote?.complexity;
       const existing = ax.findStewardItemByFingerprint(fingerprint);
       if (existing) {

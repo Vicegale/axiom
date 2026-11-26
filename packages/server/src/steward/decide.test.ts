@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { startServer } from "../index.js";
 import { ConnectorProbe } from "./connectors.js";
 import {
+  alreadyOnDesk,
   applyDecision,
   buildDecideInput,
   type DecideOutput,
@@ -421,6 +422,69 @@ describe("fingerprints and repeats", () => {
     expect(r.created[0]).toMatchObject({ topicId: null });
     expect(r.created[0]?.body).toContain('"ghost"');
     expect(r.skipped).toBe(1);
+  });
+});
+
+describe("what the Desk already shows", () => {
+  const run = (out: unknown) => {
+    const w = ax.startStewardWake({ trigger: "owner" }, steward);
+    return applyDecision(ax, w, parse(out), []);
+  };
+  const finished = () => {
+    const th = ax.attachThread(
+      "alpha",
+      { provider: "claude-code", providerThreadId: "t-alpha", title: "Build it" },
+      owner,
+    );
+    ax.threadStopped(th.id);
+    ax.setThreadSummary(
+      th.id,
+      { now: "Built it.", next: "Test it and decide." },
+      new Date(t).toISOString(),
+    );
+    return th;
+  };
+
+  it("lists a finished thread's next step and a waiting topic as already on the Desk", () => {
+    expect(alreadyOnDesk(ax, "alpha")).toEqual([]);
+    finished();
+    ax.setTopicStatus("alpha", "hitl", owner);
+    const desk = alreadyOnDesk(ax, "alpha");
+    expect(desk.join(" | ")).toMatch(/waits for the owner/);
+    expect(desk.join(" | ")).toMatch(
+      /"Build it" finished; next for the owner: Test it and decide\./,
+    );
+  });
+
+  it("tells stage 2 not to repeat it", async () => {
+    finished();
+    ax.setTopicStatus("alpha", "review", owner);
+    const w = ax.startStewardWake({ trigger: "owner" }, steward);
+    const prompt = decidePrompt(buildDecideInput(ax, { wake: w, now: now(), tidied: [] }));
+    expect(prompt).toMatch(
+      /already on the Desk \(the owner is alerted; do not repeat\): thread "Build it" finished/,
+    );
+    expect(prompt).toMatch(/You are not the topics' alarm/);
+  });
+
+  it("keeps an attention finding about such a topic out of Needs you, but not PR signals or urgent ones", () => {
+    finished();
+    const r = run({
+      ...QUIET_DECISION,
+      findings: [
+        finding({ level: "attention", title: "Build it is waiting on you" }),
+        finding({ level: "urgent", title: "Deadline moved to today" }),
+      ],
+    });
+    const [waiting, deadline] = r.created;
+    expect(waiting?.level).toBe("info");
+    expect(deadline?.level).toBe("urgent");
+    expect(r.problems.join(" ")).toMatch(/already alerts the owner on the Desk/);
+  });
+
+  it("leaves topics the Desk is quiet about alone", () => {
+    const r = run({ ...QUIET_DECISION, findings: [finding({ level: "attention" })] });
+    expect(r.created[0]?.level).toBe("attention");
   });
 });
 
